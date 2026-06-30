@@ -1,20 +1,147 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import type { AppState } from './src/types';
+import { EMPTY_APP_STATE } from './src/types';
+import { loadAppState, saveAppState } from './src/storage';
+import { HomeScreen } from './src/screens/HomeScreen';
+import { PropertyDetailScreen } from './src/screens/PropertyDetailScreen';
+import { RoomDetailScreen } from './src/screens/RoomDetailScreen';
+import { ItemDetailScreen } from './src/screens/ItemDetailScreen';
+import { AddEditEventScreen } from './src/screens/AddEditEventScreen';
+import { TransferScreen } from './src/screens/TransferScreen';
+import type { ApplianceEditingSection } from './src/components/ApplianceDisplayView';
+import { sharedStyles } from './src/theme';
+
+type Route =
+  | { name: 'home' }
+  | { name: 'property'; propertyId: string }
+  | { name: 'room'; roomId: string }
+  | { name: 'item'; itemId: string; startEditingSection?: ApplianceEditingSection }
+  | { name: 'event'; itemId: string; eventId?: string }
+  | { name: 'transfer' };
 
 export default function App() {
+  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<AppState>(EMPTY_APP_STATE);
+  const [stack, setStack] = useState<Route[]>([{ name: 'home' }]);
+
+  useEffect(() => {
+    void loadAppState().then((s) => {
+      setState(s);
+      setLoading(false);
+    });
+  }, []);
+
+  const persist = useCallback(async (next: AppState) => {
+    setState(next);
+    await saveAppState(next);
+  }, []);
+
+  const route = stack[stack.length - 1]!;
+
+  function push(r: Route) {
+    setStack((s) => [...s, r]);
+  }
+
+  function pop() {
+    setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  }
+
+  if (loading) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <View style={[sharedStyles.screen, { alignItems: 'center', justifyContent: 'center' }]}>
+            <ActivityIndicator size="large" />
+          </View>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  let screen: React.ReactNode;
+
+  switch (route.name) {
+    case 'home':
+      screen = (
+        <HomeScreen
+          state={state}
+          onOpenProperty={(propertyId) => push({ name: 'property', propertyId })}
+          onOpenTransfer={() => push({ name: 'transfer' })}
+          onSave={(next) => void persist(next)}
+        />
+      );
+      break;
+    case 'property':
+      screen = (
+        <PropertyDetailScreen
+          state={state}
+          propertyId={route.propertyId}
+          onBack={pop}
+          onOpenRoom={(roomId) => push({ name: 'room', roomId })}
+          onSave={(next) => void persist(next)}
+        />
+      );
+      break;
+    case 'room':
+      screen = (
+        <RoomDetailScreen
+          state={state}
+          roomId={route.roomId}
+          onBack={pop}
+          onOpenItem={(itemId, startEditingSection) =>
+            push({ name: 'item', itemId, startEditingSection })
+          }
+          onSave={(next) => void persist(next)}
+        />
+      );
+      break;
+    case 'item':
+      screen = (
+        <ItemDetailScreen
+          state={state}
+          itemId={route.itemId}
+          startEditingSection={route.startEditingSection}
+          onBack={pop}
+          onAddEvent={() => push({ name: 'event', itemId: route.itemId })}
+          onEditEvent={(eventId) => push({ name: 'event', itemId: route.itemId, eventId })}
+          onSave={(next) => void persist(next)}
+        />
+      );
+      break;
+    case 'event':
+      screen = (
+        <AddEditEventScreen
+          state={state}
+          itemId={route.itemId}
+          eventId={route.eventId}
+          onBack={pop}
+          onSave={(next) => void persist(next)}
+        />
+      );
+      break;
+    case 'transfer':
+      screen = (
+        <TransferScreen
+          state={state}
+          onBack={pop}
+          onImport={(next) => void persist(next)}
+        />
+      );
+      break;
+    default:
+      screen = null;
+  }
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        {screen}
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

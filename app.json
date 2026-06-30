@@ -1,25 +1,47 @@
 {
   "expo": {
-    "name": "PropertyInventoryHistory",
+    "name": "Property Inventory History",
     "slug": "PropertyInventoryHistory",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f4f6f8"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.alanniebuhr.propertyinventoryhistory",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take photos of property items for your inventory.",
+        "NSPhotoLibraryUsageDescription": "Attach photos of property items to your inventory."
+      }
     },
     "android": {
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Attach photos of property items to your inventory.",
+          "cameraPermission": "Take photos of property items for your inventory."
+        }
+      ]
+    ]
   }
 }
