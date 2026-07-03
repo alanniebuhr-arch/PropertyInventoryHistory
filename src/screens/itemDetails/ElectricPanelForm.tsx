@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ElectricPanelDetails } from '../../types';
-import { FormField } from './FormField';
+import { parseDateInputToISO } from '../../utils';
+import { DateFormField, FormField } from './FormField';
 
 export function ElectricPanelForm(props: {
   details: ElectricPanelDetails;
@@ -9,6 +10,12 @@ export function ElectricPanelForm(props: {
   const { details, onChange } = props;
   return (
     <>
+      <FormField
+        label="Name"
+        value={details.name ?? ''}
+        onChangeText={(name) => onChange({ ...details, name })}
+        placeholder="e.g. Main panel, Subpanel"
+      />
       <FormField
         label="Amperage"
         value={details.amperage ?? ''}
@@ -26,13 +33,14 @@ export function ElectricPanelForm(props: {
         onChangeText={(locationNotes) => onChange({ ...details, locationNotes })}
         multiline
       />
-      <FormField
-        label="Last inspected (YYYY-MM-DD)"
-        value={details.lastInspectedAtISO?.slice(0, 10) ?? ''}
-        onChangeText={(v) =>
-          onChange({ ...details, lastInspectedAtISO: v.trim() ? `${v.trim()}T12:00:00.000Z` : undefined })
+      <DateFormField
+        label="Last inspected (MM/DD/YYYY)"
+        value={details.lastInspectedAtISO}
+        parseStored={parseDateInputToISO}
+        onChangeStored={(lastInspectedAtISO) =>
+          onChange({ ...details, lastInspectedAtISO })
         }
-        placeholder="2024-06-01"
+        placeholder="06/01/2024"
       />
     </>
   );

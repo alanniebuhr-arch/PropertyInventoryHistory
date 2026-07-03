@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
   AppState,
+  ElectricPanelDetails,
   FurnaceDetails,
   InventoryItem,
   ItemDetails,
@@ -9,31 +10,154 @@ import type {
   ItemTypeId,
   Property,
   Room,
+  WaterMainDetails,
+  WaterTreatmentDetails,
 } from './types';
 import { EMPTY_APP_STATE } from './types';
-import { defaultDetailsForType } from './itemCatalog';
+import { defaultDetailsForType, catalogLabel, itemCustomName } from './itemCatalog';
+import { normalizeWaterSource } from './waterMainSlots';
+import { normalizeWasteWaterSystem } from './wasteWaterSlots';
+import { furnaceUsesFuelShutoff, furnaceUsesFuelTank, normalizeFuelType, normalizeHeatDistribution } from './furnaceSlots';
 import { APPLIANCE_PHOTO_SLOTS } from './applianceSlots';
+import { ELECTRIC_PANEL_PHOTO_SLOTS } from './electricPanelSlots';
 
 const STORAGE_KEY = 'property_inventory_state_v1';
 
 function normalizeFurnaceDetails(details: ItemDetails): ItemDetails {
   if (details.kind !== 'furnace') return defaultDetailsForType('furnace');
   const legacy = details as FurnaceDetails & { modelSerial?: string; installYear?: string };
+  const fuelType = normalizeFuelType(
+    typeof details.fuelType === 'string' ? details.fuelType : undefined
+  );
+  const heatDistribution = normalizeHeatDistribution(
+    typeof details.heatDistribution === 'string' ? details.heatDistribution : undefined
+  );
   return {
     kind: 'furnace',
+    systemType: details.systemType,
+    heatDistribution,
+    heatDistributionOther:
+      heatDistribution === 'other'
+        ? typeof details.heatDistributionOther === 'string'
+          ? details.heatDistributionOther.trim() || undefined
+          : undefined
+        : undefined,
     make: details.make,
-    fuelType: details.fuelType,
+    fuelType,
+    fuelTypeOther:
+      fuelType === 'other'
+        ? typeof details.fuelTypeOther === 'string'
+          ? details.fuelTypeOther.trim() || undefined
+          : undefined
+        : undefined,
     modelNumber: details.modelNumber ?? legacy.modelSerial,
     serialNumber: details.serialNumber,
     filterSize: details.filterSize,
+    systemFrontPhotoId: details.systemFrontPhotoId,
+    systemSidePhotoId: details.systemSidePhotoId,
+    systemTagPhotoId: details.systemType ? details.systemTagPhotoId : undefined,
+    fuelShutoffPhotoId: furnaceUsesFuelShutoff(fuelType) ? details.fuelShutoffPhotoId : undefined,
+    fuelTankPhotoId: furnaceUsesFuelTank(fuelType) ? details.fuelTankPhotoId : undefined,
+    fuelTankLocation: furnaceUsesFuelTank(fuelType)
+      ? typeof details.fuelTankLocation === 'string'
+        ? details.fuelTankLocation.trim() || undefined
+        : undefined
+      : undefined,
+    fuelTankSize: furnaceUsesFuelTank(fuelType)
+      ? typeof details.fuelTankSize === 'string'
+        ? details.fuelTankSize.trim() || undefined
+        : undefined
+      : undefined,
+    receiptPhotoId: details.receiptPhotoId,
     installDateAtISO: details.installDateAtISO ?? legacy.installYear,
+    installCost: details.installCost,
     installerName: details.installerName,
     installerPhone: details.installerPhone,
+    notes: details.notes,
+  };
+}
+
+function normalizeWaterMainDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'water_main') return defaultDetailsForType('water_main');
+  const legacy = details as WaterMainDetails & { waterSource?: string };
+  return {
+    kind: 'water_main',
+    waterSource: normalizeWaterSource(legacy.waterSource),
+    shutoffLocation: details.shutoffLocation,
+    valveType: details.valveType,
+    meterNumber: details.meterNumber,
+    mainValvePhotoId: details.mainValvePhotoId,
+    waterBillPhotoId: details.waterBillPhotoId,
+    undergroundShutoffPhotoId: details.undergroundShutoffPhotoId,
+    wellHeadPhotoId: details.wellHeadPhotoId,
+    notes: details.notes,
+  };
+}
+
+function normalizeWasteWaterDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'waste_water') return defaultDetailsForType('waste_water');
+  const system = normalizeWasteWaterSystem(
+    typeof details.system === 'string' ? details.system : undefined
+  );
+  return {
+    kind: 'waste_water',
+    system,
+    systemOther:
+      system === 'other'
+        ? typeof details.systemOther === 'string'
+          ? details.systemOther.trim() || undefined
+          : undefined
+        : undefined,
+    wasteLineExitPhotoId: details.wasteLineExitPhotoId,
+    sewerBillPhotoId: details.sewerBillPhotoId,
+    tankLocationPhotoId: details.tankLocationPhotoId,
+    septicFieldPhotoId: details.septicFieldPhotoId,
+    notes: details.notes,
+  };
+}
+
+function normalizeElectricPanelDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'electric_panel') return defaultDetailsForType('electric_panel');
+  return {
+    kind: 'electric_panel',
+    name: details.name,
+    amperage: details.amperage,
+    brand: details.brand,
+    locationNotes: details.locationNotes,
+    lastInspectedAtISO: details.lastInspectedAtISO,
+    panelDistancePhotoId: details.panelDistancePhotoId,
+    panelInsideCoverPhotoId: details.panelInsideCoverPhotoId,
+    panelCircuitBreakersPhotoId: details.panelCircuitBreakersPhotoId,
+  };
+}
+
+function normalizeWaterTreatmentDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'water_treatment') return defaultDetailsForType('water_treatment');
+  const legacy = details as WaterTreatmentDetails & { provider?: string };
+  const filterName =
+    typeof details.filterName === 'string'
+      ? details.filterName.trim() || undefined
+      : typeof legacy.provider === 'string'
+        ? legacy.provider.trim() || undefined
+        : undefined;
+  return {
+    kind: 'water_treatment',
+    systemType:
+      typeof details.systemType === 'string' ? details.systemType.trim() || undefined : undefined,
+    filterName,
+    notes: typeof details.notes === 'string' ? details.notes.trim() || undefined : undefined,
+    waterFilterPhotoId: details.waterFilterPhotoId,
+    replacementFilterPhotoId: details.replacementFilterPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
   };
 }
 
 function normalizeDetails(itemTypeId: ItemTypeId, details: ItemDetails): ItemDetails {
   if (itemTypeId === 'furnace') return normalizeFurnaceDetails(details);
+  if (itemTypeId === 'water_main') return normalizeWaterMainDetails(details);
+  if (itemTypeId === 'waste_water') return normalizeWasteWaterDetails(details);
+  if (itemTypeId === 'electric_panel') return normalizeElectricPanelDetails(details);
+  if (itemTypeId === 'water_treatment') return normalizeWaterTreatmentDetails(details);
   const expectedKind = itemTypeId === 'other' ? 'other' : itemTypeId;
   if (details.kind === expectedKind) return details;
   return defaultDetailsForType(itemTypeId);
@@ -82,12 +206,26 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
         : undefined);
     const validSlot = (id?: string) =>
       id && validPropertyPhotoIds.has(id) ? id : undefined;
+    const front = validSlot(frontPhotoId);
+    const left = validSlot(p.leftSidePhotoId);
+    const right = validSlot(p.rightSidePhotoId);
+    const back = validSlot(p.backPhotoId);
+    const fieldCard = validSlot(p.fieldCardPhotoId);
+    const plotPlan = validSlot(p.plotPlanPhotoId);
+    const slotPhotoIds = new Set(
+      [front, left, right, back, fieldCard, plotPlan].filter((id): id is string => id != null)
+    );
     return {
       ...p,
-      frontPhotoId: validSlot(frontPhotoId),
-      leftSidePhotoId: validSlot(p.leftSidePhotoId),
-      rightSidePhotoId: validSlot(p.rightSidePhotoId),
-      backPhotoId: validSlot(p.backPhotoId),
+      frontPhotoId: front,
+      leftSidePhotoId: left,
+      rightSidePhotoId: right,
+      backPhotoId: back,
+      fieldCardPhotoId: fieldCard,
+      plotPlanPhotoId: plotPlan,
+      photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter(
+        (id) => validPropertyPhotoIds.has(id) && !slotPhotoIds.has(id)
+      ),
     };
   });
   const roomIds = new Set(rooms.filter((r) => propertyIds.has(r.propertyId)).map((r) => r.id));
@@ -161,7 +299,19 @@ export function roomById(state: AppState, id: string): Room | undefined {
 export function itemsForRoom(state: AppState, roomId: string): InventoryItem[] {
   return state.items
     .filter((i) => i.roomId === roomId)
-    .sort((a, b) => a.createdAtISO.localeCompare(b.createdAtISO));
+    .sort((a, b) => {
+      const typeCompare = catalogLabel(a.itemTypeId).localeCompare(
+        catalogLabel(b.itemTypeId),
+        undefined,
+        { sensitivity: 'base' }
+      );
+      if (typeCompare !== 0) return typeCompare;
+      const nameCompare = (itemCustomName(a) ?? '').localeCompare(itemCustomName(b) ?? '', undefined, {
+        sensitivity: 'base',
+      });
+      if (nameCompare !== 0) return nameCompare;
+      return a.createdAtISO.localeCompare(b.createdAtISO);
+    });
 }
 
 export function itemById(state: AppState, id: string): InventoryItem | undefined {
@@ -170,9 +320,19 @@ export function itemById(state: AppState, id: string): InventoryItem | undefined
 
 /** Item-level photos only (not tied to a service event). */
 export function photosForItem(state: AppState, itemId: string): ItemPhoto[] {
-  return state.photos
-    .filter((p) => p.itemId === itemId && !p.eventId)
-    .sort((a, b) => b.createdAtISO.localeCompare(a.createdAtISO));
+  const item = state.items.find((i) => i.id === itemId);
+  if (!item) return [];
+  return item.photoIds
+    .map((photoId) => state.photos.find((p) => p.id === photoId))
+    .filter((p): p is ItemPhoto => p != null && !p.eventId);
+}
+
+export function photosForEvent(state: AppState, eventId: string): ItemPhoto[] {
+  const event = state.events.find((e) => e.id === eventId);
+  if (!event) return [];
+  return event.photoIds
+    .map((photoId) => state.photos.find((p) => p.id === photoId))
+    .filter((p): p is ItemPhoto => p != null);
 }
 
 /** First item-level photo URI for list thumbnails (appliance slot order, else photoIds order). */
@@ -190,18 +350,22 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
+  if (item.itemTypeId === 'electric_panel' && item.details.kind === 'electric_panel') {
+    for (const slot of ELECTRIC_PANEL_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
   for (const photoId of item.photoIds) {
     const photo = itemPhotos.find((p) => p.id === photoId);
     if (photo) return photo.localUri;
   }
 
   return itemPhotos[0]?.localUri;
-}
-
-export function photosForEvent(state: AppState, eventId: string): ItemPhoto[] {
-  return state.photos
-    .filter((p) => p.eventId === eventId)
-    .sort((a, b) => b.createdAtISO.localeCompare(a.createdAtISO));
 }
 
 export function eventsForItem(state: AppState, itemId: string): ItemEvent[] {

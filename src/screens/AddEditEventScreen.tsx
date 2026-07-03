@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppState, ItemEvent, ItemEventRecurrence, ItemEventType, ItemPhoto, RecurrenceInterval } from '../types';
 import { EventPhotoSection } from '../components/EventPhotoSection';
 import { sharedStyles } from '../theme';
-import { uid, nowISO } from '../utils';
+import { uid, nowISO, dateInputValue, parseDateInputToISO } from '../utils';
 import { deleteEventCascade, itemById, photosForEvent } from '../storage';
 import {
   advanceRecurrenceAfterEvent,
@@ -30,7 +30,9 @@ const RECURRENCE_OPTIONS: RecurrenceInterval[] = ['monthly', 'quarterly', 'annua
 
 function defaultTitleForType(eventType: ItemEventType, itemTypeId?: string): string {
   if (eventType === 'maintenance') {
-    if (itemTypeId === 'furnace') return 'Annual furnace service';
+    if (itemTypeId === 'furnace') return 'Annual heating service';
+    if (itemTypeId === 'waste_water') return 'Waste water service';
+    if (itemTypeId === 'water_treatment') return 'Filter service';
     return 'Annual maintenance';
   }
   if (eventType === 'repair') return 'Repair';
@@ -52,7 +54,9 @@ export function AddEditEventScreen(props: {
 
   const [title, setTitle] = useState(existing?.title ?? '');
   const [eventType, setEventType] = useState<ItemEventType>(existing?.eventType ?? 'maintenance');
-  const [dateStr, setDateStr] = useState(existing?.occurredAtISO.slice(0, 10) ?? nowISO().slice(0, 10));
+  const [dateStr, setDateStr] = useState(
+    existing ? dateInputValue(existing.occurredAtISO) : dateInputValue(nowISO())
+  );
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [costStr, setCostStr] = useState(existing?.cost != null ? String(existing.cost) : '');
   const [recurring, setRecurring] = useState(Boolean(existing?.recurrence));
@@ -69,7 +73,7 @@ export function AddEditEventScreen(props: {
     if (existing || titleTouched) return;
     const suggested = defaultTitleForType(eventType, item?.itemTypeId);
     if (suggested) setTitle(suggested);
-    if (eventType === 'maintenance' && item?.itemTypeId === 'furnace') {
+    if (eventType === 'maintenance' && (item?.itemTypeId === 'furnace' || item?.itemTypeId === 'waste_water' || item?.itemTypeId === 'water_treatment')) {
       setRecurring(true);
       setInterval('annual');
     }
@@ -107,7 +111,7 @@ export function AddEditEventScreen(props: {
   }
 
   async function addEventPhotos(sourceUris: string[]) {
-    if (sourceUris.length === 0) return;
+    if (sourceUris.length === 0) return [];
     const newPhotos: ItemPhoto[] = await Promise.all(
       sourceUris.map(async (sourceUri) => {
         const photoId = uid('photo');
@@ -122,6 +126,16 @@ export function AddEditEventScreen(props: {
       })
     );
     setEventPhotos((prev) => [...prev, ...newPhotos]);
+    return newPhotos.map((photo) => photo.id);
+  }
+
+  function handleEventPhotoLabel(photoId: string, label: string) {
+    const trimmed = label.trim();
+    setEventPhotos((prev) =>
+      prev.map((photo) =>
+        photo.id === photoId ? { ...photo, caption: trimmed || undefined } : photo
+      )
+    );
   }
 
   async function removeEventPhoto(photoId: string) {
@@ -150,7 +164,7 @@ export function AddEditEventScreen(props: {
     }
     if (t === 'maintenance' && !existing) {
       setRecurring(true);
-      if (it.itemTypeId === 'furnace') setInterval('annual');
+      if (it.itemTypeId === 'furnace' || it.itemTypeId === 'waste_water' || it.itemTypeId === 'water_treatment') setInterval('annual');
     }
   }
 
@@ -160,7 +174,11 @@ export function AddEditEventScreen(props: {
       Alert.alert('Title required', 'Enter a service event title.');
       return;
     }
-    const occurredAtISO = `${dateStr.trim()}T12:00:00.000Z`;
+    const occurredAtISO = parseDateInputToISO(dateStr);
+    if (!occurredAtISO) {
+      Alert.alert('Invalid date', 'Enter the date as MM/DD/YYYY.');
+      return;
+    }
     const cost = costStr.trim() ? parseFloat(costStr) : undefined;
     const recurrence = buildRecurrence(occurredAtISO);
     const photoIds = eventPhotos.map((p) => p.id);
@@ -280,8 +298,8 @@ export function AddEditEventScreen(props: {
           ))}
         </View>
 
-        <Text style={sharedStyles.fieldLabel}>Date (YYYY-MM-DD)</Text>
-        <TextInput value={dateStr} onChangeText={setDateStr} style={sharedStyles.input} placeholder="2026-03-15" />
+        <Text style={sharedStyles.fieldLabel}>Date (MM/DD/YYYY)</Text>
+        <TextInput value={dateStr} onChangeText={setDateStr} style={sharedStyles.input} placeholder="03/15/2026" />
 
         <Text style={sharedStyles.fieldLabel}>Notes</Text>
         <TextInput
@@ -306,6 +324,7 @@ export function AddEditEventScreen(props: {
           onAddReceipt={addReceiptPhoto}
           onAddPhotos={addEventPhotos}
           onDeletePhoto={removeEventPhoto}
+          onLabelPhoto={handleEventPhotoLabel}
         />
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>

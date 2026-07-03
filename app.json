@@ -14,8 +14,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.alanniebuhr.propertyinventoryhistory",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Take photos of property items for your inventory.",
         "NSPhotoLibraryUsageDescription": "Attach photos of property items to your inventory."
       }
@@ -23,13 +24,18 @@
     "android": {
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#1f5fbf",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -42,6 +48,11 @@
           "cameraPermission": "Take photos of property items for your inventory."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "edc2eb70-f5d9-45d6-ab35-ce49c2aca812"
+      }
+    }
   }
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import type { OtherItemDetails } from '../../types';
 import { FormField } from './FormField';
 
-export function OtherItemForm(props: {
+export function OtherItemNotesFields(props: {
   details: OtherItemDetails;
   onChange: (d: OtherItemDetails) => void;
 }) {
@@ -15,4 +15,11 @@ export function OtherItemForm(props: {
       multiline
     />
   );
+}
+
+export function OtherItemForm(props: {
+  details: OtherItemDetails;
+  onChange: (d: OtherItemDetails) => void;
+}) {
+  return <OtherItemNotesFields details={props.details} onChange={props.onChange} />;
 }

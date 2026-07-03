@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppState, Room } from '../types';
 import { OverdueBadge, RoomListRow } from '../components/ListRows';
-import { PropertyCoverPhotoSection } from '../components/PropertyCoverPhotoSection';
+import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
 import { sharedStyles } from '../theme';
 import { uid } from '../utils';
 import {
@@ -56,7 +56,7 @@ export function PropertyDetailScreen(props: {
   function addRoom() {
     const trimmed = roomName.trim();
     if (!trimmed) {
-      Alert.alert('Name required', 'Enter a room name (e.g. Basement).');
+      Alert.alert('Name required', 'Enter a room name (e.g. Utilities).');
       return;
     }
     const room: Room = {
@@ -98,9 +98,10 @@ export function PropertyDetailScreen(props: {
             <Text style={sharedStyles.backBtnText}>← Back</Text>
           </Pressable>
         </View>
-        <PropertyCoverPhotoSection state={state} property={prop} onSave={onSave} />
-        <Text style={sharedStyles.title}>{prop.name}</Text>
-        {prop.address ? <Text style={sharedStyles.subtitle}>{prop.address}</Text> : null}
+        <PropertyPhotosSection state={state} property={prop} onSave={onSave}>
+          <Text style={sharedStyles.title}>{prop.name}</Text>
+          {prop.address ? <Text style={sharedStyles.subtitle}>{prop.address}</Text> : null}
+        </PropertyPhotosSection>
         <Text style={sharedStyles.cardMeta}>
           {rooms.length} room{rooms.length === 1 ? '' : 's'} · {itemCount} item{itemCount === 1 ? '' : 's'}
         </Text>
@@ -108,7 +109,7 @@ export function PropertyDetailScreen(props: {
 
         <Text style={sharedStyles.sectionTitle}>Rooms</Text>
         {rooms.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>Add a room like Basement or Kitchen.</Text>
+          <Text style={sharedStyles.emptyText}>Add a room like Utilities or Kitchen.</Text>
         ) : (
           rooms.map((r) => (
             <RoomListRow
@@ -144,7 +145,7 @@ export function PropertyDetailScreen(props: {
             <TextInput
               value={roomName}
               onChangeText={setRoomName}
-              placeholder="Basement, Garage, Kitchen…"
+              placeholder="Utilities, Garage, Kitchen…"
               style={sharedStyles.input}
               autoFocus
             />

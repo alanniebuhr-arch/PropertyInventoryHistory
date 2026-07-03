@@ -81,29 +81,41 @@ export function RoomListRow(props: {
   );
 }
 
+export const ITEM_LIST_THUMB_SIZE = 96;
+
 export function ItemListRow(props: {
   label: string;
-  typeLabel: string;
+  nameLabel?: string;
   thumbnailUri?: string;
+  detailFields?: { label: string; value: string }[];
   nextDueLabel?: string | null;
   lastServiceSummary?: string;
   overdue?: boolean;
   onPress: () => void;
 }) {
-  const { label, typeLabel, thumbnailUri, nextDueLabel, lastServiceSummary, overdue, onPress } = props;
+  const {
+    label,
+    nameLabel,
+    thumbnailUri,
+    detailFields,
+    nextDueLabel,
+    lastServiceSummary,
+    overdue,
+    onPress,
+  } = props;
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [sharedStyles.card, pressed && sharedStyles.cardPressed]}
       accessibilityRole="button"
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
         {thumbnailUri ? (
           <Image
             source={{ uri: thumbnailUri }}
             style={{
-              width: 48,
-              height: 48,
+              width: ITEM_LIST_THUMB_SIZE,
+              height: ITEM_LIST_THUMB_SIZE,
               borderRadius: 8,
               backgroundColor: colors.border,
             }}
@@ -111,7 +123,12 @@ export function ItemListRow(props: {
         ) : null}
         <View style={{ flex: 1 }}>
           <Text style={sharedStyles.cardTitle}>{label}</Text>
-          <Text style={sharedStyles.cardMeta}>{typeLabel}</Text>
+          {nameLabel ? <Text style={sharedStyles.cardMeta}>{nameLabel}</Text> : null}
+          {detailFields && detailFields.length > 0 ? (
+            <Text style={sharedStyles.cardMeta} numberOfLines={4}>
+              {detailFields.map((field) => field.value).join(', ')}
+            </Text>
+          ) : null}
           {lastServiceSummary ? (
             <Text style={sharedStyles.cardMeta} numberOfLines={2}>
               Last service: {lastServiceSummary}

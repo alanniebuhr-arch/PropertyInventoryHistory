@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppState, InventoryItem, ItemTypeId } from '../types';
 import { ItemListRow } from '../components/ListRows';
-import { PhotoGallery } from '../components/PhotoGallery';
+import { RoomPhotosSection } from '../components/RoomPhotosSection';
 import { sharedStyles } from '../theme';
 import { uid, nowISO } from '../utils';
 import {
@@ -22,14 +22,15 @@ import {
   propertyById,
   roomById,
 } from '../storage';
-import { ITEM_CATALOG, catalogLabel, defaultDetailsForType, itemDisplayLabel } from '../itemCatalog';
+import { ITEM_CATALOG, catalogLabel, defaultDetailsForType, itemCustomName } from '../itemCatalog';
+import { itemListSummaryFields } from '../itemListSummaryFields';
 import {
   isItemOverdue,
   nextDueLabelForItem,
 } from '../itemMaintenance';
 import { formatServiceEventSummary } from '../eventRecurrence';
 import { ItemDetailsForm } from '../itemDetailForms';
-import { addRoomPhotos, photosForRoom, removeRoomPhoto } from '../roomPhotos';
+import { photosForRoom } from '../roomPhotos';
 import { deletePhotoFile } from '../photoStorage';
 
 export function RoomDetailScreen(props: {
@@ -41,7 +42,6 @@ export function RoomDetailScreen(props: {
 }) {
   const { state, roomId, onBack, onOpenItem, onSave } = props;
   const insets = useSafeAreaInsets();
-  const room = roomById(state, roomId);
   const items = itemsForRoom(state, roomId);
 
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -50,6 +50,8 @@ export function RoomDetailScreen(props: {
   const [pickedType, setPickedType] = useState<ItemTypeId | null>(null);
   const [otherName, setOtherName] = useState('');
   const [draftDetails, setDraftDetails] = useState(defaultDetailsForType('other'));
+
+  const room = roomById(state, roomId);
 
   if (!room) {
     return (
@@ -64,22 +66,6 @@ export function RoomDetailScreen(props: {
 
   const rm = room;
   const property = propertyById(state, rm.propertyId);
-  const roomPhotos = photosForRoom(state, roomId);
-
-  async function addPhoto(sourceUri: string) {
-    const next = await addRoomPhotos(state, roomId, [sourceUri]);
-    onSave(next);
-  }
-
-  async function addPhotos(sourceUris: string[]) {
-    const next = await addRoomPhotos(state, roomId, sourceUris);
-    onSave(next);
-  }
-
-  async function deletePhoto(photoId: string) {
-    const next = await removeRoomPhoto(state, roomId, photoId);
-    onSave(next);
-  }
 
   function startAddItem() {
     setPickedType(null);
@@ -178,31 +164,24 @@ export function RoomDetailScreen(props: {
             <Text style={sharedStyles.backBtnText}>← Back</Text>
           </Pressable>
         </View>
-        <Text style={sharedStyles.title}>{rm.name}</Text>
-        {property ? <Text style={sharedStyles.subtitle}>{property.name}</Text> : null}
-
-        <PhotoGallery
-          photos={roomPhotos}
-          onAddPhoto={addPhoto}
-          onAddPhotos={addPhotos}
-          onDeletePhoto={(photoId) => void deletePhoto(photoId)}
-          title="Room photos"
-          emptyHint={`Add photos of ${rm.name}.`}
-          addHint="Tap to view full screen. Pinch to zoom. Swipe for previous/next."
-        />
+        <RoomPhotosSection state={state} roomId={roomId} onSave={onSave}>
+          <Text style={sharedStyles.title}>{rm.name}</Text>
+          {property ? <Text style={sharedStyles.subtitle}>{property.name}</Text> : null}
+        </RoomPhotosSection>
 
         <Text style={sharedStyles.sectionTitle}>Items</Text>
         {items.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>Add items like gas main, furnace, or electric panel.</Text>
+          <Text style={sharedStyles.emptyText}>Add items like water heater, heating, or electric panel.</Text>
         ) : (
           items.map((item) => {
             const lastEvent = eventsForItem(state, item.id)[0];
             return (
               <ItemListRow
                 key={item.id}
-                label={itemDisplayLabel(item)}
-                typeLabel={catalogLabel(item.itemTypeId)}
+                label={catalogLabel(item.itemTypeId)}
+                nameLabel={itemCustomName(item)}
                 thumbnailUri={firstPhotoUriForItem(state, item)}
+                detailFields={itemListSummaryFields(item)}
                 lastServiceSummary={
                   lastEvent ? formatServiceEventSummary(lastEvent) : undefined
                 }

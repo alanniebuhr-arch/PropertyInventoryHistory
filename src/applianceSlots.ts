@@ -20,9 +20,9 @@ export const APPLIANCE_PHOTO_SLOTS: {
   },
   {
     key: 'manufacturerTagPhotoId',
-    label: 'Manufacturer tag',
+    label: 'Manufacture tag',
     hint: 'Model and serial number sticker or plate',
-    shortLabel: 'Tag',
+    shortLabel: 'Manufacture tag',
   },
   {
     key: 'insidePhotoId',
@@ -39,14 +39,15 @@ export const APPLIANCE_PHOTO_SLOTS: {
 ];
 
 /** Label for optional appliance photos added outside the named slots. */
-export const APPLIANCE_EXTRA_PHOTOS_SHORT_LABEL = 'Your photo';
+export const APPLIANCE_EXTRA_PHOTOS_SHORT_LABEL = 'Add photo';
 
 export function applianceHasIdentityInfo(details: ApplianceDetails): boolean {
   return Boolean(
     details.nickname?.trim() ||
       details.manufacturer?.trim() ||
       details.modelNumber?.trim() ||
-      details.serialNumber?.trim()
+      details.serialNumber?.trim() ||
+      details.notes?.trim()
   );
 }
 
@@ -54,7 +55,8 @@ export function applianceHasPurchaseInfo(details: ApplianceDetails): boolean {
   return Boolean(
     details.purchaseLocation?.trim() ||
       details.purchaseDateAtISO?.trim() ||
-      details.purchasePrice?.trim()
+      details.purchasePrice?.trim() ||
+      details.purchaseNotes?.trim()
   );
 }
 

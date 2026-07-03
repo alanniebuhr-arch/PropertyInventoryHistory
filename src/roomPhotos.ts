@@ -62,3 +62,17 @@ export async function removeRoomPhoto(
     ),
   };
 }
+
+export function setRoomPhotoCaption(
+  state: AppState,
+  photoId: string,
+  caption: string
+): AppState {
+  const trimmed = caption.trim();
+  return {
+    ...state,
+    roomPhotos: state.roomPhotos.map((photo) =>
+      photo.id === photoId ? { ...photo, caption: trimmed || undefined } : photo
+    ),
+  };
+}

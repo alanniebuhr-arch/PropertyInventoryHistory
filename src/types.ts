@@ -1,6 +1,9 @@
 export type ItemTypeId =
   | 'gas_main'
   | 'water_main'
+  | 'water_heater'
+  | 'water_treatment'
+  | 'waste_water'
   | 'electric_panel'
   | 'internet'
   | 'furnace'
@@ -9,17 +12,44 @@ export type ItemTypeId =
 
 export type ElectricPanelDetails = {
   kind: 'electric_panel';
+  name?: string;
   amperage?: string;
   brand?: string;
   locationNotes?: string;
   lastInspectedAtISO?: string;
+  panelDistancePhotoId?: string;
+  panelInsideCoverPhotoId?: string;
+  panelCircuitBreakersPhotoId?: string;
 };
+
+export type WaterSource = 'municipal' | 'well';
+
+export type ValveType = 'ball_valve' | 'gate' | 'butterfly' | 'underground_municipal';
 
 export type WaterMainDetails = {
   kind: 'water_main';
+  waterSource?: WaterSource;
   shutoffLocation?: string;
-  valveType?: string;
+  valveType?: ValveType;
   meterNumber?: string;
+  mainValvePhotoId?: string;
+  waterBillPhotoId?: string;
+  undergroundShutoffPhotoId?: string;
+  wellHeadPhotoId?: string;
+  notes?: string;
+};
+
+export type WasteWaterSystemType = 'sewer' | 'septic' | 'cesspool' | 'other';
+
+export type WasteWaterDetails = {
+  kind: 'waste_water';
+  system?: WasteWaterSystemType;
+  systemOther?: string;
+  wasteLineExitPhotoId?: string;
+  sewerBillPhotoId?: string;
+  tankLocationPhotoId?: string;
+  septicFieldPhotoId?: string;
+  notes?: string;
 };
 
 export type GasMainDetails = {
@@ -27,6 +57,24 @@ export type GasMainDetails = {
   shutoffLocation?: string;
   provider?: string;
   meterNumber?: string;
+};
+
+export type WaterHeaterDetails = {
+  kind: 'water_heater';
+  make?: string;
+  modelNumber?: string;
+  serialNumber?: string;
+  notes?: string;
+};
+
+export type WaterTreatmentDetails = {
+  kind: 'water_treatment';
+  systemType?: string;
+  filterName?: string;
+  notes?: string;
+  waterFilterPhotoId?: string;
+  replacementFilterPhotoId?: string;
+  receiptPhotoId?: string;
 };
 
 export type InternetDetails = {
@@ -37,16 +85,36 @@ export type InternetDetails = {
   wifiSsid?: string;
 };
 
+export type FuelType = 'natural_gas' | 'propane' | 'electric' | 'oil' | 'other';
+
+export type HeatingSystemType = 'furnace' | 'boiler' | 'heat_pump';
+
+export type HeatDistributionType = 'forced_air' | 'baseboard' | 'radiators' | 'other';
+
 export type FurnaceDetails = {
   kind: 'furnace';
+  systemType?: HeatingSystemType;
+  heatDistribution?: HeatDistributionType;
+  heatDistributionOther?: string;
   make?: string;
-  fuelType?: string;
+  fuelType?: FuelType;
+  fuelTypeOther?: string;
   modelNumber?: string;
   serialNumber?: string;
   filterSize?: string;
+  systemFrontPhotoId?: string;
+  systemSidePhotoId?: string;
+  systemTagPhotoId?: string;
+  fuelShutoffPhotoId?: string;
+  fuelTankPhotoId?: string;
+  fuelTankLocation?: string;
+  fuelTankSize?: string;
+  receiptPhotoId?: string;
   installDateAtISO?: string;
+  installCost?: string;
   installerName?: string;
   installerPhone?: string;
+  notes?: string;
 };
 
 export type ApplianceDetails = {
@@ -55,6 +123,7 @@ export type ApplianceDetails = {
   manufacturer?: string;
   modelNumber?: string;
   serialNumber?: string;
+  notes?: string;
   facePhotoId?: string;
   manufacturerTagPhotoId?: string;
   insidePhotoId?: string;
@@ -62,6 +131,7 @@ export type ApplianceDetails = {
   purchaseLocation?: string;
   purchaseDateAtISO?: string;
   purchasePrice?: string;
+  purchaseNotes?: string;
   repairCompany?: string;
   repairPhone?: string;
   repairWebsite?: string;
@@ -75,6 +145,9 @@ export type OtherItemDetails = {
 export type ItemDetails =
   | ElectricPanelDetails
   | WaterMainDetails
+  | WaterHeaterDetails
+  | WaterTreatmentDetails
+  | WasteWaterDetails
   | GasMainDetails
   | InternetDetails
   | FurnaceDetails
@@ -85,6 +158,7 @@ export type PropertyPhoto = {
   id: string;
   propertyId: string;
   localUri: string;
+  caption?: string;
   createdAtISO: string;
 };
 
@@ -92,6 +166,7 @@ export type RoomPhoto = {
   id: string;
   roomId: string;
   localUri: string;
+  caption?: string;
   createdAtISO: string;
 };
 
@@ -104,6 +179,10 @@ export type Property = {
   leftSidePhotoId?: string;
   rightSidePhotoId?: string;
   backPhotoId?: string;
+  fieldCardPhotoId?: string;
+  plotPlanPhotoId?: string;
+  /** Extra property photos beyond the named slots above. */
+  photoIds?: string[];
   createdAtISO: string;
 };
 

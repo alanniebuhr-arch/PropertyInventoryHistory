@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -11,14 +13,15 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { AppState, ApplianceDetails, InventoryItem, ItemDetails, ItemPhoto } from '../types';
+import { MaterialIcons } from '@expo/vector-icons';
+import type { AppState, ApplianceDetails, ElectricPanelDetails, FurnaceDetails, InventoryItem, ItemDetails, ItemPhoto, WasteWaterDetails, WaterMainDetails, WaterTreatmentDetails } from '../types';
 import { EventListRow } from '../components/ListRows';
-import { PhotoGallery } from '../components/PhotoGallery';
+import { ItemDisplayView } from '../components/ItemDisplayView';
 import {
   ApplianceDisplayView,
   type ApplianceEditingSection,
 } from '../components/ApplianceDisplayView';
-import { sharedStyles } from '../theme';
+import { sharedStyles, colors } from '../theme';
 import { formatCurrency, formatDate, uid, nowISO } from '../utils';
 import {
   deleteItemCascade,
@@ -30,12 +33,25 @@ import {
   roomById,
 } from '../storage';
 import { catalogLabel, itemDisplayLabel } from '../itemCatalog';
-import { ItemDetailsForm } from '../itemDetailForms';
 import { isItemOverdue, nextDueLabelForItem } from '../itemMaintenance';
 import { EVENT_TYPE_LABELS, recurrenceLabel } from '../eventRecurrence';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
 import { updateApplianceDetails } from '../appliancePhotos';
+import { updateWaterMainDetails, applyWaterMainDetailsChange } from '../waterMainPhotos';
+import { furnaceUsesFuelShutoff, furnaceUsesFuelTank } from '../furnaceSlots';
+import { updateFurnaceDetails, applyFurnaceDetailsChange } from '../furnacePhotos';
+import { updateWasteWaterDetails, applyWasteWaterDetailsChange } from '../wasteWaterPhotos';
+import { updateElectricPanelDetails } from '../electricPanelPhotos';
+import { updateWaterTreatmentDetails } from '../waterTreatmentPhotos';
+import { WaterMainDisplayView } from '../components/WaterMainDisplayView';
+import { WaterTreatmentDisplayView } from '../components/WaterTreatmentDisplayView';
+import { ElectricPanelDisplayView } from '../components/ElectricPanelDisplayView';
+import { FurnaceDisplayView } from '../components/FurnaceDisplayView';
+import { WasteWaterDisplayView } from '../components/WasteWaterDisplayView';
+import { ItemExportSheet } from '../components/ItemExportSheet';
 import { ItemDetailScrollContext } from '../itemDetailScrollContext';
+import { buildItemExportSnapshot, type ItemExportSnapshot } from '../itemExportContent';
+import { shareViewAsPng } from '../shareViewImage';
 
 export function ItemDetailScreen(props: {
   state: AppState;
@@ -54,6 +70,9 @@ export function ItemDetailScreen(props: {
   const scrollYRef = useRef(0);
   const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [exportSnapshot, setExportSnapshot] = useState<ItemExportSnapshot | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<View>(null);
 
   const scrollFieldIntoView = useCallback(
     (windowY: number, height: number, kbHeight: number) => {
@@ -106,6 +125,36 @@ export function ItemDetailScreen(props: {
     if (item) setDetails(item.details);
   }, [item?.id, item?.details]);
 
+  const runItemExport = useCallback(async () => {
+    const snapshot = buildItemExportSnapshot(state, itemId);
+    if (!snapshot) {
+      Alert.alert('Export failed', 'Could not build item summary.');
+      return;
+    }
+    setExportSnapshot(snapshot);
+    setExporting(true);
+  }, [itemId, state]);
+
+  useEffect(() => {
+    if (!exportSnapshot || !exporting) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        const shared = await shareViewAsPng(exportRef, `Share ${exportSnapshot.title}`);
+        if (!cancelled) {
+          setExportSnapshot(null);
+          setExporting(false);
+        }
+      })();
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [exportSnapshot, exporting]);
+
   if (!item || !details) {
     return (
       <View style={[sharedStyles.screen, { paddingTop: insets.top, padding: 16 }]}>
@@ -119,7 +168,17 @@ export function ItemDetailScreen(props: {
 
   const inv: InventoryItem = item;
   const isAppliance = inv.itemTypeId === 'appliance';
+  const isWaterMain = inv.itemTypeId === 'water_main';
+  const isWasteWater = inv.itemTypeId === 'waste_water';
+  const isFurnace = inv.itemTypeId === 'furnace';
+  const isElectricPanel = inv.itemTypeId === 'electric_panel';
+  const isWaterTreatment = inv.itemTypeId === 'water_treatment';
   const applianceDetails = details.kind === 'appliance' ? details : null;
+  const waterMainDetails = details.kind === 'water_main' ? details : null;
+  const wasteWaterDetails = details.kind === 'waste_water' ? details : null;
+  const furnaceDetails = details.kind === 'furnace' ? details : null;
+  const electricPanelDetails = details.kind === 'electric_panel' ? details : null;
+  const waterTreatmentDetails = details.kind === 'water_treatment' ? details : null;
   const room = roomById(state, inv.roomId);
   const property = room ? propertyById(state, room.propertyId) : undefined;
   const photos = photosForItem(state, itemId);
@@ -127,13 +186,35 @@ export function ItemDetailScreen(props: {
   const nextDue = nextDueLabelForItem(state, itemId);
   const overdue = isItemOverdue(state, itemId);
 
-  function saveDetails() {
-    const updated: InventoryItem = { ...inv, details: details as ItemDetails };
+  const itemPhotoHeader = (
+    <>
+      <Text style={sharedStyles.title}>{itemDisplayLabel({ ...inv, details })}</Text>
+      <Text style={sharedStyles.subtitle}>
+        {[property?.name, room?.name, catalogLabel(inv.itemTypeId)].filter(Boolean).join(' · ')}
+      </Text>
+      {nextDue ? (
+        <Text style={[sharedStyles.cardMeta, overdue && { color: '#c62828', fontWeight: '700' }]}>
+          Next service due: {nextDue}
+        </Text>
+      ) : null}
+    </>
+  );
+
+  function handleDetailsChange(next: ItemDetails) {
+    setDetails(next);
     onSave({
       ...state,
-      items: state.items.map((i) => (i.id === itemId ? updated : i)),
+      items: state.items.map((i) => (i.id === itemId ? { ...i, details: next } : i)),
     });
-    Alert.alert('Saved', 'Item details updated.');
+  }
+
+  function handleDisplayNameChange(name: string) {
+    onSave({
+      ...state,
+      items: state.items.map((i) =>
+        i.id === itemId ? { ...i, displayName: name.trim() || undefined } : i
+      ),
+    });
   }
 
   function handleApplianceDetailsChange(next: ApplianceDetails) {
@@ -141,12 +222,72 @@ export function ItemDetailScreen(props: {
     onSave(updateApplianceDetails(state, itemId, next));
   }
 
+  function handleWaterMainDetailsChange(next: WaterMainDetails) {
+    if (waterMainDetails && next.waterSource !== waterMainDetails.waterSource) {
+      void applyWaterMainDetailsChange(state, itemId, waterMainDetails, next).then((saved) => {
+        const item = saved.items.find((i) => i.id === itemId);
+        if (item?.details.kind === 'water_main') {
+          setDetails(item.details);
+        }
+        onSave(saved);
+      });
+      return;
+    }
+    setDetails(next);
+    onSave(updateWaterMainDetails(state, itemId, next));
+  }
+
+  function handleFurnaceDetailsChange(next: FurnaceDetails) {
+    if (!furnaceDetails) return;
+    const needsApply =
+      next.systemType !== furnaceDetails.systemType ||
+      furnaceUsesFuelTank(furnaceDetails.fuelType) !== furnaceUsesFuelTank(next.fuelType) ||
+      furnaceUsesFuelShutoff(furnaceDetails.fuelType) !== furnaceUsesFuelShutoff(next.fuelType);
+    if (needsApply) {
+      void applyFurnaceDetailsChange(state, itemId, furnaceDetails, next).then((saved) => {
+        const item = saved.items.find((i) => i.id === itemId);
+        if (item?.details.kind === 'furnace') {
+          setDetails(item.details);
+        }
+        onSave(saved);
+      });
+      return;
+    }
+    setDetails(next);
+    onSave(updateFurnaceDetails(state, itemId, next));
+  }
+
+  function handleWasteWaterDetailsChange(next: WasteWaterDetails) {
+    if (wasteWaterDetails && next.system !== wasteWaterDetails.system) {
+      void applyWasteWaterDetailsChange(state, itemId, wasteWaterDetails, next).then((saved) => {
+        const item = saved.items.find((i) => i.id === itemId);
+        if (item?.details.kind === 'waste_water') {
+          setDetails(item.details);
+        }
+        onSave(saved);
+      });
+      return;
+    }
+    setDetails(next);
+    onSave(updateWasteWaterDetails(state, itemId, next));
+  }
+
+  function handleElectricPanelDetailsChange(next: ElectricPanelDetails) {
+    setDetails(next);
+    onSave(updateElectricPanelDetails(state, itemId, next));
+  }
+
+  function handleWaterTreatmentDetailsChange(next: WaterTreatmentDetails) {
+    setDetails(next);
+    onSave(updateWaterTreatmentDetails(state, itemId, next));
+  }
+
   async function addPhoto(sourceUri: string) {
     await addPhotos([sourceUri]);
   }
 
   async function addPhotos(sourceUris: string[]) {
-    if (sourceUris.length === 0) return;
+    if (sourceUris.length === 0) return [];
     const newPhotos: ItemPhoto[] = await Promise.all(
       sourceUris.map(async (sourceUri) => {
         const photoId = uid('photo');
@@ -169,6 +310,7 @@ export function ItemDetailScreen(props: {
       photos: [...state.photos, ...newPhotos],
       items: state.items.map((i) => (i.id === itemId ? updatedItem : i)),
     });
+    return newPhotoIds;
   }
 
   async function removePhoto(photoId: string) {
@@ -182,6 +324,15 @@ export function ItemDetailScreen(props: {
       ...state,
       photos: state.photos.filter((p) => p.id !== photoId),
       items: state.items.map((i) => (i.id === itemId ? updatedItem : i)),
+    });
+  }
+
+  function handlePhotoCaptionChange(photoId: string, caption: string) {
+    onSave({
+      ...state,
+      photos: state.photos.map((p) =>
+        p.id === photoId ? { ...p, caption: caption.trim() || undefined } : p
+      ),
     });
   }
 
@@ -231,16 +382,36 @@ export function ItemDetailScreen(props: {
           <Pressable onPress={onBack} style={sharedStyles.backBtn}>
             <Text style={sharedStyles.backBtnText}>← Back</Text>
           </Pressable>
+          <Pressable
+            onPress={() => void runItemExport()}
+            disabled={exporting}
+            accessibilityRole="button"
+            accessibilityLabel="Share item"
+            accessibilityHint="Creates an image of this item and opens the share sheet."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                marginLeft: 'auto',
+                width: 42,
+                height: 36,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.card,
+                opacity: exporting ? 0.6 : 1,
+              },
+              pressed && !exporting && { opacity: 0.8 },
+            ]}
+          >
+            {exporting ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <MaterialIcons name="ios-share" size={22} color={colors.primary} />
+            )}
+          </Pressable>
         </View>
-        <Text style={sharedStyles.title}>{itemDisplayLabel({ ...inv, details })}</Text>
-        <Text style={sharedStyles.subtitle}>
-          {[property?.name, room?.name, catalogLabel(inv.itemTypeId)].filter(Boolean).join(' · ')}
-        </Text>
-        {nextDue ? (
-          <Text style={[sharedStyles.cardMeta, overdue && { color: '#c62828', fontWeight: '700' }]}>
-            Next service due: {nextDue}
-          </Text>
-        ) : null}
 
         {isAppliance && applianceDetails ? (
           <ApplianceDisplayView
@@ -250,16 +421,68 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleApplianceDetailsChange}
             initialEditingSection={startEditingSection}
+            photoHeader={itemPhotoHeader}
+          />
+        ) : isWaterMain && waterMainDetails ? (
+          <WaterMainDisplayView
+            state={state}
+            details={waterMainDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleWaterMainDetailsChange}
+            photoHeader={itemPhotoHeader}
+          />
+        ) : isFurnace && furnaceDetails ? (
+          <FurnaceDisplayView
+            state={state}
+            details={furnaceDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleFurnaceDetailsChange}
+            photoHeader={itemPhotoHeader}
+          />
+        ) : isWasteWater && wasteWaterDetails ? (
+          <WasteWaterDisplayView
+            state={state}
+            details={wasteWaterDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleWasteWaterDetailsChange}
+            photoHeader={itemPhotoHeader}
+          />
+        ) : isElectricPanel && electricPanelDetails ? (
+          <ElectricPanelDisplayView
+            state={state}
+            details={electricPanelDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleElectricPanelDetailsChange}
+            photoHeader={itemPhotoHeader}
+          />
+        ) : isWaterTreatment && waterTreatmentDetails ? (
+          <WaterTreatmentDisplayView
+            state={state}
+            details={waterTreatmentDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleWaterTreatmentDetailsChange}
+            photoHeader={itemPhotoHeader}
           />
         ) : (
-          <PhotoGallery
+          <ItemDisplayView
+            itemTypeId={inv.itemTypeId}
+            details={details}
+            displayName={inv.displayName}
             photos={photos}
             onAddPhoto={addPhoto}
             onAddPhotos={addPhotos}
             onDeletePhoto={removePhoto}
-            title="Item photos"
-            emptyHint="Add photos of this item, labels, or install location."
-            addHint="Tap to view full screen. Pinch to zoom. Swipe for previous/next."
+            onPhotoCaptionChange={handlePhotoCaptionChange}
+            onDetailsChange={handleDetailsChange}
+            onDisplayNameChange={
+              inv.itemTypeId === 'other' ? handleDisplayNameChange : undefined
+            }
+            photoHeader={itemPhotoHeader}
           />
         )}
 
@@ -294,24 +517,39 @@ export function ItemDetailScreen(props: {
           </View>
         )}
 
-        {!isAppliance ? (
-          <>
-            <Text style={[sharedStyles.sectionTitle, { marginTop: 20 }]}>Details</Text>
-            <ItemDetailsForm itemTypeId={inv.itemTypeId} details={details} onChange={setDetails} />
-            <Pressable
-              onPress={saveDetails}
-              style={({ pressed }) => [sharedStyles.secondaryBtn, pressed && { opacity: 0.85 }]}
-            >
-              <Text style={sharedStyles.secondaryBtnText}>Save details</Text>
-            </Pressable>
-          </>
-        ) : null}
-
         <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
           <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
         </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={exportSnapshot != null} transparent animationType="none" onRequestClose={() => {}}>
+        <View
+          style={{ position: 'absolute', left: 0, top: 0, opacity: 0 }}
+          pointerEvents="none"
+        >
+          <View ref={exportRef} collapsable={false}>
+            {exportSnapshot ? <ItemExportSheet snapshot={exportSnapshot} /> : null}
+          </View>
+        </View>
+      </Modal>
+
+      {exporting ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.25)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      ) : null}
     </ItemDetailScrollContext.Provider>
   );
 }

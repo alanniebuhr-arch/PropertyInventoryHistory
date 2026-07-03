@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
+  Switch,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppState, Property } from '../types';
 import { PropertyListRow } from '../components/ListRows';
-import { sharedStyles } from '../theme';
+import { sharedStyles, colors } from '../theme';
 import { uid, nowISO } from '../utils';
 import {
   itemsForProperty,
@@ -19,6 +23,51 @@ import {
 } from '../storage';
 import { propertyCoverPhotoUri } from '../propertyPhotos';
 import { overdueCountForProperty } from '../itemMaintenance';
+import { applyPropertyTemplate, type DwellingType } from '../propertyTemplate';
+
+function DwellingPicker(props: {
+  value: DwellingType;
+  onChange: (value: DwellingType) => void;
+}) {
+  const { value, onChange } = props;
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
+      {(
+        [
+          { id: 'house' as const, label: 'House' },
+          { id: 'apartment' as const, label: 'Apartment' },
+        ] as const
+      ).map((option) => {
+        const selected = value === option.id;
+        return (
+          <Pressable
+            key={option.id}
+            onPress={() => onChange(option.id)}
+            style={[
+              sharedStyles.secondaryBtn,
+              {
+                flex: 1,
+                marginTop: 0,
+                paddingVertical: 10,
+                backgroundColor: selected ? colors.primary : colors.card,
+                borderColor: selected ? colors.primary : colors.border,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                sharedStyles.secondaryBtnText,
+                { color: selected ? '#fff' : colors.text, textAlign: 'center' },
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 export function HomeScreen(props: {
   state: AppState;
@@ -28,13 +77,18 @@ export function HomeScreen(props: {
 }) {
   const { state, onOpenProperty, onOpenTransfer, onSave } = props;
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
+  const [dwellingType, setDwellingType] = useState<DwellingType>('house');
+  const [useDefaultLayout, setUseDefaultLayout] = useState(true);
 
   function openAdd() {
     setName('');
     setAddress('');
+    setDwellingType('house');
+    setUseDefaultLayout(true);
     setModalOpen(true);
   }
 
@@ -50,7 +104,11 @@ export function HomeScreen(props: {
       address: address.trim() || undefined,
       createdAtISO: nowISO(),
     };
-    onSave({ ...state, properties: [...state.properties, property] });
+    let nextState: AppState = { ...state, properties: [...state.properties, property] };
+    if (useDefaultLayout) {
+      nextState = applyPropertyTemplate(nextState, property.id, dwellingType);
+    }
+    onSave(nextState);
     setModalOpen(false);
   }
 
@@ -97,33 +155,88 @@ export function HomeScreen(props: {
         </Pressable>
       </ScrollView>
 
-      <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }} onPress={() => setModalOpen(false)}>
-          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
-            <Text style={sharedStyles.sectionTitle}>New property</Text>
-            <Text style={sharedStyles.fieldLabel}>Name</Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Unit 1, Main Street duplex…"
-              style={sharedStyles.input}
-              autoFocus
-            />
-            <Text style={sharedStyles.fieldLabel}>Address (optional)</Text>
-            <TextInput
-              value={address}
-              onChangeText={setAddress}
-              placeholder="123 Main St"
-              style={sharedStyles.input}
-            />
+      <Modal
+        visible={modalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
+            onPress={() => setModalOpen(false)}
+          >
             <Pressable
-              onPress={saveProperty}
-              style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
+              style={{
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                borderWidth: 1,
+                borderBottomWidth: 0,
+                borderColor: colors.border,
+                maxHeight: windowHeight * 0.92,
+                paddingHorizontal: 20,
+                paddingTop: 20,
+                paddingBottom: insets.bottom + 20,
+              }}
+              onPress={() => {}}
             >
-              <Text style={sharedStyles.primaryBtnText}>Save</Text>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                bounces={false}
+              >
+                <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>New property</Text>
+                <Text style={sharedStyles.fieldLabel}>Name</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Unit 1, Main Street duplex…"
+                  style={sharedStyles.input}
+                />
+                <Text style={sharedStyles.fieldLabel}>Address (optional)</Text>
+                <TextInput
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="123 Main St"
+                  style={sharedStyles.input}
+                />
+                <Text style={sharedStyles.fieldLabel}>Dwelling type</Text>
+                <DwellingPicker value={dwellingType} onChange={setDwellingType} />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: 12,
+                    marginBottom: 4,
+                    gap: 12,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[sharedStyles.fieldLabel, { marginTop: 0 }]}>Use default layout</Text>
+                    <Text style={sharedStyles.cardMeta}>
+                      Adds standard rooms and inventory items (from 24 Cedar Road layout).
+                    </Text>
+                  </View>
+                  <Switch value={useDefaultLayout} onValueChange={setUseDefaultLayout} />
+                </View>
+                <Pressable
+                  onPress={saveProperty}
+                  style={({ pressed }) => [
+                    sharedStyles.primaryBtn,
+                    pressed && sharedStyles.primaryBtnPressed,
+                  ]}
+                >
+                  <Text style={sharedStyles.primaryBtnText}>Save</Text>
+                </Pressable>
+              </ScrollView>
             </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

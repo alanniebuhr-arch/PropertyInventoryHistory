@@ -1,8 +1,11 @@
 import React from 'react';
 import type { ItemDetails, ItemTypeId } from './types';
 import { ElectricPanelForm } from './screens/itemDetails/ElectricPanelForm';
-import { WaterMainForm } from './screens/itemDetails/WaterMainForm';
+import { WaterMainForm, WaterMainNotesFields } from './screens/itemDetails/WaterMainForm';
+import { WasteWaterForm, WasteWaterNotesFields } from './screens/itemDetails/WasteWaterForm';
 import { GasMainForm } from './screens/itemDetails/GasMainForm';
+import { WaterHeaterForm } from './screens/itemDetails/WaterHeaterForm';
+import { WaterTreatmentForm } from './screens/itemDetails/WaterTreatmentForm';
 import { InternetForm } from './screens/itemDetails/InternetForm';
 import { FurnaceForm } from './screens/itemDetails/FurnaceForm';
 import { ApplianceForm } from './screens/itemDetails/ApplianceForm';
@@ -22,17 +25,44 @@ export function ItemDetailsForm(props: {
           onChange={onChange}
         />
       );
-    case 'water_main':
+    case 'water_main': {
+      const waterMain =
+        details.kind === 'water_main' ? details : { kind: 'water_main' as const };
       return (
-        <WaterMainForm
-          details={details.kind === 'water_main' ? details : { kind: 'water_main' }}
-          onChange={onChange}
-        />
+        <>
+          <WaterMainForm details={waterMain} onChange={onChange} />
+          <WaterMainNotesFields details={waterMain} onChange={onChange} />
+        </>
       );
+    }
+    case 'waste_water': {
+      const wasteWater =
+        details.kind === 'waste_water' ? details : { kind: 'waste_water' as const };
+      return (
+        <>
+          <WasteWaterForm details={wasteWater} onChange={onChange} />
+          <WasteWaterNotesFields details={wasteWater} onChange={onChange} />
+        </>
+      );
+    }
     case 'gas_main':
       return (
         <GasMainForm
           details={details.kind === 'gas_main' ? details : { kind: 'gas_main' }}
+          onChange={onChange}
+        />
+      );
+    case 'water_heater':
+      return (
+        <WaterHeaterForm
+          details={details.kind === 'water_heater' ? details : { kind: 'water_heater' }}
+          onChange={onChange}
+        />
+      );
+    case 'water_treatment':
+      return (
+        <WaterTreatmentForm
+          details={details.kind === 'water_treatment' ? details : { kind: 'water_treatment' }}
           onChange={onChange}
         />
       );

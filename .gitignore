@@ -12,8 +12,9 @@ expo-env.d.ts
 # Native
 .kotlin/
 *.orig.*
-*.jks
+# Apple signing & App Store Connect API keys
 *.p8
+AuthKey_*.p8
 *.p12
 *.key
 *.mobileprovision

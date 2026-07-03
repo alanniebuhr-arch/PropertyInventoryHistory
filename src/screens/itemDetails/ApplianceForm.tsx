@@ -1,13 +1,7 @@
 import React from 'react';
 import type { ApplianceDetails } from '../../types';
-import { FormField } from './FormField';
-
-export function purchaseDateEditValue(stored?: string): string {
-  if (!stored) return '';
-  if (/^\d{4}-\d{2}-\d{2}T/.test(stored)) return stored.slice(0, 10);
-  if (/^\d{4}T/.test(stored)) return '';
-  return stored;
-}
+import { parseDateInputValue } from '../../utils';
+import { DateFormField, FormField } from './FormField';
 
 type ApplianceFieldsProps = {
   details: ApplianceDetails;
@@ -35,13 +29,20 @@ export function ApplianceIdentityFields(props: ApplianceFieldsProps) {
         label="Model #"
         value={details.modelNumber ?? ''}
         onChangeText={(modelNumber) => onChange({ ...details, modelNumber })}
-        placeholder="From manufacturer tag"
+        placeholder="From manufacture tag"
       />
       <FormField
         label="Serial #"
         value={details.serialNumber ?? ''}
         onChangeText={(serialNumber) => onChange({ ...details, serialNumber })}
-        placeholder="From manufacturer tag"
+        placeholder="From manufacture tag"
+      />
+      <FormField
+        label="Notes"
+        value={details.notes ?? ''}
+        onChangeText={(notes) => onChange({ ...details, notes })}
+        placeholder="General notes about this appliance"
+        multiline
       />
     </>
   );
@@ -58,24 +59,31 @@ export function AppliancePurchaseFields(props: ApplianceFieldsProps) {
         onChangeText={(purchaseLocation) => onChange({ ...details, purchaseLocation })}
         placeholder="Store name or website"
       />
-      <FormField
-        label="Date purchased (YYYY-MM-DD)"
-        value={purchaseDateEditValue(details.purchaseDateAtISO)}
-        onChangeText={(v) =>
+      <DateFormField
+        label="Date purchased (MM/DD/YYYY)"
+        value={details.purchaseDateAtISO}
+        parseStored={parseDateInputValue}
+        onChangeStored={(purchaseDateAtISO) =>
           onChange({
             ...details,
-            purchaseDateAtISO: v || undefined,
+            purchaseDateAtISO,
           })
         }
-        placeholder="2024-06-01"
-        keyboardType="numbers-and-punctuation"
+        placeholder="06/01/2024"
       />
       <FormField
-        label="How much paid"
+        label="Total paid"
         value={details.purchasePrice ?? ''}
         onChangeText={(purchasePrice) => onChange({ ...details, purchasePrice })}
         placeholder="0.00"
         keyboardType="decimal-pad"
+      />
+      <FormField
+        label="Purchase notes"
+        value={details.purchaseNotes ?? ''}
+        onChangeText={(purchaseNotes) => onChange({ ...details, purchaseNotes })}
+        placeholder="e.g. Warranty info, delivery details"
+        multiline
       />
     </>
   );

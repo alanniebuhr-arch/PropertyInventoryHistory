@@ -1,4 +1,5 @@
 import type { AppState } from './types';
+import { formatDate } from './utils';
 import { eventsForItem, itemsForProperty, itemsForRoom } from './storage';
 import { getNextDueForItem, isOverdue } from './eventRecurrence';
 
@@ -11,9 +12,7 @@ export function overdueCountForItem(state: AppState, itemId: string): number {
 export function nextDueLabelForItem(state: AppState, itemId: string): string | null {
   const nextDue = getNextDueForItem(eventsForItem(state, itemId));
   if (!nextDue) return null;
-  const d = new Date(nextDue);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatDate(nextDue);
 }
 
 export function overdueCountForRoom(state: AppState, roomId: string): number {

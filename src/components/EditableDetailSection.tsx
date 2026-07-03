@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { sharedStyles, colors } from '../theme';
 
-export function EditableApplianceSection(props: {
+export function EditableDetailSection(props: {
   title: string;
   isEditing: boolean;
   onPress: () => void;
@@ -49,3 +49,6 @@ export function EditableApplianceSection(props: {
     </Pressable>
   );
 }
+
+/** @deprecated Use EditableDetailSection */
+export const EditableApplianceSection = EditableDetailSection;
