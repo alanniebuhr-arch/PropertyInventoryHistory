@@ -13,11 +13,14 @@ import {
 } from '../waterTreatmentSlots';
 import {
   addWaterTreatmentExtraPhotos,
+  clearWaterTreatmentSlotDocument,
   clearWaterTreatmentSlotPhoto,
   removeWaterTreatmentExtraPhoto,
   setWaterTreatmentExtraPhotoCaption,
+  setWaterTreatmentSlotDocument,
   setWaterTreatmentSlotPhoto,
   waterTreatmentExtraPhotos,
+  waterTreatmentSlotDocumentInfo,
   waterTreatmentSlotPhotoUri,
 } from '../waterTreatmentPhotos';
 import { WaterTreatmentForm } from '../screens/itemDetails/WaterTreatmentForm';
@@ -29,8 +32,9 @@ export function WaterTreatmentDisplayView(props: {
   onSave: (state: AppState) => void;
   onDetailsChange: (details: WaterTreatmentDetails) => void;
   photoHeader?: ReactNode;
+  onActiveHeroLabelChange?: (label: string | undefined) => void;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange } = props;
   const [editingSection, setEditingSection] = useState<'treatment' | null>(null);
 
   const extraPhotos = waterTreatmentExtraPhotos(state, itemId, details);
@@ -41,6 +45,8 @@ export function WaterTreatmentDisplayView(props: {
         slots: WATER_TREATMENT_PHOTO_SLOTS,
         getSlotUri: (key) =>
           waterTreatmentSlotPhotoUri(state, details, key as WaterTreatmentPhotoSlotKey),
+        getSlotDocument: (key) =>
+          waterTreatmentSlotDocumentInfo(state, details, key as WaterTreatmentPhotoSlotKey),
         onAddSlot: (key, uri) => {
           void setWaterTreatmentSlotPhoto(
             state,
@@ -49,10 +55,26 @@ export function WaterTreatmentDisplayView(props: {
             uri
           ).then(onSave);
         },
+        onAddSlotDocument: (key, picked) => {
+          void setWaterTreatmentSlotDocument(
+            state,
+            itemId,
+            key as WaterTreatmentPhotoSlotKey,
+            picked.uri,
+            picked.fileName
+          ).then(onSave);
+        },
         onDeleteSlot: (key) => {
           void clearWaterTreatmentSlotPhoto(state, itemId, key as WaterTreatmentPhotoSlotKey).then(
             onSave
           );
+        },
+        onDeleteSlotDocument: (key) => {
+          void clearWaterTreatmentSlotDocument(
+            state,
+            itemId,
+            key as WaterTreatmentPhotoSlotKey
+          ).then(onSave);
         },
         extraPhotos,
         onDeleteExtra: (photoId) => {
@@ -78,7 +100,7 @@ export function WaterTreatmentDisplayView(props: {
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} onAddPhotos={handleAddPhotos}>
+      <PhotoSection tiles={photoTiles} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
         {photoHeader}
       </PhotoSection>
 

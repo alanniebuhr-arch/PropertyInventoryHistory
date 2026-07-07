@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,13 +8,15 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   View,
 } from 'react-native';
+import type { ScrollView as RNScrollView } from 'react-native';
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import type { AppState, ApplianceDetails, ElectricPanelDetails, FurnaceDetails, InventoryItem, ItemDetails, ItemPhoto, WasteWaterDetails, WaterMainDetails, WaterTreatmentDetails } from '../types';
+import type { AppState, AirConditionerDetails, ApplianceDetails, AutomobileDetails, ElectricPanelDetails, FurnaceDetails, InventoryItem, ItemDetails, ItemPhoto, WasteWaterDetails, WaterMainDetails, WaterTreatmentDetails } from '../types';
 import { EventListRow } from '../components/ListRows';
 import { ItemDisplayView } from '../components/ItemDisplayView';
 import {
@@ -31,6 +33,7 @@ import {
   photosForItem,
   propertyById,
   roomById,
+  itemsForRoom,
 } from '../storage';
 import { catalogLabel, itemDisplayLabel } from '../itemCatalog';
 import { isItemOverdue, nextDueLabelForItem } from '../itemMaintenance';
@@ -43,12 +46,18 @@ import { updateFurnaceDetails, applyFurnaceDetailsChange } from '../furnacePhoto
 import { updateWasteWaterDetails, applyWasteWaterDetailsChange } from '../wasteWaterPhotos';
 import { updateElectricPanelDetails } from '../electricPanelPhotos';
 import { updateWaterTreatmentDetails } from '../waterTreatmentPhotos';
+import { updateAirConditionerDetails } from '../airConditionerPhotos';
+import { updateAutomobileDetails } from '../automobilePhotos';
 import { WaterMainDisplayView } from '../components/WaterMainDisplayView';
 import { WaterTreatmentDisplayView } from '../components/WaterTreatmentDisplayView';
 import { ElectricPanelDisplayView } from '../components/ElectricPanelDisplayView';
 import { FurnaceDisplayView } from '../components/FurnaceDisplayView';
+import { AirConditionerDisplayView } from '../components/AirConditionerDisplayView';
+import { AutomobileDisplayView } from '../components/AutomobileDisplayView';
 import { WasteWaterDisplayView } from '../components/WasteWaterDisplayView';
 import { ItemExportSheet } from '../components/ItemExportSheet';
+import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { RoomNavigationDots } from '../components/RoomNavigationDots';
 import { ItemDetailScrollContext } from '../itemDetailScrollContext';
 import { buildItemExportSnapshot, type ItemExportSnapshot } from '../itemExportContent';
 import { shareViewAsPng } from '../shareViewImage';
@@ -58,21 +67,23 @@ export function ItemDetailScreen(props: {
   itemId: string;
   startEditingSection?: ApplianceEditingSection;
   onBack: () => void;
+  onNavigateItem: (itemId: string) => void;
   onAddEvent: () => void;
   onEditEvent: (eventId: string) => void;
   onSave: (state: AppState) => void;
 }) {
-  const { state, itemId, startEditingSection, onBack, onAddEvent, onEditEvent, onSave } = props;
+  const { state, itemId, startEditingSection, onBack, onNavigateItem, onAddEvent, onEditEvent, onSave } = props;
   const insets = useSafeAreaInsets();
   const item = itemById(state, itemId);
   const [details, setDetails] = useState<ItemDetails | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<RNScrollView>(null);
   const scrollYRef = useRef(0);
   const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [exportSnapshot, setExportSnapshot] = useState<ItemExportSnapshot | null>(null);
   const [exporting, setExporting] = useState(false);
   const exportRef = useRef<View>(null);
+  const [heroPhotoLabel, setHeroPhotoLabel] = useState<string | undefined>();
 
   const scrollFieldIntoView = useCallback(
     (windowY: number, height: number, kbHeight: number) => {
@@ -155,6 +166,49 @@ export function ItemDetailScreen(props: {
     };
   }, [exportSnapshot, exporting]);
 
+  const room = item ? roomById(state, item.roomId) : undefined;
+  const property = room ? propertyById(state, room.propertyId) : undefined;
+  const roomItems = room ? itemsForRoom(state, room.id) : [];
+  const itemIndex = roomItems.findIndex((entry) => entry.id === itemId);
+  const itemSwipeEnabled = roomItems.length > 1;
+
+  const goToNextItem = useCallback(() => {
+    if (itemIndex < 0) return;
+    const target = roomItems[itemIndex + 1];
+    if (target) onNavigateItem(target.id);
+  }, [itemIndex, onNavigateItem, roomItems]);
+
+  const goToPrevItem = useCallback(() => {
+    if (itemIndex < 0) return;
+    const target = roomItems[itemIndex - 1];
+    if (target) onNavigateItem(target.id);
+  }, [itemIndex, onNavigateItem, roomItems]);
+
+  const makeItemSwipeGesture = useCallback(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-40, 40])
+        .failOffsetY([-28, 28])
+        .onEnd((event) => {
+          'worklet';
+          if (event.translationX <= -56) {
+            runOnJS(goToNextItem)();
+          } else if (event.translationX >= 56) {
+            runOnJS(goToPrevItem)();
+          }
+        }),
+    [goToNextItem, goToPrevItem]
+  );
+
+  const itemSwipeGestureForHeader = useMemo(
+    () => makeItemSwipeGesture(),
+    [makeItemSwipeGesture]
+  );
+  const itemSwipeGestureForServiceHistory = useMemo(
+    () => makeItemSwipeGesture(),
+    [makeItemSwipeGesture]
+  );
+
   if (!item || !details) {
     return (
       <View style={[sharedStyles.screen, { paddingTop: insets.top, padding: 16 }]}>
@@ -171,26 +225,39 @@ export function ItemDetailScreen(props: {
   const isWaterMain = inv.itemTypeId === 'water_main';
   const isWasteWater = inv.itemTypeId === 'waste_water';
   const isFurnace = inv.itemTypeId === 'furnace';
+  const isAirConditioner = inv.itemTypeId === 'air_conditioner';
+  const isAutomobile = inv.itemTypeId === 'automobile';
   const isElectricPanel = inv.itemTypeId === 'electric_panel';
   const isWaterTreatment = inv.itemTypeId === 'water_treatment';
   const applianceDetails = details.kind === 'appliance' ? details : null;
   const waterMainDetails = details.kind === 'water_main' ? details : null;
   const wasteWaterDetails = details.kind === 'waste_water' ? details : null;
   const furnaceDetails = details.kind === 'furnace' ? details : null;
+  const airConditionerDetails = details.kind === 'air_conditioner' ? details : null;
+  const automobileDetails = details.kind === 'automobile' ? details : null;
   const electricPanelDetails = details.kind === 'electric_panel' ? details : null;
   const waterTreatmentDetails = details.kind === 'water_treatment' ? details : null;
-  const room = roomById(state, inv.roomId);
-  const property = room ? propertyById(state, room.propertyId) : undefined;
   const photos = photosForItem(state, itemId);
   const events = eventsForItem(state, itemId);
   const nextDue = nextDueLabelForItem(state, itemId);
   const overdue = isItemOverdue(state, itemId);
 
-  const itemPhotoHeader = (
+  const itemPhotoHeaderContent = (
     <>
+      <RoomNavigationDots
+        count={roomItems.length}
+        activeIndex={itemIndex}
+        unitLabel="Item"
+        onSelect={(index) => {
+          const target = roomItems[index];
+          if (target) onNavigateItem(target.id);
+        }}
+      />
       <Text style={sharedStyles.title}>{itemDisplayLabel({ ...inv, details })}</Text>
       <Text style={sharedStyles.subtitle}>
-        {[property?.name, room?.name, catalogLabel(inv.itemTypeId)].filter(Boolean).join(' · ')}
+        {[property?.name, room?.name, catalogLabel(inv.itemTypeId), heroPhotoLabel]
+          .filter(Boolean)
+          .join(' · ')}
       </Text>
       {nextDue ? (
         <Text style={[sharedStyles.cardMeta, overdue && { color: '#c62828', fontWeight: '700' }]}>
@@ -198,6 +265,14 @@ export function ItemDetailScreen(props: {
         </Text>
       ) : null}
     </>
+  );
+
+  const itemPhotoHeader = itemSwipeEnabled ? (
+    <GestureDetector gesture={itemSwipeGestureForHeader}>
+      <View>{itemPhotoHeaderContent}</View>
+    </GestureDetector>
+  ) : (
+    itemPhotoHeaderContent
   );
 
   function handleDetailsChange(next: ItemDetails) {
@@ -282,6 +357,16 @@ export function ItemDetailScreen(props: {
     onSave(updateWaterTreatmentDetails(state, itemId, next));
   }
 
+  function handleAirConditionerDetailsChange(next: AirConditionerDetails) {
+    setDetails(next);
+    onSave(updateAirConditionerDetails(state, itemId, next));
+  }
+
+  function handleAutomobileDetailsChange(next: AutomobileDetails) {
+    setDetails(next);
+    onSave(updateAutomobileDetails(state, itemId, next));
+  }
+
   async function addPhoto(sourceUri: string) {
     await addPhotos([sourceUri]);
   }
@@ -364,24 +449,7 @@ export function ItemDetailScreen(props: {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={insets.top}
       >
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={[
-            sharedStyles.content,
-            { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 24 : 32 },
-          ]}
-          keyboardShouldPersistTaps="always"
-          automaticallyAdjustKeyboardInsets
-          nestedScrollEnabled
-          onScroll={(e) => {
-            scrollYRef.current = e.nativeEvent.contentOffset.y;
-          }}
-          scrollEventThrottle={16}
-        >
-        <View style={sharedStyles.headerRow}>
-          <Pressable onPress={onBack} style={sharedStyles.backBtn}>
-            <Text style={sharedStyles.backBtnText}>← Back</Text>
-          </Pressable>
+        <ScreenBackHeader onPress={onBack}>
           <Pressable
             onPress={() => void runItemExport()}
             disabled={exporting}
@@ -411,8 +479,22 @@ export function ItemDetailScreen(props: {
               <MaterialIcons name="ios-share" size={22} color={colors.primary} />
             )}
           </Pressable>
-        </View>
-
+        </ScreenBackHeader>
+        <ScrollView
+          ref={scrollRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={[
+            sharedStyles.content,
+            { paddingTop: 0, paddingBottom: keyboardHeight > 0 ? keyboardHeight + 24 : 32 },
+          ]}
+          keyboardShouldPersistTaps="always"
+          automaticallyAdjustKeyboardInsets
+          nestedScrollEnabled
+          onScroll={(e) => {
+            scrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+        >
         {isAppliance && applianceDetails ? (
           <ApplianceDisplayView
             state={state}
@@ -422,6 +504,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleApplianceDetailsChange}
             initialEditingSection={startEditingSection}
             photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isWaterMain && waterMainDetails ? (
           <WaterMainDisplayView
@@ -431,6 +514,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWaterMainDetailsChange}
             photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isFurnace && furnaceDetails ? (
           <FurnaceDisplayView
@@ -440,6 +524,27 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleFurnaceDetailsChange}
             photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
+          />
+        ) : isAirConditioner && airConditionerDetails ? (
+          <AirConditionerDisplayView
+            state={state}
+            details={airConditionerDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleAirConditionerDetailsChange}
+            photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
+          />
+        ) : isAutomobile && automobileDetails ? (
+          <AutomobileDisplayView
+            state={state}
+            details={automobileDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleAutomobileDetailsChange}
+            photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isWasteWater && wasteWaterDetails ? (
           <WasteWaterDisplayView
@@ -449,6 +554,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWasteWaterDetailsChange}
             photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isElectricPanel && electricPanelDetails ? (
           <ElectricPanelDisplayView
@@ -458,6 +564,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleElectricPanelDetailsChange}
             photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isWaterTreatment && waterTreatmentDetails ? (
           <WaterTreatmentDisplayView
@@ -467,6 +574,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWaterTreatmentDetailsChange}
             photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : (
           <ItemDisplayView
@@ -483,43 +591,97 @@ export function ItemDetailScreen(props: {
               inv.itemTypeId === 'other' ? handleDisplayNameChange : undefined
             }
             photoHeader={itemPhotoHeader}
+            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         )}
 
-        <Text style={sharedStyles.sectionTitle}>Service history</Text>
-        <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
-          Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
-        </Text>
-        <Pressable
-          onPress={onAddEvent}
-          style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
-        >
-          <Text style={sharedStyles.primaryBtnText}>Log service event</Text>
-        </Pressable>
-        {events.length === 0 ? (
-          <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
-            No service events yet — e.g. annual maintenance or a repair.
-          </Text>
-        ) : (
-          <View style={{ marginTop: 12 }}>
-            {events.map((e) => (
-              <EventListRow
-                key={e.id}
-                title={e.title}
-                eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
-                dateLabel={formatDate(e.occurredAtISO)}
-                costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
-                recurrenceLabel={e.recurrence ? recurrenceLabel(e.recurrence) : undefined}
-                photoCount={photosForEvent(state, e.id).length}
-                onPress={() => onEditEvent(e.id)}
-              />
-            ))}
-          </View>
-        )}
+        {itemSwipeEnabled ? (
+          <GestureDetector gesture={itemSwipeGestureForServiceHistory}>
+            <View>
+              <Text style={sharedStyles.sectionTitle}>Service history</Text>
+              <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
+                Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
+              </Text>
+              <Pressable
+                onPress={onAddEvent}
+                style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
+              >
+                <Text style={sharedStyles.primaryBtnText}>Log service event</Text>
+              </Pressable>
+              {events.length === 0 ? (
+                <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
+                  No service events yet — e.g. annual maintenance or a repair.
+                </Text>
+              ) : (
+                <View style={{ marginTop: 12 }}>
+                  {events.map((e) => {
+                    const eventPhotos = photosForEvent(state, e.id);
+                    return (
+                      <EventListRow
+                        key={e.id}
+                        title={e.title}
+                        eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
+                        dateLabel={formatDate(e.occurredAtISO)}
+                        costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
+                        recurrenceLabel={e.recurrence ? recurrenceLabel(e.recurrence) : undefined}
+                        notes={e.notes}
+                        thumbnailUri={eventPhotos[0]?.localUri}
+                        photoCount={eventPhotos.length}
+                        onPress={() => onEditEvent(e.id)}
+                      />
+                    );
+                  })}
+                </View>
+              )}
 
-        <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
-          <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
-        </Pressable>
+              <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
+                <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
+              </Pressable>
+            </View>
+          </GestureDetector>
+        ) : (
+          <>
+            <Text style={sharedStyles.sectionTitle}>Service history</Text>
+            <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
+              Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
+            </Text>
+            <Pressable
+              onPress={onAddEvent}
+              style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
+            >
+              <Text style={sharedStyles.primaryBtnText}>Log service event</Text>
+            </Pressable>
+            {events.length === 0 ? (
+              <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
+                No service events yet — e.g. annual maintenance or a repair.
+              </Text>
+            ) : (
+              <View style={{ marginTop: 12 }}>
+                {events.map((e) => {
+                  const eventPhotos = photosForEvent(state, e.id);
+                  return (
+                    <EventListRow
+                      key={e.id}
+                      title={e.title}
+                      eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
+                      dateLabel={formatDate(e.occurredAtISO)}
+                      costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
+                      recurrenceLabel={e.recurrence ? recurrenceLabel(e.recurrence) : undefined}
+                      notes={e.notes}
+                      thumbnailUri={eventPhotos[0]?.localUri}
+                      photoCount={eventPhotos.length}
+                      onPress={() => onEditEvent(e.id)}
+                    />
+                  );
+                })}
+              </View>
+            )}
+
+            <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
+              <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
+            </Pressable>
+          </>
+        )}
         </ScrollView>
       </KeyboardAvoidingView>
 

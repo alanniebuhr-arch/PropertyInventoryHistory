@@ -1,6 +1,6 @@
 import type { ItemPhoto } from './types';
-import type { PhotoTile } from './components/PhotoSection';
-import { promptPickOrTakeSingle } from './photoPicker';
+import type { PhotoTile, SlotDocumentTileInfo } from './components/PhotoSection';
+import { promptPickOrTakeSingle, promptSlotAttachment } from './photoPicker';
 import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 
 /**
@@ -16,8 +16,11 @@ type SlotDefinition = {
 
 export function buildPropertyPhotoTiles(options: {
   getSlotUri: (key: string) => string | undefined;
+  getSlotDocument?: (key: string) => SlotDocumentTileInfo | undefined;
   onAddSlot: (key: string, uri: string) => void | Promise<void>;
+  onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string }) => void | Promise<void>;
   onDeleteSlot: (key: string) => void | Promise<void>;
+  onDeleteSlotDocument?: (key: string) => void | Promise<void>;
   extraPhotos: { id: string; localUri: string; caption?: string }[];
   onDeleteExtra: (photoId: string) => void | Promise<void>;
   onLabelExtra?: (photoId: string, label: string) => void | Promise<void>;
@@ -31,8 +34,11 @@ export function buildPropertyPhotoTiles(options: {
 export function buildSlotAndExtraPhotoTiles(options: {
   slots: SlotDefinition[];
   getSlotUri: (key: string) => string | undefined;
+  getSlotDocument?: (key: string) => SlotDocumentTileInfo | undefined;
   onAddSlot: (key: string, uri: string) => void | Promise<void>;
+  onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string }) => void | Promise<void>;
   onDeleteSlot: (key: string) => void | Promise<void>;
+  onDeleteSlotDocument?: (key: string) => void | Promise<void>;
   extraPhotos: Pick<ItemPhoto, 'id' | 'localUri' | 'caption'>[];
   onDeleteExtra: (photoId: string) => void | Promise<void>;
   onLabelExtra?: (photoId: string, label: string) => void | Promise<void>;
@@ -40,8 +46,11 @@ export function buildSlotAndExtraPhotoTiles(options: {
   const {
     slots,
     getSlotUri,
+    getSlotDocument,
     onAddSlot,
+    onAddSlotDocument,
     onDeleteSlot,
+    onDeleteSlotDocument,
     extraPhotos,
     onDeleteExtra,
     onLabelExtra,
@@ -49,17 +58,32 @@ export function buildSlotAndExtraPhotoTiles(options: {
 
   const tiles: PhotoTile[] = slots.map((slot) => {
     const uri = getSlotUri(slot.key);
+    const document = getSlotDocument?.(slot.key);
+    const supportsDocuments = onAddSlotDocument != null;
     return {
       kind: 'reserved' as const,
       key: slot.key,
       shortLabel: slot.shortLabel,
       uri,
+      document,
       onAdd: () => {
-        promptPickOrTakeSingle((pickedUri) => onAddSlot(slot.key, pickedUri));
+        if (supportsDocuments) {
+          promptSlotAttachment({
+            onPhoto: (pickedUri) => onAddSlot(slot.key, pickedUri),
+            onDocument: (picked) => onAddSlotDocument!(slot.key, picked),
+          });
+        } else {
+          promptPickOrTakeSingle((pickedUri) => onAddSlot(slot.key, pickedUri));
+        }
       },
       onDelete: uri
         ? () => {
             void onDeleteSlot(slot.key);
+          }
+        : undefined,
+      onDeleteDocument: document
+        ? () => {
+            void onDeleteSlotDocument?.(slot.key);
           }
         : undefined,
     };

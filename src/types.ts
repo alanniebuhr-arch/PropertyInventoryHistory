@@ -7,6 +7,8 @@ export type ItemTypeId =
   | 'electric_panel'
   | 'internet'
   | 'furnace'
+  | 'air_conditioner'
+  | 'automobile'
   | 'appliance'
   | 'other';
 
@@ -20,6 +22,9 @@ export type ElectricPanelDetails = {
   panelDistancePhotoId?: string;
   panelInsideCoverPhotoId?: string;
   panelCircuitBreakersPhotoId?: string;
+  panelDistanceDocumentId?: string;
+  panelInsideCoverDocumentId?: string;
+  panelCircuitBreakersDocumentId?: string;
 };
 
 export type WaterSource = 'municipal' | 'well';
@@ -32,10 +37,15 @@ export type WaterMainDetails = {
   shutoffLocation?: string;
   valveType?: ValveType;
   meterNumber?: string;
+  wellHeadLocation?: string;
   mainValvePhotoId?: string;
   waterBillPhotoId?: string;
   undergroundShutoffPhotoId?: string;
   wellHeadPhotoId?: string;
+  mainValveDocumentId?: string;
+  waterBillDocumentId?: string;
+  undergroundShutoffDocumentId?: string;
+  wellHeadDocumentId?: string;
   notes?: string;
 };
 
@@ -49,6 +59,10 @@ export type WasteWaterDetails = {
   sewerBillPhotoId?: string;
   tankLocationPhotoId?: string;
   septicFieldPhotoId?: string;
+  wasteLineExitDocumentId?: string;
+  sewerBillDocumentId?: string;
+  tankLocationDocumentId?: string;
+  septicFieldDocumentId?: string;
   notes?: string;
 };
 
@@ -75,6 +89,9 @@ export type WaterTreatmentDetails = {
   waterFilterPhotoId?: string;
   replacementFilterPhotoId?: string;
   receiptPhotoId?: string;
+  waterFilterDocumentId?: string;
+  replacementFilterDocumentId?: string;
+  receiptDocumentId?: string;
 };
 
 export type InternetDetails = {
@@ -110,11 +127,84 @@ export type FurnaceDetails = {
   fuelTankLocation?: string;
   fuelTankSize?: string;
   receiptPhotoId?: string;
+  systemFrontDocumentId?: string;
+  systemSideDocumentId?: string;
+  systemTagDocumentId?: string;
+  fuelShutoffDocumentId?: string;
+  fuelTankDocumentId?: string;
+  receiptDocumentId?: string;
   installDateAtISO?: string;
   installCost?: string;
   installerName?: string;
   installerPhone?: string;
   notes?: string;
+};
+
+export type AcType = 'condenser' | 'heat_pump' | 'window_unit';
+
+export type AirConditionerDetails = {
+  kind: 'air_conditioner';
+  acType?: AcType;
+  make?: string;
+  modelNumber?: string;
+  serialNumber?: string;
+  tonnage?: string;
+  refrigerantType?: string;
+  filterSize?: string;
+  locationNotes?: string;
+  installDateAtISO?: string;
+  installCost?: string;
+  installerName?: string;
+  installerPhone?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  acUnitPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  acUnitDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type AutomobileDetails = {
+  kind: 'automobile';
+  nickname?: string;
+  year?: string;
+  make?: string;
+  model?: string;
+  trim?: string;
+  vin?: string;
+  licensePlate?: string;
+  color?: string;
+  purchaseDateAtISO?: string;
+  purchasePrice?: string;
+  purchaseLocation?: string;
+  purchaseMileage?: string;
+  currentMileage?: string;
+  oilType?: string;
+  oilFilter?: string;
+  tireSize?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  insuranceCompany?: string;
+  insurancePhone?: string;
+  insurancePolicyNumber?: string;
+  notes?: string;
+  vehiclePhotoId?: string;
+  vinTagPhotoId?: string;
+  titlePhotoId?: string;
+  registrationPhotoId?: string;
+  insuranceCardPhotoId?: string;
+  windowStickerPhotoId?: string;
+  purchaseReceiptPhotoId?: string;
+  vehicleDocumentId?: string;
+  vinTagDocumentId?: string;
+  titleDocumentId?: string;
+  registrationDocumentId?: string;
+  insuranceCardDocumentId?: string;
+  windowStickerDocumentId?: string;
+  purchaseReceiptDocumentId?: string;
 };
 
 export type ApplianceDetails = {
@@ -128,6 +218,10 @@ export type ApplianceDetails = {
   manufacturerTagPhotoId?: string;
   insidePhotoId?: string;
   purchaseReceiptPhotoId?: string;
+  faceDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  insideDocumentId?: string;
+  purchaseReceiptDocumentId?: string;
   purchaseLocation?: string;
   purchaseDateAtISO?: string;
   purchasePrice?: string;
@@ -151,8 +245,24 @@ export type ItemDetails =
   | GasMainDetails
   | InternetDetails
   | FurnaceDetails
+  | AirConditionerDetails
+  | AutomobileDetails
   | ApplianceDetails
   | OtherItemDetails;
+
+export type StoredDocument = {
+  id: string;
+  localUri: string;
+  fileName: string;
+  mimeType: 'application/pdf';
+  createdAtISO: string;
+};
+
+export type SlotAttachment =
+  | { kind: 'photo'; id: string }
+  | { kind: 'document'; id: string };
+
+export type RoomSlotKey = 'houseInsurance';
 
 export type PropertyPhoto = {
   id: string;
@@ -181,6 +291,12 @@ export type Property = {
   backPhotoId?: string;
   fieldCardPhotoId?: string;
   plotPlanPhotoId?: string;
+  frontDocumentId?: string;
+  leftSideDocumentId?: string;
+  rightSideDocumentId?: string;
+  backDocumentId?: string;
+  fieldCardDocumentId?: string;
+  plotPlanDocumentId?: string;
   /** Extra property photos beyond the named slots above. */
   photoIds?: string[];
   createdAtISO: string;
@@ -192,6 +308,8 @@ export type Room = {
   name: string;
   sortOrder: number;
   photoIds: string[];
+  requiresAuth?: boolean;
+  slotAttachments?: Partial<Record<RoomSlotKey, SlotAttachment>>;
 };
 
 export type InventoryItem = {
@@ -214,7 +332,14 @@ export type ItemPhoto = {
   createdAtISO: string;
 };
 
-export type ItemEventType = 'maintenance' | 'inspection' | 'repair' | 'replacement' | 'other';
+export type ItemEventType =
+  | 'maintenance'
+  | 'inspection'
+  | 'repair'
+  | 'replacement'
+  | 'improvement'
+  | 'fuel_delivery'
+  | 'other';
 
 export type RecurrenceInterval = 'monthly' | 'quarterly' | 'annual' | 'custom';
 
@@ -244,6 +369,7 @@ export type AppState = {
   photos: ItemPhoto[];
   propertyPhotos: PropertyPhoto[];
   roomPhotos: RoomPhoto[];
+  documents: StoredDocument[];
   events: ItemEvent[];
 };
 
@@ -255,6 +381,7 @@ export const EMPTY_APP_STATE: AppState = {
   photos: [],
   propertyPhotos: [],
   roomPhotos: [],
+  documents: [],
   events: [],
 };
 

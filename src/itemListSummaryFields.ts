@@ -7,6 +7,8 @@ import {
   heatDistributionLabel,
   heatSourceLabel,
 } from './furnaceSlots';
+import { acTypeLabel } from './airConditionerSlots';
+import { automobileDescription } from './automobileSlots';
 import { furnaceUsesFuelTank } from './furnaceSlots';
 import { valveTypeLabel, waterSourceLabel } from './waterMainSlots';
 import { wasteWaterSystemLabel } from './wasteWaterSlots';
@@ -69,6 +71,32 @@ export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField
       pushField(fields, 'Notes', details.notes);
       break;
     }
+    case 'air_conditioner': {
+      if (details.kind !== 'air_conditioner') break;
+      pushField(fields, 'AC type', acTypeLabel(details.acType));
+      pushField(fields, 'Make', details.make);
+      pushField(fields, 'Model', details.modelNumber);
+      pushField(fields, 'Serial number', details.serialNumber);
+      pushField(fields, 'Cooling capacity', details.tonnage);
+      pushField(fields, 'Refrigerant', details.refrigerantType);
+      pushField(fields, 'Filter size', details.filterSize);
+      pushField(fields, 'Install date', formatStoredDate(details.installDateAtISO));
+      pushField(fields, 'Service company', details.serviceCompany);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'automobile': {
+      if (details.kind !== 'automobile') break;
+      pushField(fields, 'Vehicle', automobileDescription(details));
+      pushField(fields, 'Nickname', details.nickname);
+      pushField(fields, 'VIN', details.vin);
+      pushField(fields, 'License plate', details.licensePlate);
+      pushField(fields, 'Purchase date', formatStoredDate(details.purchaseDateAtISO));
+      pushField(fields, 'Mileage', details.currentMileage);
+      pushField(fields, 'Service shop', details.serviceCompany);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
     case 'water_main': {
       if (details.kind !== 'water_main') break;
       pushField(fields, 'Water source', waterSourceLabel(details.waterSource));
@@ -76,6 +104,9 @@ export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField
       pushField(fields, 'Valve type', valveTypeLabel(details.valveType));
       if (details.waterSource === 'municipal') {
         pushField(fields, 'Meter number', details.meterNumber);
+      }
+      if (details.waterSource === 'well') {
+        pushField(fields, 'Well head location', details.wellHeadLocation);
       }
       pushField(fields, 'Notes', details.notes);
       break;

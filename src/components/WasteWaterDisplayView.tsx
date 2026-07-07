@@ -14,11 +14,14 @@ import {
 } from '../wasteWaterSlots';
 import {
   addWasteWaterExtraPhotos,
+  clearWasteWaterSlotDocument,
   clearWasteWaterSlotPhoto,
   removeWasteWaterExtraPhoto,
   setWasteWaterExtraPhotoCaption,
+  setWasteWaterSlotDocument,
   setWasteWaterSlotPhoto,
   wasteWaterExtraPhotos,
+  wasteWaterSlotDocumentInfo,
   wasteWaterSlotPhotoUri,
 } from '../wasteWaterPhotos';
 import {
@@ -33,8 +36,9 @@ export function WasteWaterDisplayView(props: {
   onSave: (state: AppState) => void;
   onDetailsChange: (details: WasteWaterDetails) => void;
   photoHeader?: ReactNode;
+  onActiveHeroLabelChange?: (label: string | undefined) => void;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange } = props;
   const [editingSection, setEditingSection] = useState<'main' | 'notes' | null>(null);
 
   const slots = wasteWaterPhotoSlotsForDetails(details);
@@ -45,11 +49,27 @@ export function WasteWaterDisplayView(props: {
       buildSlotAndExtraPhotoTiles({
         slots,
         getSlotUri: (key) => wasteWaterSlotPhotoUri(state, details, key as WasteWaterPhotoSlotKey),
+        getSlotDocument: (key) =>
+          wasteWaterSlotDocumentInfo(state, details, key as WasteWaterPhotoSlotKey),
         onAddSlot: (key, uri) => {
           void setWasteWaterSlotPhoto(state, itemId, key as WasteWaterPhotoSlotKey, uri).then(onSave);
         },
+        onAddSlotDocument: (key, picked) => {
+          void setWasteWaterSlotDocument(
+            state,
+            itemId,
+            key as WasteWaterPhotoSlotKey,
+            picked.uri,
+            picked.fileName
+          ).then(onSave);
+        },
         onDeleteSlot: (key) => {
           void clearWasteWaterSlotPhoto(state, itemId, key as WasteWaterPhotoSlotKey).then(onSave);
+        },
+        onDeleteSlotDocument: (key) => {
+          void clearWasteWaterSlotDocument(state, itemId, key as WasteWaterPhotoSlotKey).then(
+            onSave
+          );
         },
         extraPhotos,
         onDeleteExtra: (photoId) => {
@@ -75,7 +95,7 @@ export function WasteWaterDisplayView(props: {
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} slotLabelWidth={88} onAddPhotos={handleAddPhotos}>
+      <PhotoSection tiles={photoTiles} slotLabelWidth={88} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
         {photoHeader}
       </PhotoSection>
 

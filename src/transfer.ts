@@ -68,6 +68,7 @@ export function parseTransferBundle(raw: string):
         photos: Array.isArray(state.photos) ? state.photos : [],
         propertyPhotos: Array.isArray(state.propertyPhotos) ? state.propertyPhotos : [],
         roomPhotos: Array.isArray(state.roomPhotos) ? state.roomPhotos : [],
+        documents: Array.isArray(state.documents) ? state.documents : [],
         events: Array.isArray(state.events) ? state.events : [],
       },
       photoData:
@@ -85,6 +86,7 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
   const photoIds = new Set(local.photos.map((p) => p.id));
   const propertyPhotoIds = new Set(local.propertyPhotos.map((p) => p.id));
   const roomPhotoIds = new Set(local.roomPhotos.map((p) => p.id));
+  const documentIds = new Set(local.documents.map((d) => d.id));
   const eventIds = new Set(local.events.map((e) => e.id));
 
   return {
@@ -103,6 +105,10 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
     roomPhotos: [
       ...local.roomPhotos,
       ...((incoming.roomPhotos ?? []).filter((p) => !roomPhotoIds.has(p.id))),
+    ],
+    documents: [
+      ...local.documents,
+      ...((incoming.documents ?? []).filter((d) => !documentIds.has(d.id))),
     ],
     events: [...local.events, ...incoming.events.filter((e) => !eventIds.has(e.id))],
   };

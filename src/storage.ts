@@ -20,8 +20,32 @@ import { normalizeWasteWaterSystem } from './wasteWaterSlots';
 import { furnaceUsesFuelShutoff, furnaceUsesFuelTank, normalizeFuelType, normalizeHeatDistribution } from './furnaceSlots';
 import { APPLIANCE_PHOTO_SLOTS } from './applianceSlots';
 import { ELECTRIC_PANEL_PHOTO_SLOTS } from './electricPanelSlots';
+import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
+import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 
 const STORAGE_KEY = 'property_inventory_state_v1';
+
+function enforceExclusivePhotoDocument<T extends Record<string, string | undefined>>(
+  entity: T,
+  photoSlotKey: string
+): T {
+  const docKey = documentIdKeyForPhotoSlot(photoSlotKey);
+  if (entity[photoSlotKey] && entity[docKey]) {
+    return { ...entity, [docKey]: undefined };
+  }
+  return entity;
+}
+
+function enforceExclusiveSlots<T extends Record<string, string | undefined>>(
+  entity: T,
+  photoSlotKeys: string[]
+): T {
+  let next = entity;
+  for (const key of photoSlotKeys) {
+    next = enforceExclusivePhotoDocument(next, key);
+  }
+  return next;
+}
 
 function normalizeFurnaceDetails(details: ItemDetails): ItemDetails {
   if (details.kind !== 'furnace') return defaultDetailsForType('furnace');
@@ -69,6 +93,12 @@ function normalizeFurnaceDetails(details: ItemDetails): ItemDetails {
         : undefined
       : undefined,
     receiptPhotoId: details.receiptPhotoId,
+    systemFrontDocumentId: details.systemFrontDocumentId,
+    systemSideDocumentId: details.systemSideDocumentId,
+    systemTagDocumentId: details.systemTagDocumentId,
+    fuelShutoffDocumentId: details.fuelShutoffDocumentId,
+    fuelTankDocumentId: details.fuelTankDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
     installDateAtISO: details.installDateAtISO ?? legacy.installYear,
     installCost: details.installCost,
     installerName: details.installerName,
@@ -86,10 +116,15 @@ function normalizeWaterMainDetails(details: ItemDetails): ItemDetails {
     shutoffLocation: details.shutoffLocation,
     valveType: details.valveType,
     meterNumber: details.meterNumber,
+    wellHeadLocation: details.wellHeadLocation,
     mainValvePhotoId: details.mainValvePhotoId,
     waterBillPhotoId: details.waterBillPhotoId,
     undergroundShutoffPhotoId: details.undergroundShutoffPhotoId,
     wellHeadPhotoId: details.wellHeadPhotoId,
+    mainValveDocumentId: details.mainValveDocumentId,
+    waterBillDocumentId: details.waterBillDocumentId,
+    undergroundShutoffDocumentId: details.undergroundShutoffDocumentId,
+    wellHeadDocumentId: details.wellHeadDocumentId,
     notes: details.notes,
   };
 }
@@ -112,6 +147,10 @@ function normalizeWasteWaterDetails(details: ItemDetails): ItemDetails {
     sewerBillPhotoId: details.sewerBillPhotoId,
     tankLocationPhotoId: details.tankLocationPhotoId,
     septicFieldPhotoId: details.septicFieldPhotoId,
+    wasteLineExitDocumentId: details.wasteLineExitDocumentId,
+    sewerBillDocumentId: details.sewerBillDocumentId,
+    tankLocationDocumentId: details.tankLocationDocumentId,
+    septicFieldDocumentId: details.septicFieldDocumentId,
     notes: details.notes,
   };
 }
@@ -128,6 +167,9 @@ function normalizeElectricPanelDetails(details: ItemDetails): ItemDetails {
     panelDistancePhotoId: details.panelDistancePhotoId,
     panelInsideCoverPhotoId: details.panelInsideCoverPhotoId,
     panelCircuitBreakersPhotoId: details.panelCircuitBreakersPhotoId,
+    panelDistanceDocumentId: details.panelDistanceDocumentId,
+    panelInsideCoverDocumentId: details.panelInsideCoverDocumentId,
+    panelCircuitBreakersDocumentId: details.panelCircuitBreakersDocumentId,
   };
 }
 
@@ -149,17 +191,145 @@ function normalizeWaterTreatmentDetails(details: ItemDetails): ItemDetails {
     waterFilterPhotoId: details.waterFilterPhotoId,
     replacementFilterPhotoId: details.replacementFilterPhotoId,
     receiptPhotoId: details.receiptPhotoId,
+    waterFilterDocumentId: details.waterFilterDocumentId,
+    replacementFilterDocumentId: details.replacementFilterDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
   };
 }
 
+function normalizeAirConditionerDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'air_conditioner') return defaultDetailsForType('air_conditioner');
+  return {
+    kind: 'air_conditioner',
+    acType: details.acType,
+    make: typeof details.make === 'string' ? details.make.trim() || undefined : undefined,
+    modelNumber:
+      typeof details.modelNumber === 'string' ? details.modelNumber.trim() || undefined : undefined,
+    serialNumber:
+      typeof details.serialNumber === 'string' ? details.serialNumber.trim() || undefined : undefined,
+    tonnage: typeof details.tonnage === 'string' ? details.tonnage.trim() || undefined : undefined,
+    refrigerantType:
+      typeof details.refrigerantType === 'string'
+        ? details.refrigerantType.trim() || undefined
+        : undefined,
+    filterSize:
+      typeof details.filterSize === 'string' ? details.filterSize.trim() || undefined : undefined,
+    locationNotes:
+      typeof details.locationNotes === 'string'
+        ? details.locationNotes.trim() || undefined
+        : undefined,
+    installDateAtISO: details.installDateAtISO,
+    installCost:
+      typeof details.installCost === 'string' ? details.installCost.trim() || undefined : undefined,
+    installerName:
+      typeof details.installerName === 'string'
+        ? details.installerName.trim() || undefined
+        : undefined,
+    installerPhone:
+      typeof details.installerPhone === 'string'
+        ? details.installerPhone.trim() || undefined
+        : undefined,
+    serviceCompany:
+      typeof details.serviceCompany === 'string'
+        ? details.serviceCompany.trim() || undefined
+        : undefined,
+    servicePhone:
+      typeof details.servicePhone === 'string'
+        ? details.servicePhone.trim() || undefined
+        : undefined,
+    notes: typeof details.notes === 'string' ? details.notes.trim() || undefined : undefined,
+    acUnitPhotoId: details.acUnitPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    acUnitDocumentId: details.acUnitDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeAutomobileDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'automobile') return defaultDetailsForType('automobile');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  return {
+    kind: 'automobile',
+    nickname: trim(details.nickname),
+    year: trim(details.year),
+    make: trim(details.make),
+    model: trim(details.model),
+    trim: trim(details.trim),
+    vin: trim(details.vin),
+    licensePlate: trim(details.licensePlate),
+    color: trim(details.color),
+    purchaseDateAtISO: details.purchaseDateAtISO,
+    purchasePrice: trim(details.purchasePrice),
+    purchaseLocation: trim(details.purchaseLocation),
+    purchaseMileage: trim(details.purchaseMileage),
+    currentMileage: trim(details.currentMileage),
+    oilType: trim(details.oilType),
+    oilFilter: trim(details.oilFilter),
+    tireSize: trim(details.tireSize),
+    serviceCompany: trim(details.serviceCompany),
+    servicePhone: trim(details.servicePhone),
+    insuranceCompany: trim(details.insuranceCompany),
+    insurancePhone: trim(details.insurancePhone),
+    insurancePolicyNumber: trim(details.insurancePolicyNumber),
+    notes: trim(details.notes),
+    vehiclePhotoId: details.vehiclePhotoId,
+    vinTagPhotoId: details.vinTagPhotoId,
+    titlePhotoId: details.titlePhotoId,
+    registrationPhotoId: details.registrationPhotoId,
+    insuranceCardPhotoId: details.insuranceCardPhotoId,
+    windowStickerPhotoId: details.windowStickerPhotoId,
+    purchaseReceiptPhotoId: details.purchaseReceiptPhotoId,
+    vehicleDocumentId: details.vehicleDocumentId,
+    vinTagDocumentId: details.vinTagDocumentId,
+    titleDocumentId: details.titleDocumentId,
+    registrationDocumentId: details.registrationDocumentId,
+    insuranceCardDocumentId: details.insuranceCardDocumentId,
+    windowStickerDocumentId: details.windowStickerDocumentId,
+    purchaseReceiptDocumentId: details.purchaseReceiptDocumentId,
+  };
+}
+
+function exclusiveItemDetails(itemTypeId: ItemTypeId, details: ItemDetails): ItemDetails {
+  if (details.kind === 'appliance') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      APPLIANCE_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'electric_panel') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      ELECTRIC_PANEL_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  return details;
+}
+
 function normalizeDetails(itemTypeId: ItemTypeId, details: ItemDetails): ItemDetails {
-  if (itemTypeId === 'furnace') return normalizeFurnaceDetails(details);
-  if (itemTypeId === 'water_main') return normalizeWaterMainDetails(details);
-  if (itemTypeId === 'waste_water') return normalizeWasteWaterDetails(details);
-  if (itemTypeId === 'electric_panel') return normalizeElectricPanelDetails(details);
-  if (itemTypeId === 'water_treatment') return normalizeWaterTreatmentDetails(details);
+  if (itemTypeId === 'furnace') return exclusiveItemDetails(itemTypeId, normalizeFurnaceDetails(details));
+  if (itemTypeId === 'air_conditioner') {
+    return exclusiveItemDetails(itemTypeId, normalizeAirConditionerDetails(details));
+  }
+  if (itemTypeId === 'automobile') {
+    return exclusiveItemDetails(itemTypeId, normalizeAutomobileDetails(details));
+  }
+  if (itemTypeId === 'water_main') return exclusiveItemDetails(itemTypeId, normalizeWaterMainDetails(details));
+  if (itemTypeId === 'waste_water') {
+    return exclusiveItemDetails(itemTypeId, normalizeWasteWaterDetails(details));
+  }
+  if (itemTypeId === 'electric_panel') {
+    return exclusiveItemDetails(itemTypeId, normalizeElectricPanelDetails(details));
+  }
+  if (itemTypeId === 'water_treatment') {
+    return exclusiveItemDetails(itemTypeId, normalizeWaterTreatmentDetails(details));
+  }
   const expectedKind = itemTypeId === 'other' ? 'other' : itemTypeId;
-  if (details.kind === expectedKind) return details;
+  if (details.kind === expectedKind) {
+    return exclusiveItemDetails(itemTypeId, details);
+  }
   return defaultDetailsForType(itemTypeId);
 }
 
@@ -192,7 +362,21 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
   const photos = Array.isArray(raw.photos) ? raw.photos : [];
   const propertyPhotos = Array.isArray(raw.propertyPhotos) ? raw.propertyPhotos : [];
   const roomPhotos = Array.isArray(raw.roomPhotos) ? raw.roomPhotos : [];
+  const documents = Array.isArray(raw.documents) ? raw.documents : [];
   const events = (Array.isArray(raw.events) ? raw.events : []).map(normalizeEvent);
+
+  const validDocumentIds = new Set(
+    documents
+      .filter(
+        (doc) =>
+          doc &&
+          typeof doc.id === 'string' &&
+          typeof doc.localUri === 'string' &&
+          typeof doc.fileName === 'string'
+      )
+      .map((doc) => doc.id)
+  );
+  const cleanDocuments = documents.filter((doc) => validDocumentIds.has(doc.id));
 
   const propertyIds = new Set(properties.map((p) => p.id));
   const cleanPropertyPhotos = propertyPhotos.filter((p) => propertyIds.has(p.propertyId));
@@ -215,7 +399,9 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     const slotPhotoIds = new Set(
       [front, left, right, back, fieldCard, plotPlan].filter((id): id is string => id != null)
     );
-    return {
+    const validDocument = (id?: string) =>
+      id && validDocumentIds.has(id) ? id : undefined;
+    let propertyRecord = {
       ...p,
       frontPhotoId: front,
       leftSidePhotoId: left,
@@ -223,22 +409,47 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       backPhotoId: back,
       fieldCardPhotoId: fieldCard,
       plotPlanPhotoId: plotPlan,
+      frontDocumentId: validDocument(p.frontDocumentId),
+      leftSideDocumentId: validDocument(p.leftSideDocumentId),
+      rightSideDocumentId: validDocument(p.rightSideDocumentId),
+      backDocumentId: validDocument(p.backDocumentId),
+      fieldCardDocumentId: validDocument(p.fieldCardDocumentId),
+      plotPlanDocumentId: validDocument(p.plotPlanDocumentId),
       photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter(
         (id) => validPropertyPhotoIds.has(id) && !slotPhotoIds.has(id)
       ),
     };
+    for (const slot of PROPERTY_PHOTO_SLOTS) {
+      const docKey = documentIdKeyForPhotoSlot(slot.key) as keyof Property;
+      if (propertyRecord[slot.key] && propertyRecord[docKey]) {
+        propertyRecord = { ...propertyRecord, [docKey]: undefined };
+      }
+    }
+    return propertyRecord;
   });
   const roomIds = new Set(rooms.filter((r) => propertyIds.has(r.propertyId)).map((r) => r.id));
   const cleanRoomPhotos = roomPhotos.filter((p) => roomIds.has(p.roomId));
   const validRoomPhotoIds = new Set(cleanRoomPhotos.map((p) => p.id));
   const cleanRooms = rooms
     .filter((r) => propertyIds.has(r.propertyId))
-    .map((r) => ({
-      ...r,
-      photoIds: (Array.isArray(r.photoIds) ? r.photoIds : []).filter((id) =>
-        validRoomPhotoIds.has(id)
-      ),
-    }));
+    .map((r) => {
+      const slotAttachments = r.slotAttachments ?? {};
+      const cleanedAttachments: Room['slotAttachments'] = {};
+      for (const [key, attachment] of Object.entries(slotAttachments)) {
+        if (!attachment || typeof attachment.id !== 'string') continue;
+        if (attachment.kind === 'document' && !validDocumentIds.has(attachment.id)) continue;
+        if (attachment.kind === 'photo' && !validRoomPhotoIds.has(attachment.id)) continue;
+        cleanedAttachments[key as keyof typeof cleanedAttachments] = attachment;
+      }
+      return {
+        ...r,
+        requiresAuth: r.requiresAuth === true,
+        slotAttachments: cleanedAttachments,
+        photoIds: (Array.isArray(r.photoIds) ? r.photoIds : []).filter((id) =>
+          validRoomPhotoIds.has(id)
+        ),
+      };
+    });
   const itemIds = new Set(items.filter((i) => roomIds.has(i.roomId)).map((i) => i.id));
   const eventIds = new Set(events.filter((e) => itemIds.has(e.itemId)).map((e) => e.id));
 
@@ -261,6 +472,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     photos: cleanPhotos,
     propertyPhotos: cleanPropertyPhotos,
     roomPhotos: cleanRoomPhotos,
+    documents: cleanDocuments,
     events: cleanEvents.map((e) => ({
       ...e,
       photoIds: e.photoIds.filter((pid) => cleanPhotos.some((p) => p.id === pid)),

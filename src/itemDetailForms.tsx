@@ -1,13 +1,15 @@
 import React from 'react';
 import type { ItemDetails, ItemTypeId } from './types';
 import { ElectricPanelForm } from './screens/itemDetails/ElectricPanelForm';
-import { WaterMainForm, WaterMainNotesFields } from './screens/itemDetails/WaterMainForm';
+import { WaterMainForm } from './screens/itemDetails/WaterMainForm';
 import { WasteWaterForm, WasteWaterNotesFields } from './screens/itemDetails/WasteWaterForm';
 import { GasMainForm } from './screens/itemDetails/GasMainForm';
 import { WaterHeaterForm } from './screens/itemDetails/WaterHeaterForm';
 import { WaterTreatmentForm } from './screens/itemDetails/WaterTreatmentForm';
 import { InternetForm } from './screens/itemDetails/InternetForm';
 import { FurnaceForm } from './screens/itemDetails/FurnaceForm';
+import { AirConditionerForm } from './screens/itemDetails/AirConditionerForm';
+import { AutomobileForm } from './screens/itemDetails/AutomobileForm';
 import { ApplianceForm } from './screens/itemDetails/ApplianceForm';
 import { OtherItemForm } from './screens/itemDetails/OtherItemForm';
 
@@ -28,12 +30,7 @@ export function ItemDetailsForm(props: {
     case 'water_main': {
       const waterMain =
         details.kind === 'water_main' ? details : { kind: 'water_main' as const };
-      return (
-        <>
-          <WaterMainForm details={waterMain} onChange={onChange} />
-          <WaterMainNotesFields details={waterMain} onChange={onChange} />
-        </>
-      );
+      return <WaterMainForm details={waterMain} onChange={onChange} />;
     }
     case 'waste_water': {
       const wasteWater =
@@ -77,6 +74,20 @@ export function ItemDetailsForm(props: {
       return (
         <FurnaceForm
           details={details.kind === 'furnace' ? details : { kind: 'furnace' }}
+          onChange={onChange}
+        />
+      );
+    case 'air_conditioner':
+      return (
+        <AirConditionerForm
+          details={details.kind === 'air_conditioner' ? details : { kind: 'air_conditioner' }}
+          onChange={onChange}
+        />
+      );
+    case 'automobile':
+      return (
+        <AutomobileForm
+          details={details.kind === 'automobile' ? details : { kind: 'automobile' }}
           onChange={onChange}
         />
       );

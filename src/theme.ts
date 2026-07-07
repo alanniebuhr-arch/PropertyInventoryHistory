@@ -23,6 +23,12 @@ export const sharedStyles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
+  screenHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
+    backgroundColor: colors.bg,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

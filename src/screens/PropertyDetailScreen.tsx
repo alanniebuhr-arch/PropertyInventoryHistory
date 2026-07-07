@@ -12,6 +12,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppState, Room } from '../types';
 import { OverdueBadge, RoomListRow } from '../components/ListRows';
 import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
+import { RenameModal } from '../components/RenameModal';
+import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { sharedStyles } from '../theme';
 import { uid } from '../utils';
 import {
@@ -37,6 +39,8 @@ export function PropertyDetailScreen(props: {
   const rooms = roomsForProperty(state, propertyId);
   const [modalOpen, setModalOpen] = useState(false);
   const [roomName, setRoomName] = useState('');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
 
   if (!property) {
     return (
@@ -71,6 +75,26 @@ export function PropertyDetailScreen(props: {
     setRoomName('');
   }
 
+  function openRenameProperty() {
+    setRenameDraft(prop.name);
+    setRenameOpen(true);
+  }
+
+  function savePropertyName() {
+    const trimmed = renameDraft.trim();
+    if (!trimmed) {
+      Alert.alert('Name required', 'Enter a property name.');
+      return;
+    }
+    onSave({
+      ...state,
+      properties: state.properties.map((p) =>
+        p.id === propertyId ? { ...p, name: trimmed } : p
+      ),
+    });
+    setRenameOpen(false);
+  }
+
   function confirmDeleteProperty() {
     const propName = prop.name;
     Alert.alert(
@@ -92,14 +116,19 @@ export function PropertyDetailScreen(props: {
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={sharedStyles.content}>
-        <View style={sharedStyles.headerRow}>
-          <Pressable onPress={onBack} style={sharedStyles.backBtn}>
-            <Text style={sharedStyles.backBtnText}>← Back</Text>
-          </Pressable>
-        </View>
+      <ScreenBackHeader onPress={onBack} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
+      >
         <PropertyPhotosSection state={state} property={prop} onSave={onSave}>
-          <Text style={sharedStyles.title}>{prop.name}</Text>
+          <Pressable
+            onLongPress={openRenameProperty}
+            accessibilityRole="header"
+            accessibilityHint="Long press to rename this property"
+          >
+            <Text style={sharedStyles.title}>{prop.name}</Text>
+          </Pressable>
           {prop.address ? <Text style={sharedStyles.subtitle}>{prop.address}</Text> : null}
         </PropertyPhotosSection>
         <Text style={sharedStyles.cardMeta}>
@@ -118,6 +147,7 @@ export function PropertyDetailScreen(props: {
               thumbnailUri={firstPhotoUriForRoom(state, r)}
               itemCount={state.items.filter((i) => i.roomId === r.id).length}
               overdueCount={overdueCountForRoom(state, r.id)}
+              requiresAuth={r.requiresAuth}
               onPress={() => onOpenRoom(r.id)}
             />
           ))
@@ -158,6 +188,16 @@ export function PropertyDetailScreen(props: {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <RenameModal
+        visible={renameOpen}
+        title="Rename property"
+        value={renameDraft}
+        onChangeText={setRenameDraft}
+        onSave={savePropertyName}
+        onClose={() => setRenameOpen(false)}
+        placeholder="Property name"
+      />
     </View>
   );
 }

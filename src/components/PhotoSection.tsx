@@ -2,21 +2,28 @@ import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from
 import {
   Image,
   Pressable,
-  ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { AddPhotoPlaceholder } from './PhotoSlot';
+import { PhotoHeroCarousel } from './PhotoHeroCarousel';
 import { PhotoLabelModal } from './PhotoLabelModal';
 import { PhotoViewerModal, type ViewerPhoto } from './PhotoViewerModal';
 import { sharedStyles, colors } from '../theme';
 import { ADD_PHOTO_TILE_LABEL, promptPickOrTakeMulti } from '../photoPicker';
 import { showLabeledPhotoThumbActions } from '../photoLabeling';
+import { DocumentListSection, type DocumentListRow } from './DocumentListSection';
 
 const DEFAULT_THUMB_SIZE = 72;
 const DEFAULT_SLOT_LABEL_WIDTH = 80;
-const HERO_ASPECT = 0.55;
+
+export type SlotDocumentTileInfo = {
+  id: string;
+  fileName: string;
+  localUri: string;
+};
 
 export type PhotoTile =
   | {
@@ -24,8 +31,10 @@ export type PhotoTile =
       key: string;
       shortLabel: string;
       uri?: string;
+      document?: SlotDocumentTileInfo;
       onAdd: () => void;
       onDelete?: () => void;
+      onDeleteDocument?: () => void;
     }
   | {
       kind: 'extra';
@@ -48,7 +57,11 @@ export function PhotoSection(props: {
   slotLabelWidth?: number;
   /** Adds photos and returns new photo ids for optional labeling. */
   onAddPhotos?: (uris: string[]) => Promise<string[] | void> | string[] | void;
+  /** Called when the hero photo changes; undefined when there is no named label. */
+  onActiveHeroLabelChange?: (label: string | undefined) => void;
   children?: ReactNode;
+  /** Optional pan gesture for the heading area (title, etc.). */
+  childrenGesture?: ReturnType<typeof Gesture.Pan>;
 }) {
   const {
     tiles,
@@ -57,7 +70,9 @@ export function PhotoSection(props: {
     thumbSize = DEFAULT_THUMB_SIZE,
     slotLabelWidth = DEFAULT_SLOT_LABEL_WIDTH,
     onAddPhotos,
+    onActiveHeroLabelChange,
     children,
+    childrenGesture,
   } = props;
 
   const addPlaceholderSize = Math.round(thumbSize / 3);
@@ -114,7 +129,9 @@ export function PhotoSection(props: {
   );
 
   const stripTiles = useMemo((): PhotoTile[] => {
-    const withoutAdd = tiles.filter((tile) => tile.kind !== 'add');
+    const withoutAdd = tiles.filter(
+      (tile) => tile.kind !== 'add' && !(tile.kind === 'reserved' && tile.document)
+    );
     if (!onAddPhotos) {
       const addTile = tiles.find((tile) => tile.kind === 'add');
       return addTile ? [...withoutAdd, addTile] : withoutAdd;
@@ -129,6 +146,21 @@ export function PhotoSection(props: {
       },
     ];
   }, [handleAddPhotos, onAddPhotos, tiles]);
+
+  const documentRows = useMemo((): DocumentListRow[] => {
+    const rows: DocumentListRow[] = [];
+    for (const tile of tiles) {
+      if (tile.kind !== 'reserved' || !tile.document) continue;
+      rows.push({
+        id: tile.key,
+        label: tile.shortLabel,
+        fileName: tile.document.fileName,
+        localUri: tile.document.localUri,
+        onDelete: () => tile.onDeleteDocument?.(),
+      });
+    }
+    return rows;
+  }, [tiles]);
 
   const viewerPhotos = useMemo((): ViewerPhoto[] => {
     const photos: ViewerPhoto[] = [];
@@ -168,14 +200,27 @@ export function PhotoSection(props: {
     }
   }, [heroPhotoId, viewerPhotos]);
 
-  const heroPhoto = effectiveHeroId
-    ? viewerPhotos.find((photo) => photo.id === effectiveHeroId)
-    : undefined;
+  const heroIndex = useMemo(() => {
+    if (!effectiveHeroId) return 0;
+    const index = viewerPhotos.findIndex((photo) => photo.id === effectiveHeroId);
+    return index >= 0 ? index : 0;
+  }, [effectiveHeroId, viewerPhotos]);
+
+  const activeHeroLabel = useMemo((): string | undefined => {
+    const photo = viewerPhotos[heroIndex];
+    if (!photo) return undefined;
+    const label = photo.label?.trim();
+    if (!label || label === 'Photo') return undefined;
+    return label;
+  }, [heroIndex, viewerPhotos]);
+
+  useEffect(() => {
+    onActiveHeroLabelChange?.(activeHeroLabel);
+  }, [activeHeroLabel, onActiveHeroLabelChange]);
 
   function openHeroViewer() {
-    if (!effectiveHeroId) return;
-    const index = viewerPhotos.findIndex((photo) => photo.id === effectiveHeroId);
-    setViewerIndex(index >= 0 ? index : 0);
+    if (viewerPhotos.length === 0) return;
+    setViewerIndex(heroIndex);
   }
 
   function openRenameEditor(photoId: string, currentLabel?: string) {
@@ -231,7 +276,7 @@ export function PhotoSection(props: {
           onLongPress={() => tile.onDelete && showLabeledPhotoThumbActions({ onDelete: tile.onDelete })}
           accessibilityRole="button"
           accessibilityLabel={`Show ${tile.shortLabel}`}
-          accessibilityHint="Displays this photo at the top."
+          accessibilityHint="Displays this photo in the large view."
         >
           <Image source={{ uri: tile.uri }} style={thumbImageStyle(isHero)} />
         </TouchableOpacity>
@@ -239,7 +284,12 @@ export function PhotoSection(props: {
         <Pressable
           onPress={tile.onAdd}
           accessibilityRole="button"
-          accessibilityLabel={`Add ${tile.shortLabel}`}
+          accessibilityLabel={
+            tile.document ? `Replace ${tile.shortLabel} PDF` : `Add ${tile.shortLabel}`
+          }
+          accessibilityHint={
+            tile.document ? 'Choose a new photo or PDF for this slot.' : undefined
+          }
           style={{
             width: thumbSize,
             height: thumbSize,
@@ -271,7 +321,7 @@ export function PhotoSection(props: {
           }
           accessibilityRole="button"
           accessibilityLabel={label ? `Show ${label} photo` : 'Show photo'}
-          accessibilityHint="Displays this photo at the top."
+          accessibilityHint="Displays this photo in the large view."
         >
           <Image source={{ uri: tile.uri }} style={thumbImageStyle(isHero)} />
         </TouchableOpacity>
@@ -309,31 +359,30 @@ export function PhotoSection(props: {
     return `add-${index}`;
   }
 
+  const heading = children ? (
+    childrenGesture ? (
+      <GestureDetector gesture={childrenGesture}>
+        <View style={{ marginBottom: viewerPhotos.length > 0 ? 12 : 0 }}>{children}</View>
+      </GestureDetector>
+    ) : (
+      <View style={{ marginBottom: viewerPhotos.length > 0 ? 12 : 0 }}>{children}</View>
+    )
+  ) : null;
+
   return (
     <View style={{ marginBottom: 4 }}>
-      {heroPhoto ? (
-        <View style={{ marginBottom: 12 }}>
-          <Pressable
-            onPress={openHeroViewer}
-            accessibilityRole="imagebutton"
-            accessibilityLabel={heroPhoto.label}
-            accessibilityHint="Opens full-screen photo viewer."
-          >
-            <Image
-              source={{ uri: heroPhoto.uri }}
-              style={{
-                width: '100%',
-                aspectRatio: 1 / HERO_ASPECT,
-                borderRadius: 12,
-                backgroundColor: colors.border,
-              }}
-              resizeMode="cover"
-            />
-          </Pressable>
-        </View>
-      ) : null}
+      {heading}
 
-      {children}
+      <PhotoHeroCarousel
+        photos={viewerPhotos.map((photo) => ({
+          id: photo.id,
+          uri: photo.uri,
+          label: photo.label,
+        }))}
+        activeId={effectiveHeroId}
+        onActiveIdChange={setHeroPhotoId}
+        onOpenViewer={openHeroViewer}
+      />
 
       <Text style={sharedStyles.sectionTitle}>{title}</Text>
       {hint ? <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>{hint}</Text> : null}
@@ -361,6 +410,8 @@ export function PhotoSection(props: {
           );
         })}
       </ScrollView>
+
+      <DocumentListSection rows={documentRows} />
 
       <PhotoViewerModal
         photos={viewerPhotos}

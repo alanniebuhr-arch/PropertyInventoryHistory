@@ -14,11 +14,14 @@ import {
 } from '../electricPanelSlots';
 import {
   addElectricPanelExtraPhotos,
+  clearElectricPanelSlotDocument,
   clearElectricPanelSlotPhoto,
   electricPanelExtraPhotos,
+  electricPanelSlotDocumentInfo,
   electricPanelSlotPhotoUri,
   removeElectricPanelExtraPhoto,
   setElectricPanelExtraPhotoCaption,
+  setElectricPanelSlotDocument,
   setElectricPanelSlotPhoto,
 } from '../electricPanelPhotos';
 import { ElectricPanelForm } from '../screens/itemDetails/ElectricPanelForm';
@@ -30,8 +33,9 @@ export function ElectricPanelDisplayView(props: {
   onSave: (state: AppState) => void;
   onDetailsChange: (details: ElectricPanelDetails) => void;
   photoHeader?: ReactNode;
+  onActiveHeroLabelChange?: (label: string | undefined) => void;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange } = props;
   const [editingSection, setEditingSection] = useState<'panel' | null>(null);
 
   const extraPhotos = electricPanelExtraPhotos(state, itemId, details);
@@ -41,11 +45,27 @@ export function ElectricPanelDisplayView(props: {
       buildSlotAndExtraPhotoTiles({
         slots: ELECTRIC_PANEL_PHOTO_SLOTS,
         getSlotUri: (key) => electricPanelSlotPhotoUri(state, details, key as ElectricPanelPhotoSlotKey),
+        getSlotDocument: (key) =>
+          electricPanelSlotDocumentInfo(state, details, key as ElectricPanelPhotoSlotKey),
         onAddSlot: (key, uri) => {
           void setElectricPanelSlotPhoto(state, itemId, key as ElectricPanelPhotoSlotKey, uri).then(onSave);
         },
+        onAddSlotDocument: (key, picked) => {
+          void setElectricPanelSlotDocument(
+            state,
+            itemId,
+            key as ElectricPanelPhotoSlotKey,
+            picked.uri,
+            picked.fileName
+          ).then(onSave);
+        },
         onDeleteSlot: (key) => {
           void clearElectricPanelSlotPhoto(state, itemId, key as ElectricPanelPhotoSlotKey).then(onSave);
+        },
+        onDeleteSlotDocument: (key) => {
+          void clearElectricPanelSlotDocument(state, itemId, key as ElectricPanelPhotoSlotKey).then(
+            onSave
+          );
         },
         extraPhotos,
         onDeleteExtra: (photoId) => {
@@ -67,7 +87,7 @@ export function ElectricPanelDisplayView(props: {
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} slotLabelWidth={88} onAddPhotos={handleAddPhotos}>
+      <PhotoSection tiles={photoTiles} slotLabelWidth={88} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
         {photoHeader}
       </PhotoSection>
 

@@ -34,6 +34,11 @@ const WELL_HEAD_SLOT = {
   shortLabel: 'Well head',
 };
 
+export const WATER_SOURCE_PICKER_OPTIONS: { value: WaterSource; label: string }[] = [
+  { value: 'municipal', label: 'Municipal' },
+  { value: 'well', label: 'Well' },
+];
+
 export const WATER_SOURCE_OPTIONS: {
   value: WaterSource | undefined;
   label: string;
@@ -84,7 +89,9 @@ export function waterMainHasInfo(details: WaterMainDetails): boolean {
     details.waterSource ||
       details.shutoffLocation?.trim() ||
       details.valveType ||
-      (details.waterSource === 'municipal' && details.meterNumber?.trim())
+      (details.waterSource === 'municipal' && details.meterNumber?.trim()) ||
+      (details.waterSource === 'well' && details.wellHeadLocation?.trim()) ||
+      details.notes?.trim()
   );
 }
 

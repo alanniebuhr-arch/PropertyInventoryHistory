@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   Switch,
@@ -9,9 +10,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, ItemEvent, ItemEventRecurrence, ItemEventType, ItemPhoto, RecurrenceInterval } from '../types';
 import { EventPhotoSection } from '../components/EventPhotoSection';
-import { sharedStyles } from '../theme';
+import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { sharedStyles, colors } from '../theme';
 import { uid, nowISO, dateInputValue, parseDateInputToISO } from '../utils';
 import { deleteEventCascade, itemById, photosForEvent } from '../storage';
 import {
@@ -25,18 +28,30 @@ function eventByIdHelper(state: AppState, eventId: string): ItemEvent | undefine
   return state.events.find((e) => e.id === eventId);
 }
 
-const EVENT_TYPES: ItemEventType[] = ['maintenance', 'inspection', 'repair', 'replacement', 'other'];
+const EVENT_TYPES: ItemEventType[] = [
+  'maintenance',
+  'inspection',
+  'repair',
+  'replacement',
+  'improvement',
+  'fuel_delivery',
+  'other',
+];
 const RECURRENCE_OPTIONS: RecurrenceInterval[] = ['monthly', 'quarterly', 'annual', 'custom'];
 
 function defaultTitleForType(eventType: ItemEventType, itemTypeId?: string): string {
   if (eventType === 'maintenance') {
     if (itemTypeId === 'furnace') return 'Annual heating service';
+    if (itemTypeId === 'air_conditioner') return 'Annual AC service';
+    if (itemTypeId === 'automobile') return 'Oil change & inspection';
     if (itemTypeId === 'waste_water') return 'Waste water service';
     if (itemTypeId === 'water_treatment') return 'Filter service';
     return 'Annual maintenance';
   }
   if (eventType === 'repair') return 'Repair';
   if (eventType === 'inspection') return 'Inspection';
+  if (eventType === 'improvement') return 'Improvement';
+  if (eventType === 'fuel_delivery') return 'Fuel delivery';
   return '';
 }
 
@@ -68,12 +83,13 @@ export function AddEditEventScreen(props: {
     existing ? photosForEvent(state, existing.id) : []
   );
   const [titleTouched, setTitleTouched] = useState(Boolean(existing?.title));
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
 
   useEffect(() => {
     if (existing || titleTouched) return;
     const suggested = defaultTitleForType(eventType, item?.itemTypeId);
     if (suggested) setTitle(suggested);
-    if (eventType === 'maintenance' && (item?.itemTypeId === 'furnace' || item?.itemTypeId === 'waste_water' || item?.itemTypeId === 'water_treatment')) {
+    if (eventType === 'maintenance' && (item?.itemTypeId === 'furnace' || item?.itemTypeId === 'air_conditioner' || item?.itemTypeId === 'automobile' || item?.itemTypeId === 'waste_water' || item?.itemTypeId === 'water_treatment')) {
       setRecurring(true);
       setInterval('annual');
     }
@@ -164,7 +180,7 @@ export function AddEditEventScreen(props: {
     }
     if (t === 'maintenance' && !existing) {
       setRecurring(true);
-      if (it.itemTypeId === 'furnace' || it.itemTypeId === 'waste_water' || it.itemTypeId === 'water_treatment') setInterval('annual');
+      if (it.itemTypeId === 'furnace' || it.itemTypeId === 'air_conditioner' || it.itemTypeId === 'automobile' || it.itemTypeId === 'waste_water' || it.itemTypeId === 'water_treatment') setInterval('annual');
     }
   }
 
@@ -259,12 +275,12 @@ export function AddEditEventScreen(props: {
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={sharedStyles.content} keyboardShouldPersistTaps="handled">
-        <View style={sharedStyles.headerRow}>
-          <Pressable onPress={onBack} style={sharedStyles.backBtn}>
-            <Text style={sharedStyles.backBtnText}>← Cancel</Text>
-          </Pressable>
-        </View>
+      <ScreenBackHeader onPress={onBack} label="← Cancel" />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={sharedStyles.title}>{existing ? 'Edit service event' : 'Log service event'}</Text>
         <Text style={sharedStyles.subtitle}>
           Record maintenance, repairs, or inspections. Add receipt and parts photos below.
@@ -282,21 +298,19 @@ export function AddEditEventScreen(props: {
         />
 
         <Text style={sharedStyles.fieldLabel}>Type</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {EVENT_TYPES.map((t) => (
-            <Pressable
-              key={t}
-              onPress={() => selectEventType(t)}
-              style={[
-                sharedStyles.secondaryBtn,
-                { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
-                eventType === t && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
-              ]}
-            >
-              <Text style={sharedStyles.secondaryBtnText}>{EVENT_TYPE_LABELS[t]}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <Pressable
+          onPress={() => setTypePickerOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Event type: ${EVENT_TYPE_LABELS[eventType]}`}
+          accessibilityHint="Opens a list of event types."
+          style={[
+            sharedStyles.input,
+            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+          ]}
+        >
+          <Text style={{ fontSize: 16, color: colors.text }}>{EVENT_TYPE_LABELS[eventType]}</Text>
+          <MaterialIcons name="arrow-drop-down" size={24} color={colors.text} />
+        </Pressable>
 
         <Text style={sharedStyles.fieldLabel}>Date (MM/DD/YYYY)</Text>
         <TextInput value={dateStr} onChangeText={setDateStr} style={sharedStyles.input} placeholder="03/15/2026" />
@@ -379,6 +393,61 @@ export function AddEditEventScreen(props: {
           </Pressable>
         ) : null}
       </ScrollView>
+
+      <Modal
+        visible={typePickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTypePickerOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
+          onPress={() => setTypePickerOpen(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: '#fff',
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              padding: 20,
+              paddingBottom: insets.bottom + 20,
+            }}
+            onPress={() => {}}
+          >
+            <Text style={sharedStyles.sectionTitle}>Event type</Text>
+            {EVENT_TYPES.map((t) => {
+              const selected = eventType === t;
+              return (
+                <Pressable
+                  key={t}
+                  onPress={() => {
+                    selectEventType(t);
+                    setTypePickerOpen(false);
+                  }}
+                  style={({ pressed }) => [
+                    sharedStyles.card,
+                    pressed && sharedStyles.cardPressed,
+                    selected && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
+                  ]}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text style={sharedStyles.cardTitle}>{EVENT_TYPE_LABELS[t]}</Text>
+                    {selected ? (
+                      <MaterialIcons name="check" size={20} color="#1f5fbf" />
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

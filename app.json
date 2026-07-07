@@ -2,7 +2,7 @@
   "expo": {
     "name": "Property Inventory History",
     "slug": "PropertyInventoryHistory",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,15 +14,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.alanniebuhr.propertyinventoryhistory",
-      "buildNumber": "2",
+      "buildNumber": "8",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Take photos of property items for your inventory.",
-        "NSPhotoLibraryUsageDescription": "Attach photos of property items to your inventory."
+        "NSPhotoLibraryUsageDescription": "Attach photos of property items to your inventory.",
+        "NSFaceIDUsageDescription": "Unlock protected rooms in your property inventory."
       }
     },
     "android": {
-      "versionCode": 1,
+      "versionCode": 7,
       "adaptiveIcon": {
         "backgroundColor": "#1f5fbf",
         "foregroundImage": "./assets/android-icon-foreground.png",

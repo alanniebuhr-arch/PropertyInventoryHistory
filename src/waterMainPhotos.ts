@@ -3,6 +3,14 @@ import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { waterMainPhotoSlotsForSource, type WaterMainPhotoSlotKey } from './waterMainSlots';
+import {
+  clearItemSlotDocument,
+  clearItemSlotDocumentOnPhotoSet,
+  itemSlotDocumentId,
+  itemSlotDocumentInfo,
+  setItemSlotDocument,
+} from './itemSlotDocuments';
+import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 
 function asWaterMainDetails(details: InventoryItem['details']): WaterMainDetails {
   return details.kind === 'water_main' ? details : { kind: 'water_main' };
@@ -18,7 +26,16 @@ export function waterMainSlotPhotoUri(
   details: WaterMainDetails,
   slotKey: WaterMainPhotoSlotKey
 ): string | undefined {
+  if (itemSlotDocumentId(details, slotKey)) return undefined;
   return photoUriForId(state, details[slotKey]);
+}
+
+export function waterMainSlotDocumentInfo(
+  state: AppState,
+  details: WaterMainDetails,
+  slotKey: WaterMainPhotoSlotKey
+) {
+  return itemSlotDocumentInfo(state, details, slotKey);
 }
 
 function waterMainSlotPhotoIds(details: WaterMainDetails): Set<string> {
@@ -119,7 +136,8 @@ export async function setWaterMainSlotPhoto(
   if (!item) return state;
 
   let nextState = state;
-  const details = asWaterMainDetails(item.details);
+  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asWaterMainDetails);
+  const details = asWaterMainDetails(nextState.items.find((i) => i.id === itemId)!.details);
   const oldPhotoId = details[slotKey];
 
   if (oldPhotoId) {
@@ -137,9 +155,10 @@ export async function setWaterMainSlotPhoto(
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asWaterMainDetails(currentItem.details);
+  const docKey = documentIdKeyForPhotoSlot(slotKey);
   const updatedItem: InventoryItem = {
     ...currentItem,
-    details: { ...currentDetails, [slotKey]: photoId },
+    details: { ...currentDetails, [slotKey]: photoId, [docKey]: undefined },
     photoIds: [...currentItem.photoIds, photoId],
   };
 
@@ -215,6 +234,7 @@ export async function applyWaterMainDetailsChange(
   const normalized: WaterMainDetails = {
     ...next,
     meterNumber: next.waterSource === 'municipal' ? next.meterNumber : undefined,
+    wellHeadLocation: next.waterSource === 'well' ? next.wellHeadLocation : undefined,
     waterBillPhotoId:
       next.waterSource === 'municipal' ? currentDetails.waterBillPhotoId : undefined,
     undergroundShutoffPhotoId:
@@ -223,4 +243,30 @@ export async function applyWaterMainDetailsChange(
   };
 
   return updateWaterMainDetails(nextState, itemId, normalized);
+}
+
+export async function setWaterMainSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: WaterMainPhotoSlotKey,
+  sourceUri: string,
+  fileName: string
+): Promise<AppState> {
+  return setItemSlotDocument(
+    state,
+    itemId,
+    slotKey,
+    sourceUri,
+    fileName,
+    asWaterMainDetails,
+    clearWaterMainSlotPhoto
+  );
+}
+
+export async function clearWaterMainSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: WaterMainPhotoSlotKey
+): Promise<AppState> {
+  return clearItemSlotDocument(state, itemId, slotKey, asWaterMainDetails);
 }

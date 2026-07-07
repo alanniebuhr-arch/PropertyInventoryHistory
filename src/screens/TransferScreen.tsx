@@ -14,6 +14,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import type { AppState } from '../types';
 import { sharedStyles } from '../theme';
+import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import {
   buildTransferBundle,
   mergeImportState,
@@ -22,6 +23,7 @@ import {
   transferBundleToJson,
 } from '../transfer';
 import { readPhotoAsBase64, writePhotoFromBase64 } from '../photoStorage';
+import { readDocumentAsBase64, writeDocumentFromBase64 } from '../documentStorage';
 
 export function TransferScreen(props: {
   state: AppState;
@@ -76,6 +78,18 @@ export function TransferScreen(props: {
             };
           }
         }
+        for (const document of merged.documents) {
+          const b64 = photoData[document.id];
+          if (b64) {
+            const localUri = await writeDocumentFromBase64(document.id, b64);
+            merged = {
+              ...merged,
+              documents: merged.documents.map((doc) =>
+                doc.id === document.id ? { ...doc, localUri } : doc
+              ),
+            };
+          }
+        }
       }
       onImport(merged);
       Alert.alert('Import complete', replace ? 'Data replaced.' : 'New records merged.');
@@ -104,6 +118,10 @@ export function TransferScreen(props: {
         for (const photo of state.roomPhotos) {
           const b64 = await readPhotoAsBase64(photo.localUri);
           if (b64) photoData[photo.id] = b64;
+        }
+        for (const document of state.documents) {
+          const b64 = await readDocumentAsBase64(document.localUri);
+          if (b64) photoData[document.id] = b64;
         }
       }
       const bundle = buildTransferBundle({
@@ -168,23 +186,22 @@ export function TransferScreen(props: {
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={sharedStyles.content}>
-        <View style={sharedStyles.headerRow}>
-          <Pressable onPress={onBack} style={sharedStyles.backBtn}>
-            <Text style={sharedStyles.backBtnText}>← Back</Text>
-          </Pressable>
-        </View>
+      <ScreenBackHeader onPress={onBack} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
+      >
         <Text style={sharedStyles.title}>Backup</Text>
         <Text style={sharedStyles.subtitle}>
-          Export or import your properties, rooms, items, events, and optionally photos.
+          Export or import your properties, rooms, items, events, and optionally photos and PDFs.
         </Text>
 
         <View style={[sharedStyles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-          <Text style={sharedStyles.cardTitle}>Include photos in export</Text>
+          <Text style={sharedStyles.cardTitle}>Include photos and PDFs in export</Text>
           <Switch value={includePhotos} onValueChange={setIncludePhotos} />
         </View>
         <Text style={sharedStyles.cardMeta}>
-          Photo exports are larger but restore images on import.
+          Photo and PDF exports are larger but restore files on import.
         </Text>
 
         {busy ? <ActivityIndicator style={{ marginVertical: 16 }} /> : null}

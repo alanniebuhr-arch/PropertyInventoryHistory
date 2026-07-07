@@ -75,14 +75,20 @@ export const EVENT_TYPE_LABELS: Record<ItemEvent['eventType'], string> = {
   inspection: 'Inspection',
   repair: 'Repair',
   replacement: 'Replacement',
+  improvement: 'Improvement',
+  fuel_delivery: 'Fuel delivery',
   other: 'Other',
 };
 
-/** One-line summary for list views (title, date, optional cost). */
+/** One-line summary for list views (title, date, optional cost, optional notes). */
 export function formatServiceEventSummary(event: ItemEvent): string {
   const parts = [event.title, formatDate(event.occurredAtISO)];
   if (event.cost != null) {
     parts.push(formatCurrency(event.cost));
+  }
+  const notes = event.notes?.trim();
+  if (notes) {
+    parts.push(notes);
   }
   return parts.join(' · ');
 }

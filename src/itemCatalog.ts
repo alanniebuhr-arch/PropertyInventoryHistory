@@ -1,4 +1,6 @@
-import type { ItemDetails, ItemTypeId } from './types';
+import type { InventoryItem, ItemDetails, ItemTypeId } from './types';
+import { automobileDescription } from './automobileSlots';
+import { nowISO, uid } from './utils';
 
 
 
@@ -32,6 +34,10 @@ export const ITEM_CATALOG: CatalogEntry[] = [
 
   { id: 'furnace', label: 'Heating', defaultRecurrenceHint: 'Annual maintenance' },
 
+  { id: 'air_conditioner', label: 'Air conditioner', defaultRecurrenceHint: 'Annual maintenance' },
+
+  { id: 'automobile', label: 'Automobile', defaultRecurrenceHint: 'Oil change & inspection' },
+
   { id: 'appliance', label: 'Appliance' },
 
   { id: 'other', label: 'Other' },
@@ -63,6 +69,55 @@ export function catalogLabel(itemTypeId: ItemTypeId): string {
 }
 
 
+
+export function namePlaceholderForItemType(itemTypeId: ItemTypeId): string {
+  switch (itemTypeId) {
+    case 'other':
+      return 'Describe this item';
+    case 'appliance':
+      return 'e.g. Refrigerator';
+    case 'electric_panel':
+      return 'e.g. Main panel';
+    case 'automobile':
+      return 'e.g. Family SUV';
+    default:
+      return 'Optional name';
+  }
+}
+
+export function createInventoryItem(
+  roomId: string,
+  itemTypeId: ItemTypeId,
+  name: string
+): InventoryItem {
+  const trimmed = name.trim();
+  let details = defaultDetailsForType(itemTypeId);
+  let displayName: string | undefined;
+
+  if (itemTypeId === 'other') {
+    displayName = trimmed;
+  } else if (trimmed) {
+    if (itemTypeId === 'appliance' && details.kind === 'appliance') {
+      details = { ...details, nickname: trimmed };
+    } else if (itemTypeId === 'electric_panel' && details.kind === 'electric_panel') {
+      details = { ...details, name: trimmed };
+    } else if (itemTypeId === 'automobile' && details.kind === 'automobile') {
+      details = { ...details, nickname: trimmed };
+    } else {
+      displayName = trimmed;
+    }
+  }
+
+  return {
+    id: uid('item'),
+    roomId,
+    itemTypeId,
+    displayName,
+    details,
+    photoIds: [],
+    createdAtISO: nowISO(),
+  };
+}
 
 export function defaultDetailsForType(itemTypeId: ItemTypeId): ItemDetails {
 
@@ -99,6 +154,14 @@ export function defaultDetailsForType(itemTypeId: ItemTypeId): ItemDetails {
     case 'furnace':
 
       return { kind: 'furnace' };
+
+    case 'air_conditioner':
+
+      return { kind: 'air_conditioner' };
+
+    case 'automobile':
+
+      return { kind: 'automobile' };
 
     case 'appliance':
 
@@ -144,6 +207,12 @@ export function itemDisplayLabel(item: {
 
   }
 
+  if (item.itemTypeId === 'automobile' && item.details?.kind === 'automobile') {
+
+    return item.details.nickname?.trim() || automobileDescription(item.details) || catalogLabel(item.itemTypeId);
+
+  }
+
   return catalogLabel(item.itemTypeId);
 
 }
@@ -175,6 +244,15 @@ export function itemCustomName(item: {
   if (item.itemTypeId === 'electric_panel' && item.details?.kind === 'electric_panel') {
 
     return item.details.name?.trim() || undefined;
+
+  }
+
+  if (item.itemTypeId === 'automobile' && item.details?.kind === 'automobile') {
+
+    const nickname = item.details.nickname?.trim();
+    const description = automobileDescription(item.details);
+    if (nickname && description) return description;
+    return undefined;
 
   }
 

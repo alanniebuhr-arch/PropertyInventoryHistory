@@ -33,6 +33,7 @@ export const DEFAULT_PROPERTY_TEMPLATE: PropertyTemplateRoom[] = [
       { itemTypeId: 'waste_water' },
       { itemTypeId: 'electric_panel' },
       { itemTypeId: 'furnace' },
+      { itemTypeId: 'air_conditioner' },
       { itemTypeId: 'internet' },
     ],
   },
@@ -57,7 +58,7 @@ export const DEFAULT_PROPERTY_TEMPLATE: PropertyTemplateRoom[] = [
   {
     houseName: 'Garage',
     sortOrder: 3,
-    items: [],
+    items: [{ itemTypeId: 'automobile' }],
   },
 ];
 

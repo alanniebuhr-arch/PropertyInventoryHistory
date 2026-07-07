@@ -1,11 +1,11 @@
-import type { AppState, InventoryItem, ItemPhoto, WaterTreatmentDetails } from './types';
+import type { AirConditionerDetails, AppState, InventoryItem, ItemPhoto } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import {
-  WATER_TREATMENT_PHOTO_SLOTS,
-  type WaterTreatmentPhotoSlotKey,
-} from './waterTreatmentSlots';
+  AIR_CONDITIONER_PHOTO_SLOTS,
+  type AirConditionerPhotoSlotKey,
+} from './airConditionerSlots';
 import {
   clearItemSlotDocument,
   clearItemSlotDocumentOnPhotoSet,
@@ -15,8 +15,8 @@ import {
 } from './itemSlotDocuments';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 
-function asWaterTreatmentDetails(details: InventoryItem['details']): WaterTreatmentDetails {
-  return details.kind === 'water_treatment' ? details : { kind: 'water_treatment' };
+function asAirConditionerDetails(details: InventoryItem['details']): AirConditionerDetails {
+  return details.kind === 'air_conditioner' ? details : { kind: 'air_conditioner' };
 }
 
 function photoUriForId(state: AppState, photoId?: string): string | undefined {
@@ -24,40 +24,40 @@ function photoUriForId(state: AppState, photoId?: string): string | undefined {
   return state.photos.find((p) => p.id === photoId)?.localUri;
 }
 
-export function waterTreatmentSlotPhotoUri(
+export function airConditionerSlotPhotoUri(
   state: AppState,
-  details: WaterTreatmentDetails,
-  slotKey: WaterTreatmentPhotoSlotKey
+  details: AirConditionerDetails,
+  slotKey: AirConditionerPhotoSlotKey
 ): string | undefined {
   if (itemSlotDocumentId(details, slotKey)) return undefined;
   return photoUriForId(state, details[slotKey]);
 }
 
-export function waterTreatmentSlotDocumentInfo(
+export function airConditionerSlotDocumentInfo(
   state: AppState,
-  details: WaterTreatmentDetails,
-  slotKey: WaterTreatmentPhotoSlotKey
+  details: AirConditionerDetails,
+  slotKey: AirConditionerPhotoSlotKey
 ) {
   return itemSlotDocumentInfo(state, details, slotKey);
 }
 
-function waterTreatmentSlotPhotoIds(details: WaterTreatmentDetails): Set<string> {
-  const ids = WATER_TREATMENT_PHOTO_SLOTS.map((slot) => details[slot.key]).filter(
+function airConditionerSlotPhotoIds(details: AirConditionerDetails): Set<string> {
+  const ids = AIR_CONDITIONER_PHOTO_SLOTS.map((slot) => details[slot.key]).filter(
     (id): id is string => Boolean(id)
   );
   return new Set(ids);
 }
 
-export function waterTreatmentExtraPhotos(
+export function airConditionerExtraPhotos(
   state: AppState,
   itemId: string,
-  details: WaterTreatmentDetails
+  details: AirConditionerDetails
 ): ItemPhoto[] {
-  const slotIds = waterTreatmentSlotPhotoIds(details);
+  const slotIds = airConditionerSlotPhotoIds(details);
   return photosForItem(state, itemId).filter((photo) => !slotIds.has(photo.id));
 }
 
-export async function addWaterTreatmentExtraPhotos(
+export async function addAirConditionerExtraPhotos(
   state: AppState,
   itemId: string,
   sourceUris: string[]
@@ -92,7 +92,7 @@ export async function addWaterTreatmentExtraPhotos(
   };
 }
 
-export async function removeWaterTreatmentExtraPhoto(
+export async function removeAirConditionerExtraPhoto(
   state: AppState,
   itemId: string,
   photoId: string
@@ -115,7 +115,7 @@ export async function removeWaterTreatmentExtraPhoto(
   };
 }
 
-export function setWaterTreatmentExtraPhotoCaption(
+export function setAirConditionerExtraPhotoCaption(
   state: AppState,
   photoId: string,
   caption: string
@@ -129,22 +129,22 @@ export function setWaterTreatmentExtraPhotoCaption(
   };
 }
 
-export async function setWaterTreatmentSlotPhoto(
+export async function setAirConditionerSlotPhoto(
   state: AppState,
   itemId: string,
-  slotKey: WaterTreatmentPhotoSlotKey,
+  slotKey: AirConditionerPhotoSlotKey,
   sourceUri: string
 ): Promise<AppState> {
   const item = state.items.find((i) => i.id === itemId);
   if (!item) return state;
 
   let nextState = state;
-  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asWaterTreatmentDetails);
-  const details = asWaterTreatmentDetails(nextState.items.find((i) => i.id === itemId)!.details);
+  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asAirConditionerDetails);
+  const details = asAirConditionerDetails(nextState.items.find((i) => i.id === itemId)!.details);
   const oldPhotoId = details[slotKey];
 
   if (oldPhotoId) {
-    nextState = await clearWaterTreatmentSlotPhoto(nextState, itemId, slotKey);
+    nextState = await clearAirConditionerSlotPhoto(nextState, itemId, slotKey);
   }
 
   const photoId = uid('photo');
@@ -157,7 +157,7 @@ export async function setWaterTreatmentSlotPhoto(
   };
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
-  const currentDetails = asWaterTreatmentDetails(currentItem.details);
+  const currentDetails = asAirConditionerDetails(currentItem.details);
   const docKey = documentIdKeyForPhotoSlot(slotKey);
   const updatedItem: InventoryItem = {
     ...currentItem,
@@ -172,15 +172,15 @@ export async function setWaterTreatmentSlotPhoto(
   };
 }
 
-export async function clearWaterTreatmentSlotPhoto(
+export async function clearAirConditionerSlotPhoto(
   state: AppState,
   itemId: string,
-  slotKey: WaterTreatmentPhotoSlotKey
+  slotKey: AirConditionerPhotoSlotKey
 ): Promise<AppState> {
   const item = state.items.find((i) => i.id === itemId);
   if (!item) return state;
 
-  const details = asWaterTreatmentDetails(item.details);
+  const details = asAirConditionerDetails(item.details);
   const photoId = details[slotKey];
   if (!photoId) return state;
 
@@ -200,10 +200,10 @@ export async function clearWaterTreatmentSlotPhoto(
   };
 }
 
-export function updateWaterTreatmentDetails(
+export function updateAirConditionerDetails(
   state: AppState,
   itemId: string,
-  details: WaterTreatmentDetails
+  details: AirConditionerDetails
 ): AppState {
   return {
     ...state,
@@ -211,10 +211,10 @@ export function updateWaterTreatmentDetails(
   };
 }
 
-export async function setWaterTreatmentSlotDocument(
+export async function setAirConditionerSlotDocument(
   state: AppState,
   itemId: string,
-  slotKey: WaterTreatmentPhotoSlotKey,
+  slotKey: AirConditionerPhotoSlotKey,
   sourceUri: string,
   fileName: string
 ): Promise<AppState> {
@@ -224,15 +224,15 @@ export async function setWaterTreatmentSlotDocument(
     slotKey,
     sourceUri,
     fileName,
-    asWaterTreatmentDetails,
-    clearWaterTreatmentSlotPhoto
+    asAirConditionerDetails,
+    clearAirConditionerSlotPhoto
   );
 }
 
-export async function clearWaterTreatmentSlotDocument(
+export async function clearAirConditionerSlotDocument(
   state: AppState,
   itemId: string,
-  slotKey: WaterTreatmentPhotoSlotKey
+  slotKey: AirConditionerPhotoSlotKey
 ): Promise<AppState> {
-  return clearItemSlotDocument(state, itemId, slotKey, asWaterTreatmentDetails);
+  return clearItemSlotDocument(state, itemId, slotKey, asAirConditionerDetails);
 }

@@ -3,6 +3,14 @@ import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { wasteWaterPhotoSlotsForDetails, type WasteWaterPhotoSlotKey } from './wasteWaterSlots';
+import {
+  clearItemSlotDocument,
+  clearItemSlotDocumentOnPhotoSet,
+  itemSlotDocumentId,
+  itemSlotDocumentInfo,
+  setItemSlotDocument,
+} from './itemSlotDocuments';
+import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 
 function asWasteWaterDetails(details: InventoryItem['details']): WasteWaterDetails {
   return details.kind === 'waste_water' ? details : { kind: 'waste_water' };
@@ -18,7 +26,16 @@ export function wasteWaterSlotPhotoUri(
   details: WasteWaterDetails,
   slotKey: WasteWaterPhotoSlotKey
 ): string | undefined {
+  if (itemSlotDocumentId(details, slotKey)) return undefined;
   return photoUriForId(state, details[slotKey]);
+}
+
+export function wasteWaterSlotDocumentInfo(
+  state: AppState,
+  details: WasteWaterDetails,
+  slotKey: WasteWaterPhotoSlotKey
+) {
+  return itemSlotDocumentInfo(state, details, slotKey);
 }
 
 function wasteWaterSlotPhotoIds(details: WasteWaterDetails): Set<string> {
@@ -119,7 +136,8 @@ export async function setWasteWaterSlotPhoto(
   if (!item) return state;
 
   let nextState = state;
-  const details = asWasteWaterDetails(item.details);
+  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asWasteWaterDetails);
+  const details = asWasteWaterDetails(nextState.items.find((i) => i.id === itemId)!.details);
   const oldPhotoId = details[slotKey];
 
   if (oldPhotoId) {
@@ -137,9 +155,10 @@ export async function setWasteWaterSlotPhoto(
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asWasteWaterDetails(currentItem.details);
+  const docKey = documentIdKeyForPhotoSlot(slotKey);
   const updatedItem: InventoryItem = {
     ...currentItem,
-    details: { ...currentDetails, [slotKey]: photoId },
+    details: { ...currentDetails, [slotKey]: photoId, [docKey]: undefined },
     photoIds: [...currentItem.photoIds, photoId],
   };
 
@@ -228,4 +247,30 @@ export async function applyWasteWaterDetailsChange(
   };
 
   return updateWasteWaterDetails(nextState, itemId, normalized);
+}
+
+export async function setWasteWaterSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: WasteWaterPhotoSlotKey,
+  sourceUri: string,
+  fileName: string
+): Promise<AppState> {
+  return setItemSlotDocument(
+    state,
+    itemId,
+    slotKey,
+    sourceUri,
+    fileName,
+    asWasteWaterDetails,
+    clearWasteWaterSlotPhoto
+  );
+}
+
+export async function clearWasteWaterSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: WasteWaterPhotoSlotKey
+): Promise<AppState> {
+  return clearItemSlotDocument(state, itemId, slotKey, asWasteWaterDetails);
 }

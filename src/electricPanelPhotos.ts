@@ -6,6 +6,14 @@ import {
   ELECTRIC_PANEL_PHOTO_SLOTS,
   type ElectricPanelPhotoSlotKey,
 } from './electricPanelSlots';
+import {
+  clearItemSlotDocument,
+  clearItemSlotDocumentOnPhotoSet,
+  itemSlotDocumentId,
+  itemSlotDocumentInfo,
+  setItemSlotDocument,
+} from './itemSlotDocuments';
+import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 
 function asElectricPanelDetails(details: InventoryItem['details']): ElectricPanelDetails {
   return details.kind === 'electric_panel' ? details : { kind: 'electric_panel' };
@@ -21,7 +29,16 @@ export function electricPanelSlotPhotoUri(
   details: ElectricPanelDetails,
   slotKey: ElectricPanelPhotoSlotKey
 ): string | undefined {
+  if (itemSlotDocumentId(details, slotKey)) return undefined;
   return photoUriForId(state, details[slotKey]);
+}
+
+export function electricPanelSlotDocumentInfo(
+  state: AppState,
+  details: ElectricPanelDetails,
+  slotKey: ElectricPanelPhotoSlotKey
+) {
+  return itemSlotDocumentInfo(state, details, slotKey);
 }
 
 function electricPanelSlotPhotoIds(details: ElectricPanelDetails): Set<string> {
@@ -122,7 +139,8 @@ export async function setElectricPanelSlotPhoto(
   if (!item) return state;
 
   let nextState = state;
-  const details = asElectricPanelDetails(item.details);
+  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asElectricPanelDetails);
+  const details = asElectricPanelDetails(nextState.items.find((i) => i.id === itemId)!.details);
   const oldPhotoId = details[slotKey];
 
   if (oldPhotoId) {
@@ -140,9 +158,10 @@ export async function setElectricPanelSlotPhoto(
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asElectricPanelDetails(currentItem.details);
+  const docKey = documentIdKeyForPhotoSlot(slotKey);
   const updatedItem: InventoryItem = {
     ...currentItem,
-    details: { ...currentDetails, [slotKey]: photoId },
+    details: { ...currentDetails, [slotKey]: photoId, [docKey]: undefined },
     photoIds: [...currentItem.photoIds, photoId],
   };
 
@@ -190,4 +209,30 @@ export function updateElectricPanelDetails(
     ...state,
     items: state.items.map((i) => (i.id === itemId ? { ...i, details } : i)),
   };
+}
+
+export async function setElectricPanelSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: ElectricPanelPhotoSlotKey,
+  sourceUri: string,
+  fileName: string
+): Promise<AppState> {
+  return setItemSlotDocument(
+    state,
+    itemId,
+    slotKey,
+    sourceUri,
+    fileName,
+    asElectricPanelDetails,
+    clearElectricPanelSlotPhoto
+  );
+}
+
+export async function clearElectricPanelSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: ElectricPanelPhotoSlotKey
+): Promise<AppState> {
+  return clearItemSlotDocument(state, itemId, slotKey, asElectricPanelDetails);
 }

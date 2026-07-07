@@ -1,11 +1,8 @@
-import type { AppState, InventoryItem, ItemPhoto, WaterTreatmentDetails } from './types';
+import type { AppState, AutomobileDetails, InventoryItem, ItemPhoto } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
-import {
-  WATER_TREATMENT_PHOTO_SLOTS,
-  type WaterTreatmentPhotoSlotKey,
-} from './waterTreatmentSlots';
+import { AUTOMOBILE_PHOTO_SLOTS, type AutomobilePhotoSlotKey } from './automobileSlots';
 import {
   clearItemSlotDocument,
   clearItemSlotDocumentOnPhotoSet,
@@ -15,8 +12,8 @@ import {
 } from './itemSlotDocuments';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 
-function asWaterTreatmentDetails(details: InventoryItem['details']): WaterTreatmentDetails {
-  return details.kind === 'water_treatment' ? details : { kind: 'water_treatment' };
+function asAutomobileDetails(details: InventoryItem['details']): AutomobileDetails {
+  return details.kind === 'automobile' ? details : { kind: 'automobile' };
 }
 
 function photoUriForId(state: AppState, photoId?: string): string | undefined {
@@ -24,40 +21,40 @@ function photoUriForId(state: AppState, photoId?: string): string | undefined {
   return state.photos.find((p) => p.id === photoId)?.localUri;
 }
 
-export function waterTreatmentSlotPhotoUri(
+export function automobileSlotPhotoUri(
   state: AppState,
-  details: WaterTreatmentDetails,
-  slotKey: WaterTreatmentPhotoSlotKey
+  details: AutomobileDetails,
+  slotKey: AutomobilePhotoSlotKey
 ): string | undefined {
   if (itemSlotDocumentId(details, slotKey)) return undefined;
   return photoUriForId(state, details[slotKey]);
 }
 
-export function waterTreatmentSlotDocumentInfo(
+export function automobileSlotDocumentInfo(
   state: AppState,
-  details: WaterTreatmentDetails,
-  slotKey: WaterTreatmentPhotoSlotKey
+  details: AutomobileDetails,
+  slotKey: AutomobilePhotoSlotKey
 ) {
   return itemSlotDocumentInfo(state, details, slotKey);
 }
 
-function waterTreatmentSlotPhotoIds(details: WaterTreatmentDetails): Set<string> {
-  const ids = WATER_TREATMENT_PHOTO_SLOTS.map((slot) => details[slot.key]).filter(
-    (id): id is string => Boolean(id)
+function automobileSlotPhotoIds(details: AutomobileDetails): Set<string> {
+  const ids = AUTOMOBILE_PHOTO_SLOTS.map((slot) => details[slot.key]).filter((id): id is string =>
+    Boolean(id)
   );
   return new Set(ids);
 }
 
-export function waterTreatmentExtraPhotos(
+export function automobileExtraPhotos(
   state: AppState,
   itemId: string,
-  details: WaterTreatmentDetails
+  details: AutomobileDetails
 ): ItemPhoto[] {
-  const slotIds = waterTreatmentSlotPhotoIds(details);
+  const slotIds = automobileSlotPhotoIds(details);
   return photosForItem(state, itemId).filter((photo) => !slotIds.has(photo.id));
 }
 
-export async function addWaterTreatmentExtraPhotos(
+export async function addAutomobileExtraPhotos(
   state: AppState,
   itemId: string,
   sourceUris: string[]
@@ -92,7 +89,7 @@ export async function addWaterTreatmentExtraPhotos(
   };
 }
 
-export async function removeWaterTreatmentExtraPhoto(
+export async function removeAutomobileExtraPhoto(
   state: AppState,
   itemId: string,
   photoId: string
@@ -115,7 +112,7 @@ export async function removeWaterTreatmentExtraPhoto(
   };
 }
 
-export function setWaterTreatmentExtraPhotoCaption(
+export function setAutomobileExtraPhotoCaption(
   state: AppState,
   photoId: string,
   caption: string
@@ -129,22 +126,22 @@ export function setWaterTreatmentExtraPhotoCaption(
   };
 }
 
-export async function setWaterTreatmentSlotPhoto(
+export async function setAutomobileSlotPhoto(
   state: AppState,
   itemId: string,
-  slotKey: WaterTreatmentPhotoSlotKey,
+  slotKey: AutomobilePhotoSlotKey,
   sourceUri: string
 ): Promise<AppState> {
   const item = state.items.find((i) => i.id === itemId);
   if (!item) return state;
 
   let nextState = state;
-  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asWaterTreatmentDetails);
-  const details = asWaterTreatmentDetails(nextState.items.find((i) => i.id === itemId)!.details);
+  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asAutomobileDetails);
+  const details = asAutomobileDetails(nextState.items.find((i) => i.id === itemId)!.details);
   const oldPhotoId = details[slotKey];
 
   if (oldPhotoId) {
-    nextState = await clearWaterTreatmentSlotPhoto(nextState, itemId, slotKey);
+    nextState = await clearAutomobileSlotPhoto(nextState, itemId, slotKey);
   }
 
   const photoId = uid('photo');
@@ -157,7 +154,7 @@ export async function setWaterTreatmentSlotPhoto(
   };
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
-  const currentDetails = asWaterTreatmentDetails(currentItem.details);
+  const currentDetails = asAutomobileDetails(currentItem.details);
   const docKey = documentIdKeyForPhotoSlot(slotKey);
   const updatedItem: InventoryItem = {
     ...currentItem,
@@ -172,15 +169,15 @@ export async function setWaterTreatmentSlotPhoto(
   };
 }
 
-export async function clearWaterTreatmentSlotPhoto(
+export async function clearAutomobileSlotPhoto(
   state: AppState,
   itemId: string,
-  slotKey: WaterTreatmentPhotoSlotKey
+  slotKey: AutomobilePhotoSlotKey
 ): Promise<AppState> {
   const item = state.items.find((i) => i.id === itemId);
   if (!item) return state;
 
-  const details = asWaterTreatmentDetails(item.details);
+  const details = asAutomobileDetails(item.details);
   const photoId = details[slotKey];
   if (!photoId) return state;
 
@@ -200,10 +197,10 @@ export async function clearWaterTreatmentSlotPhoto(
   };
 }
 
-export function updateWaterTreatmentDetails(
+export function updateAutomobileDetails(
   state: AppState,
   itemId: string,
-  details: WaterTreatmentDetails
+  details: AutomobileDetails
 ): AppState {
   return {
     ...state,
@@ -211,10 +208,10 @@ export function updateWaterTreatmentDetails(
   };
 }
 
-export async function setWaterTreatmentSlotDocument(
+export async function setAutomobileSlotDocument(
   state: AppState,
   itemId: string,
-  slotKey: WaterTreatmentPhotoSlotKey,
+  slotKey: AutomobilePhotoSlotKey,
   sourceUri: string,
   fileName: string
 ): Promise<AppState> {
@@ -224,15 +221,15 @@ export async function setWaterTreatmentSlotDocument(
     slotKey,
     sourceUri,
     fileName,
-    asWaterTreatmentDetails,
-    clearWaterTreatmentSlotPhoto
+    asAutomobileDetails,
+    clearAutomobileSlotPhoto
   );
 }
 
-export async function clearWaterTreatmentSlotDocument(
+export async function clearAutomobileSlotDocument(
   state: AppState,
   itemId: string,
-  slotKey: WaterTreatmentPhotoSlotKey
+  slotKey: AutomobilePhotoSlotKey
 ): Promise<AppState> {
-  return clearItemSlotDocument(state, itemId, slotKey, asWaterTreatmentDetails);
+  return clearItemSlotDocument(state, itemId, slotKey, asAutomobileDetails);
 }

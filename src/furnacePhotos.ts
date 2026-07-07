@@ -3,6 +3,14 @@ import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { furnacePhotoSlotsForDetails, furnaceUsesFuelShutoff, furnaceUsesFuelTank, type FurnacePhotoSlotKey } from './furnaceSlots';
+import {
+  clearItemSlotDocument,
+  clearItemSlotDocumentOnPhotoSet,
+  itemSlotDocumentId,
+  itemSlotDocumentInfo,
+  setItemSlotDocument,
+} from './itemSlotDocuments';
+import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 
 function asFurnaceDetails(details: InventoryItem['details']): FurnaceDetails {
   return details.kind === 'furnace' ? details : { kind: 'furnace' };
@@ -18,7 +26,16 @@ export function furnaceSlotPhotoUri(
   details: FurnaceDetails,
   slotKey: FurnacePhotoSlotKey
 ): string | undefined {
+  if (itemSlotDocumentId(details, slotKey)) return undefined;
   return photoUriForId(state, details[slotKey]);
+}
+
+export function furnaceSlotDocumentInfo(
+  state: AppState,
+  details: FurnaceDetails,
+  slotKey: FurnacePhotoSlotKey
+) {
+  return itemSlotDocumentInfo(state, details, slotKey);
 }
 
 function furnaceSlotPhotoIds(details: FurnaceDetails): Set<string> {
@@ -119,7 +136,8 @@ export async function setFurnaceSlotPhoto(
   if (!item) return state;
 
   let nextState = state;
-  const details = asFurnaceDetails(item.details);
+  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asFurnaceDetails);
+  const details = asFurnaceDetails(nextState.items.find((i) => i.id === itemId)!.details);
   const oldPhotoId = details[slotKey];
 
   if (oldPhotoId) {
@@ -137,9 +155,10 @@ export async function setFurnaceSlotPhoto(
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asFurnaceDetails(currentItem.details);
+  const docKey = documentIdKeyForPhotoSlot(slotKey);
   const updatedItem: InventoryItem = {
     ...currentItem,
-    details: { ...currentDetails, [slotKey]: photoId },
+    details: { ...currentDetails, [slotKey]: photoId, [docKey]: undefined },
     photoIds: [...currentItem.photoIds, photoId],
   };
 
@@ -240,4 +259,30 @@ export async function applyFurnaceDetailsChange(
   };
 
   return updateFurnaceDetails(nextState, itemId, normalized);
+}
+
+export async function setFurnaceSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: FurnacePhotoSlotKey,
+  sourceUri: string,
+  fileName: string
+): Promise<AppState> {
+  return setItemSlotDocument(
+    state,
+    itemId,
+    slotKey,
+    sourceUri,
+    fileName,
+    asFurnaceDetails,
+    clearFurnaceSlotPhoto
+  );
+}
+
+export async function clearFurnaceSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: FurnacePhotoSlotKey
+): Promise<AppState> {
+  return clearItemSlotDocument(state, itemId, slotKey, asFurnaceDetails);
 }

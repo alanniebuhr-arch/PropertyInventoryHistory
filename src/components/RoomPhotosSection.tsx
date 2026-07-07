@@ -1,31 +1,70 @@
 import React, { useMemo, type ReactNode } from 'react';
+import { Gesture } from 'react-native-gesture-handler';
 import type { AppState } from '../types';
 import { PhotoSection } from './PhotoSection';
-import { buildExtraOnlyPhotoTiles } from '../photoSectionBuilders';
-import { addRoomPhotos, photosForRoom, removeRoomPhoto, setRoomPhotoCaption } from '../roomPhotos';
+import { buildSlotAndExtraPhotoTiles } from '../photoSectionBuilders';
+import { roomPhotoSlotsForRoom } from '../roomPhotoSlots';
+import type { RoomSlotKey } from '../types';
+import {
+  addRoomPhotos,
+  clearRoomSlotDocument,
+  clearRoomSlotPhoto,
+  photosForRoom,
+  removeRoomPhoto,
+  roomSlotDocumentInfo,
+  roomSlotPhotoUri,
+  setRoomPhotoCaption,
+  setRoomSlotDocument,
+  setRoomSlotPhoto,
+} from '../roomPhotos';
 
 export function RoomPhotosSection(props: {
   state: AppState;
   roomId: string;
+  room: AppState['rooms'][number];
   onSave: (state: AppState) => void;
+  onActiveHeroLabelChange?: (label: string | undefined) => void;
   children?: ReactNode;
+  childrenGesture?: ReturnType<typeof Gesture.Pan>;
 }) {
-  const { state, roomId, onSave, children } = props;
+  const { state, roomId, room, onSave, onActiveHeroLabelChange, children, childrenGesture } = props;
 
-  const roomPhotos = photosForRoom(state, roomId);
+  const extraPhotos = photosForRoom(state, roomId);
+  const roomSlots = useMemo(() => roomPhotoSlotsForRoom(room), [room]);
 
   const photoTiles = useMemo(
     () =>
-      buildExtraOnlyPhotoTiles({
-        photos: roomPhotos,
-        onDeletePhoto: (photoId) => {
+      buildSlotAndExtraPhotoTiles({
+        slots: roomSlots,
+        getSlotUri: (key) => roomSlotPhotoUri(state, room, key as RoomSlotKey),
+        getSlotDocument: (key) => roomSlotDocumentInfo(state, room, key as RoomSlotKey),
+        onAddSlot: (key, uri) => {
+          void setRoomSlotPhoto(state, roomId, key as RoomSlotKey, uri).then(onSave);
+        },
+        onAddSlotDocument: (key, picked) => {
+          void setRoomSlotDocument(
+            state,
+            roomId,
+            key as RoomSlotKey,
+            picked.uri,
+            picked.fileName
+          ).then(onSave);
+        },
+        onDeleteSlot: (key) => {
+          void clearRoomSlotPhoto(state, roomId, key as RoomSlotKey).then(onSave);
+        },
+        onDeleteSlotDocument: (key) => {
+          void clearRoomSlotDocument(state, roomId, key as RoomSlotKey).then(onSave);
+        },
+        extraPhotos,
+        onDeleteExtra: (photoId) => {
           void removeRoomPhoto(state, roomId, photoId).then(onSave);
         },
-        onLabelPhoto: (photoId, caption) => {
+        onLabelExtra: (photoId, caption) => {
           onSave(setRoomPhotoCaption(state, photoId, caption));
         },
       }),
-    [onSave, roomId, roomPhotos, state]
+    [extraPhotos, onSave, room, roomId, roomSlots, state]
   );
 
   async function handleAddRoomPhotos(sourceUris: string[]) {
@@ -40,8 +79,10 @@ export function RoomPhotosSection(props: {
   return (
     <PhotoSection
       tiles={photoTiles}
-      hint={roomPhotos.length === 0 ? 'Add photos of this room.' : undefined}
+      hint={extraPhotos.length === 0 ? 'Add photos of this room.' : undefined}
       onAddPhotos={handleAddRoomPhotos}
+      onActiveHeroLabelChange={onActiveHeroLabelChange}
+      childrenGesture={childrenGesture}
     >
       {children}
     </PhotoSection>

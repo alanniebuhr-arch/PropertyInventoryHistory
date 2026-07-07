@@ -5,7 +5,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import type { AppState } from './src/types';
 import { EMPTY_APP_STATE } from './src/types';
-import { loadAppState, saveAppState } from './src/storage';
+import { loadAppState, saveAppState, roomById } from './src/storage';
+import {
+  authenticateForRoom,
+  isRoomUnlocked,
+  markRoomUnlocked,
+  setupRoomAuthSessionReset,
+} from './src/roomAuth';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { PropertyDetailScreen } from './src/screens/PropertyDetailScreen';
 import { RoomDetailScreen } from './src/screens/RoomDetailScreen';
@@ -35,6 +41,8 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => setupRoomAuthSessionReset(), []);
+
   const persist = useCallback(async (next: AppState) => {
     setState(next);
     await saveAppState(next);
@@ -48,6 +56,23 @@ export default function App() {
 
   function pop() {
     setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  }
+
+  function replaceTopRoute(next: Route) {
+    setStack((s) => (s.length > 0 ? [...s.slice(0, -1), next] : [next]));
+  }
+
+  async function openRoom(roomId: string, navigate: (id: string) => void) {
+    const room = roomById(state, roomId);
+    if (!room) return;
+    if (!room.requiresAuth || isRoomUnlocked(roomId)) {
+      navigate(roomId);
+      return;
+    }
+    const ok = await authenticateForRoom(room.name);
+    if (!ok) return;
+    markRoomUnlocked(roomId);
+    navigate(roomId);
   }
 
   if (loading) {
@@ -81,7 +106,7 @@ export default function App() {
           state={state}
           propertyId={route.propertyId}
           onBack={pop}
-          onOpenRoom={(roomId) => push({ name: 'room', roomId })}
+          onOpenRoom={(roomId) => void openRoom(roomId, (id) => push({ name: 'room', roomId: id }))}
           onSave={(next) => void persist(next)}
         />
       );
@@ -89,9 +114,13 @@ export default function App() {
     case 'room':
       screen = (
         <RoomDetailScreen
+          key={route.roomId}
           state={state}
           roomId={route.roomId}
           onBack={pop}
+          onNavigateRoom={(nextRoomId) =>
+            void openRoom(nextRoomId, (id) => replaceTopRoute({ name: 'room', roomId: id }))
+          }
           onOpenItem={(itemId, startEditingSection) =>
             push({ name: 'item', itemId, startEditingSection })
           }
@@ -102,10 +131,12 @@ export default function App() {
     case 'item':
       screen = (
         <ItemDetailScreen
+          key={route.itemId}
           state={state}
           itemId={route.itemId}
           startEditingSection={route.startEditingSection}
           onBack={pop}
+          onNavigateItem={(nextItemId) => replaceTopRoute({ name: 'item', itemId: nextItemId })}
           onAddEvent={() => push({ name: 'event', itemId: route.itemId })}
           onEditEvent={(eventId) => push({ name: 'event', itemId: route.itemId, eventId })}
           onSave={(next) => void persist(next)}

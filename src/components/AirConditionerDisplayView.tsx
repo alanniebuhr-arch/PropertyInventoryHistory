@@ -1,6 +1,6 @@
 import React, { useMemo, useState, type ReactNode } from 'react';
 import { Text, View } from 'react-native';
-import type { AppState, FurnaceDetails } from '../types';
+import type { AirConditionerDetails, AppState } from '../types';
 import { DetailDisplayRow } from './DetailDisplayRow';
 import { EditableDetailSection } from './EditableDetailSection';
 import { PhotoSection } from './PhotoSection';
@@ -8,96 +8,104 @@ import { sharedStyles } from '../theme';
 import { formatStoredDate } from '../itemDetailDisplayHelpers';
 import { buildSlotAndExtraPhotoTiles } from '../photoSectionBuilders';
 import {
-  furnaceHasEquipmentInfo,
-  furnaceHasInstallInfo,
-  furnacePhotoSlotsForDetails,
-  furnaceUsesFuelTank,
-  fuelTankLocationLabel,
-  fuelTankSizeLabel,
-  fuelTypeLabel,
-  heatDistributionLabel,
-  heatSourceLabel,
-  type FurnacePhotoSlotKey,
-} from '../furnaceSlots';
+  AIR_CONDITIONER_PHOTO_SLOTS,
+  acTypeLabel,
+  airConditionerHasEquipmentInfo,
+  airConditionerHasInstallInfo,
+  airConditionerHasServiceInfo,
+  type AirConditionerPhotoSlotKey,
+} from '../airConditionerSlots';
 import {
-  addFurnaceExtraPhotos,
-  clearFurnaceSlotDocument,
-  clearFurnaceSlotPhoto,
-  furnaceExtraPhotos,
-  furnaceSlotDocumentInfo,
-  furnaceSlotPhotoUri,
-  removeFurnaceExtraPhoto,
-  setFurnaceExtraPhotoCaption,
-  setFurnaceSlotDocument,
-  setFurnaceSlotPhoto,
-} from '../furnacePhotos';
+  addAirConditionerExtraPhotos,
+  airConditionerExtraPhotos,
+  airConditionerSlotDocumentInfo,
+  airConditionerSlotPhotoUri,
+  clearAirConditionerSlotDocument,
+  clearAirConditionerSlotPhoto,
+  removeAirConditionerExtraPhoto,
+  setAirConditionerExtraPhotoCaption,
+  setAirConditionerSlotDocument,
+  setAirConditionerSlotPhoto,
+} from '../airConditionerPhotos';
 import {
-  FurnaceEquipmentFields,
-  FurnaceInstallFields,
-  FurnaceNotesFields,
-} from '../screens/itemDetails/FurnaceForm';
+  AirConditionerEquipmentFields,
+  AirConditionerInstallFields,
+  AirConditionerNotesFields,
+  AirConditionerServiceFields,
+} from '../screens/itemDetails/AirConditionerForm';
 
-export function FurnaceDisplayView(props: {
+export function AirConditionerDisplayView(props: {
   state: AppState;
-  details: FurnaceDetails;
+  details: AirConditionerDetails;
   itemId: string;
   onSave: (state: AppState) => void;
-  onDetailsChange: (details: FurnaceDetails) => void;
+  onDetailsChange: (details: AirConditionerDetails) => void;
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
 }) {
   const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange } = props;
-  const [editingSection, setEditingSection] = useState<'equipment' | 'install' | 'notes' | null>(
-    null
-  );
+  const [editingSection, setEditingSection] = useState<
+    'equipment' | 'install' | 'service' | 'notes' | null
+  >(null);
 
-  const slots = furnacePhotoSlotsForDetails(details);
-  const extraPhotos = furnaceExtraPhotos(state, itemId, details);
+  const extraPhotos = airConditionerExtraPhotos(state, itemId, details);
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
-        slots,
-        getSlotUri: (key) => furnaceSlotPhotoUri(state, details, key as FurnacePhotoSlotKey),
+        slots: AIR_CONDITIONER_PHOTO_SLOTS,
+        getSlotUri: (key) =>
+          airConditionerSlotPhotoUri(state, details, key as AirConditionerPhotoSlotKey),
         getSlotDocument: (key) =>
-          furnaceSlotDocumentInfo(state, details, key as FurnacePhotoSlotKey),
+          airConditionerSlotDocumentInfo(state, details, key as AirConditionerPhotoSlotKey),
         onAddSlot: (key, uri) => {
-          void setFurnaceSlotPhoto(state, itemId, key as FurnacePhotoSlotKey, uri).then(onSave);
-        },
-        onAddSlotDocument: (key, picked) => {
-          void setFurnaceSlotDocument(
+          void setAirConditionerSlotPhoto(
             state,
             itemId,
-            key as FurnacePhotoSlotKey,
+            key as AirConditionerPhotoSlotKey,
+            uri
+          ).then(onSave);
+        },
+        onAddSlotDocument: (key, picked) => {
+          void setAirConditionerSlotDocument(
+            state,
+            itemId,
+            key as AirConditionerPhotoSlotKey,
             picked.uri,
             picked.fileName
           ).then(onSave);
         },
         onDeleteSlot: (key) => {
-          void clearFurnaceSlotPhoto(state, itemId, key as FurnacePhotoSlotKey).then(onSave);
+          void clearAirConditionerSlotPhoto(state, itemId, key as AirConditionerPhotoSlotKey).then(
+            onSave
+          );
         },
         onDeleteSlotDocument: (key) => {
-          void clearFurnaceSlotDocument(state, itemId, key as FurnacePhotoSlotKey).then(onSave);
+          void clearAirConditionerSlotDocument(
+            state,
+            itemId,
+            key as AirConditionerPhotoSlotKey
+          ).then(onSave);
         },
         extraPhotos,
         onDeleteExtra: (photoId) => {
-          void removeFurnaceExtraPhoto(state, itemId, photoId).then(onSave);
+          void removeAirConditionerExtraPhoto(state, itemId, photoId).then(onSave);
         },
         onLabelExtra: (photoId, label) => {
-          onSave(setFurnaceExtraPhotoCaption(state, photoId, label));
+          onSave(setAirConditionerExtraPhotoCaption(state, photoId, label));
         },
       }),
-    [details, extraPhotos, itemId, onSave, slots, state]
+    [details, extraPhotos, itemId, onSave, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
-    const next = await addFurnaceExtraPhotos(state, itemId, sourceUris);
+    const next = await addAirConditionerExtraPhotos(state, itemId, sourceUris);
     onSave(next);
     const item = next.items.find((entry) => entry.id === itemId);
     return item ? item.photoIds.slice(-sourceUris.length) : [];
   }
 
-  function updateDetails(next: FurnaceDetails) {
+  function updateDetails(next: AirConditionerDetails) {
     onDetailsChange(next);
   }
 
@@ -114,40 +122,19 @@ export function FurnaceDisplayView(props: {
         onDone={() => setEditingSection(null)}
       >
         {editingSection === 'equipment' ? (
-          <FurnaceEquipmentFields details={details} onChange={updateDetails} />
-        ) : furnaceHasEquipmentInfo(details) ? (
+          <AirConditionerEquipmentFields details={details} onChange={updateDetails} />
+        ) : airConditionerHasEquipmentInfo(details) ? (
           <>
-            {details.systemType ? (
-              <DetailDisplayRow label="Heat source" value={heatSourceLabel(details.systemType)} />
-            ) : null}
-            {details.heatDistribution ? (
-              <DetailDisplayRow
-                label="Heat distribution"
-                value={heatDistributionLabel(details.heatDistribution, details.heatDistributionOther)}
-              />
-            ) : null}
-            {details.fuelType ? (
-              <DetailDisplayRow
-                label="Fuel type"
-                value={fuelTypeLabel(details.fuelType, details.fuelTypeOther)}
-              />
-            ) : null}
-            {furnaceUsesFuelTank(details.fuelType) ? (
-              <>
-                <DetailDisplayRow
-                  label={fuelTankLocationLabel(details.fuelType)}
-                  value={details.fuelTankLocation}
-                />
-                <DetailDisplayRow
-                  label={fuelTankSizeLabel(details.fuelType)}
-                  value={details.fuelTankSize}
-                />
-              </>
+            {details.acType ? (
+              <DetailDisplayRow label="AC type" value={acTypeLabel(details.acType)} />
             ) : null}
             <DetailDisplayRow label="Make" value={details.make} />
             <DetailDisplayRow label="Model" value={details.modelNumber} />
             <DetailDisplayRow label="Serial number" value={details.serialNumber} />
+            <DetailDisplayRow label="Cooling capacity (tons)" value={details.tonnage} />
+            <DetailDisplayRow label="Refrigerant type" value={details.refrigerantType} />
             <DetailDisplayRow label="Filter size" value={details.filterSize} />
+            <DetailDisplayRow label="Location notes" value={details.locationNotes} />
           </>
         ) : (
           <Text style={sharedStyles.cardMeta}>Not set</Text>
@@ -161,8 +148,8 @@ export function FurnaceDisplayView(props: {
         onDone={() => setEditingSection(null)}
       >
         {editingSection === 'install' ? (
-          <FurnaceInstallFields details={details} onChange={updateDetails} />
-        ) : furnaceHasInstallInfo(details) ? (
+          <AirConditionerInstallFields details={details} onChange={updateDetails} />
+        ) : airConditionerHasInstallInfo(details) ? (
           <>
             <DetailDisplayRow
               label="Install date"
@@ -178,13 +165,31 @@ export function FurnaceDisplayView(props: {
       </EditableDetailSection>
 
       <EditableDetailSection
+        title="Service contact"
+        isEditing={editingSection === 'service'}
+        onPress={() => setEditingSection('service')}
+        onDone={() => setEditingSection(null)}
+      >
+        {editingSection === 'service' ? (
+          <AirConditionerServiceFields details={details} onChange={updateDetails} />
+        ) : airConditionerHasServiceInfo(details) ? (
+          <>
+            <DetailDisplayRow label="Service company" value={details.serviceCompany} />
+            <DetailDisplayRow label="Service phone" value={details.servicePhone} />
+          </>
+        ) : (
+          <Text style={sharedStyles.cardMeta}>Not set</Text>
+        )}
+      </EditableDetailSection>
+
+      <EditableDetailSection
         title="Notes"
         isEditing={editingSection === 'notes'}
         onPress={() => setEditingSection('notes')}
         onDone={() => setEditingSection(null)}
       >
         {editingSection === 'notes' ? (
-          <FurnaceNotesFields details={details} onChange={updateDetails} />
+          <AirConditionerNotesFields details={details} onChange={updateDetails} />
         ) : details.notes?.trim() ? (
           <DetailDisplayRow label="Notes" value={details.notes} />
         ) : (

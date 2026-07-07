@@ -34,6 +34,22 @@ import {
   waterTreatmentExtraPhotos,
   waterTreatmentSlotPhotoUri,
 } from './waterTreatmentPhotos';
+import {
+  AIR_CONDITIONER_PHOTO_SLOTS,
+  acTypeLabel,
+} from './airConditionerSlots';
+import {
+  airConditionerExtraPhotos,
+  airConditionerSlotPhotoUri,
+} from './airConditionerPhotos';
+import {
+  AUTOMOBILE_PHOTO_SLOTS,
+} from './automobileSlots';
+import {
+  automobileExtraPhotos,
+  automobileSlotPhotoUri,
+} from './automobilePhotos';
+import { automobileDescription } from './automobileSlots';
 import { catalogLabel, itemDisplayLabel } from './itemCatalog';
 import { formatStoredDate } from './itemDetailDisplayHelpers';
 import { EVENT_TYPE_LABELS, recurrenceLabel } from './eventRecurrence';
@@ -154,6 +170,30 @@ function collectItemPhotos(state: AppState, item: InventoryItem): ItemExportPhot
       waterTreatmentExtraPhotos(state, itemId, details)
     );
   }
+  if (itemTypeId === 'air_conditioner' && details.kind === 'air_conditioner') {
+    return collectSlotAndExtraPhotos(
+      AIR_CONDITIONER_PHOTO_SLOTS,
+      (key) =>
+        airConditionerSlotPhotoUri(
+          state,
+          details,
+          key as (typeof AIR_CONDITIONER_PHOTO_SLOTS)[number]['key']
+        ),
+      airConditionerExtraPhotos(state, itemId, details)
+    );
+  }
+  if (itemTypeId === 'automobile' && details.kind === 'automobile') {
+    return collectSlotAndExtraPhotos(
+      AUTOMOBILE_PHOTO_SLOTS,
+      (key) =>
+        automobileSlotPhotoUri(
+          state,
+          details,
+          key as (typeof AUTOMOBILE_PHOTO_SLOTS)[number]['key']
+        ),
+      automobileExtraPhotos(state, itemId, details)
+    );
+  }
 
   return collectPlainPhotos(state, itemId);
 }
@@ -216,6 +256,66 @@ function buildDetailSections(item: InventoryItem): ItemExportSection[] {
       pushSection(sections, section('Notes', [row('Notes', details.notes)]));
       break;
     }
+    case 'air_conditioner': {
+      if (details.kind !== 'air_conditioner') break;
+      pushSection(sections, section('Equipment', [
+        row('AC type', acTypeLabel(details.acType)),
+        row('Make', details.make),
+        row('Model', details.modelNumber),
+        row('Serial number', details.serialNumber),
+        row('Cooling capacity (tons)', details.tonnage),
+        row('Refrigerant type', details.refrigerantType),
+        row('Filter size', details.filterSize),
+        row('Location notes', details.locationNotes),
+      ]));
+      pushSection(sections, section('Install', [
+        row('Install date', formatStoredDate(details.installDateAtISO)),
+        row('Install cost', details.installCost),
+        row('Installer name', details.installerName),
+        row('Installer phone', details.installerPhone),
+      ]));
+      pushSection(sections, section('Service contact', [
+        row('Service company', details.serviceCompany),
+        row('Service phone', details.servicePhone),
+      ]));
+      pushSection(sections, section('Notes', [row('Notes', details.notes)]));
+      break;
+    }
+    case 'automobile': {
+      if (details.kind !== 'automobile') break;
+      pushSection(sections, section('Vehicle', [
+        row('Nickname', details.nickname),
+        row('Description', automobileDescription(details)),
+        row('Year', details.year),
+        row('Make', details.make),
+        row('Model', details.model),
+        row('Trim', details.trim),
+        row('VIN', details.vin),
+        row('License plate', details.licensePlate),
+        row('Color', details.color),
+      ]));
+      pushSection(sections, section('Purchase', [
+        row('Purchase date', formatStoredDate(details.purchaseDateAtISO)),
+        row('Purchase price', details.purchasePrice),
+        row('Where purchased', details.purchaseLocation),
+        row('Mileage at purchase', details.purchaseMileage),
+      ]));
+      pushSection(sections, section('Maintenance', [
+        row('Current mileage', details.currentMileage),
+        row('Oil type', details.oilType),
+        row('Oil filter', details.oilFilter),
+        row('Tire size', details.tireSize),
+      ]));
+      pushSection(sections, section('Service & insurance', [
+        row('Service shop', details.serviceCompany),
+        row('Service phone', details.servicePhone),
+        row('Insurance company', details.insuranceCompany),
+        row('Insurance phone', details.insurancePhone),
+        row('Policy number', details.insurancePolicyNumber),
+      ]));
+      pushSection(sections, section('Notes', [row('Notes', details.notes)]));
+      break;
+    }
     case 'water_main': {
       if (details.kind !== 'water_main') break;
       pushSection(sections, section('Water main', [
@@ -223,8 +323,12 @@ function buildDetailSections(item: InventoryItem): ItemExportSection[] {
         row('Shutoff location', details.shutoffLocation),
         row('Valve type', valveTypeLabel(details.valveType)),
         row('Meter number', details.waterSource === 'municipal' ? details.meterNumber : undefined),
+        row(
+          'Well head location',
+          details.waterSource === 'well' ? details.wellHeadLocation : undefined
+        ),
+        row('Notes', details.notes),
       ]));
-      pushSection(sections, section('Notes', [row('Notes', details.notes)]));
       break;
     }
     case 'waste_water': {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { sharedStyles, colors } from '../theme';
 
 export function PropertyListRow(props: {
@@ -48,9 +49,10 @@ export function RoomListRow(props: {
   thumbnailUri?: string;
   itemCount: number;
   overdueCount: number;
+  requiresAuth?: boolean;
   onPress: () => void;
 }) {
-  const { name, thumbnailUri, itemCount, overdueCount, onPress } = props;
+  const { name, thumbnailUri, itemCount, overdueCount, requiresAuth, onPress } = props;
   return (
     <Pressable
       onPress={onPress}
@@ -70,7 +72,12 @@ export function RoomListRow(props: {
           />
         ) : null}
         <View style={{ flex: 1 }}>
-          <Text style={sharedStyles.cardTitle}>{name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={sharedStyles.cardTitle}>{name}</Text>
+            {requiresAuth ? (
+              <MaterialIcons name="lock" size={16} color={colors.textMuted} accessibilityLabel="Locked" />
+            ) : null}
+          </View>
           <Text style={sharedStyles.cardMeta}>
             {itemCount} item{itemCount === 1 ? '' : 's'}
             {overdueCount > 0 ? ` · ${overdueCount} overdue` : ''}
@@ -145,29 +152,64 @@ export function ItemListRow(props: {
   );
 }
 
+export const EVENT_LIST_THUMB_SIZE = 72;
+
 export function EventListRow(props: {
   title: string;
   eventTypeLabel: string;
   dateLabel: string;
   costLabel?: string;
   recurrenceLabel?: string;
+  notes?: string;
+  thumbnailUri?: string;
   photoCount?: number;
   onPress: () => void;
 }) {
-  const { title, eventTypeLabel, dateLabel, costLabel, recurrenceLabel, photoCount, onPress } = props;
+  const {
+    title,
+    eventTypeLabel,
+    dateLabel,
+    costLabel,
+    recurrenceLabel,
+    notes,
+    thumbnailUri,
+    photoCount,
+    onPress,
+  } = props;
+  const notesText = notes?.trim();
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [sharedStyles.card, pressed && sharedStyles.cardPressed]}
       accessibilityRole="button"
     >
-      <Text style={sharedStyles.cardTitle}>{title}</Text>
-      <Text style={sharedStyles.cardMeta}>
-        {eventTypeLabel} · {dateLabel}
-        {costLabel ? ` · ${costLabel}` : ''}
-        {photoCount != null && photoCount > 0 ? ` · ${photoCount} photo${photoCount === 1 ? '' : 's'}` : ''}
-      </Text>
-      {recurrenceLabel ? <Text style={sharedStyles.cardMeta}>{recurrenceLabel}</Text> : null}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        {thumbnailUri ? (
+          <Image
+            source={{ uri: thumbnailUri }}
+            style={{
+              width: EVENT_LIST_THUMB_SIZE,
+              height: EVENT_LIST_THUMB_SIZE,
+              borderRadius: 8,
+              backgroundColor: colors.border,
+            }}
+          />
+        ) : null}
+        <View style={{ flex: 1 }}>
+          <Text style={sharedStyles.cardTitle}>{title}</Text>
+          <Text style={sharedStyles.cardMeta}>
+            {eventTypeLabel} · {dateLabel}
+            {costLabel ? ` · ${costLabel}` : ''}
+            {photoCount != null && photoCount > 0 ? ` · ${photoCount} photo${photoCount === 1 ? '' : 's'}` : ''}
+          </Text>
+          {notesText ? (
+            <Text style={[sharedStyles.cardMeta, { marginTop: 4 }]} numberOfLines={6}>
+              {notesText}
+            </Text>
+          ) : null}
+          {recurrenceLabel ? <Text style={sharedStyles.cardMeta}>{recurrenceLabel}</Text> : null}
+        </View>
+      </View>
     </Pressable>
   );
 }

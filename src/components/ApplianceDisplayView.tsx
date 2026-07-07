@@ -17,10 +17,13 @@ import {
 import {
   addApplianceExtraPhotos,
   applianceExtraPhotos,
+  applianceSlotDocumentInfo,
   applianceSlotPhotoUri,
+  clearApplianceSlotDocument,
   clearApplianceSlotPhoto,
   removeApplianceExtraPhoto,
   setApplianceExtraPhotoCaption,
+  setApplianceSlotDocument,
   setApplianceSlotPhoto,
 } from '../appliancePhotos';
 import {
@@ -39,8 +42,9 @@ export function ApplianceDisplayView(props: {
   onDetailsChange: (details: ApplianceDetails) => void;
   initialEditingSection?: ApplianceEditingSection;
   photoHeader?: ReactNode;
+  onActiveHeroLabelChange?: (label: string | undefined) => void;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, initialEditingSection, photoHeader } = props;
+  const { state, details, itemId, onSave, onDetailsChange, initialEditingSection, photoHeader, onActiveHeroLabelChange } = props;
   const [editingSection, setEditingSection] = useState<ApplianceEditingSection | null>(
     initialEditingSection ?? null
   );
@@ -52,11 +56,25 @@ export function ApplianceDisplayView(props: {
       buildSlotAndExtraPhotoTiles({
         slots: APPLIANCE_PHOTO_SLOTS,
         getSlotUri: (key) => applianceSlotPhotoUri(state, details, key as AppliancePhotoSlotKey),
+        getSlotDocument: (key) =>
+          applianceSlotDocumentInfo(state, details, key as AppliancePhotoSlotKey),
         onAddSlot: (key, uri) => {
           void setApplianceSlotPhoto(state, itemId, key as AppliancePhotoSlotKey, uri).then(onSave);
         },
+        onAddSlotDocument: (key, picked) => {
+          void setApplianceSlotDocument(
+            state,
+            itemId,
+            key as AppliancePhotoSlotKey,
+            picked.uri,
+            picked.fileName
+          ).then(onSave);
+        },
         onDeleteSlot: (key) => {
           void clearApplianceSlotPhoto(state, itemId, key as AppliancePhotoSlotKey).then(onSave);
+        },
+        onDeleteSlotDocument: (key) => {
+          void clearApplianceSlotDocument(state, itemId, key as AppliancePhotoSlotKey).then(onSave);
         },
         extraPhotos,
         onDeleteExtra: (photoId) => {
@@ -90,7 +108,7 @@ export function ApplianceDisplayView(props: {
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} onAddPhotos={handleAddPhotos}>
+      <PhotoSection tiles={photoTiles} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
         {photoHeader}
       </PhotoSection>
 

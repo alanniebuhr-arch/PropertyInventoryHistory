@@ -30,6 +30,7 @@ export function ItemDisplayView(props: {
   onDetailsChange: (details: ItemDetails) => void;
   onDisplayNameChange?: (displayName: string) => void;
   photoHeader?: ReactNode;
+  onActiveHeroLabelChange?: (label: string | undefined) => void;
 }) {
   const {
     itemTypeId,
@@ -43,6 +44,7 @@ export function ItemDisplayView(props: {
     onDetailsChange,
     onDisplayNameChange,
     photoHeader,
+    onActiveHeroLabelChange,
   } = props;
 
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -72,6 +74,12 @@ export function ItemDisplayView(props: {
   function renderDetailSections() {
     switch (itemTypeId) {
       case 'furnace':
+        return null;
+
+      case 'air_conditioner':
+        return null;
+
+      case 'automobile':
         return null;
 
       case 'electric_panel':
@@ -211,7 +219,7 @@ export function ItemDisplayView(props: {
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} onAddPhotos={onAddPhotos}>
+      <PhotoSection tiles={photoTiles} onAddPhotos={onAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
         {photoHeader}
       </PhotoSection>
       {renderDetailSections()}

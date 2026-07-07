@@ -3,6 +3,14 @@ import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { APPLIANCE_PHOTO_SLOTS, type AppliancePhotoSlotKey } from './applianceSlots';
+import {
+  clearItemSlotDocument,
+  clearItemSlotDocumentOnPhotoSet,
+  itemSlotDocumentId,
+  itemSlotDocumentInfo,
+  setItemSlotDocument,
+} from './itemSlotDocuments';
+import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 
 function asApplianceDetails(details: InventoryItem['details']): ApplianceDetails {
   return details.kind === 'appliance' ? details : { kind: 'appliance' };
@@ -18,7 +26,16 @@ export function applianceSlotPhotoUri(
   details: ApplianceDetails,
   slotKey: AppliancePhotoSlotKey
 ): string | undefined {
+  if (itemSlotDocumentId(details, slotKey)) return undefined;
   return photoUriForId(state, details[slotKey]);
+}
+
+export function applianceSlotDocumentInfo(
+  state: AppState,
+  details: ApplianceDetails,
+  slotKey: AppliancePhotoSlotKey
+) {
+  return itemSlotDocumentInfo(state, details, slotKey);
 }
 
 function applianceSlotPhotoIds(details: ApplianceDetails): Set<string> {
@@ -122,7 +139,8 @@ export async function setApplianceSlotPhoto(
   if (!item) return state;
 
   let nextState = state;
-  const details = asApplianceDetails(item.details);
+  nextState = await clearItemSlotDocumentOnPhotoSet(nextState, itemId, slotKey, asApplianceDetails);
+  const details = asApplianceDetails(nextState.items.find((i) => i.id === itemId)!.details);
   const oldPhotoId = details[slotKey];
 
   if (oldPhotoId) {
@@ -140,9 +158,10 @@ export async function setApplianceSlotPhoto(
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asApplianceDetails(currentItem.details);
+  const docKey = documentIdKeyForPhotoSlot(slotKey);
   const updatedItem: InventoryItem = {
     ...currentItem,
-    details: { ...currentDetails, [slotKey]: photoId },
+    details: { ...currentDetails, [slotKey]: photoId, [docKey]: undefined },
     photoIds: [...currentItem.photoIds, photoId],
   };
 
@@ -192,4 +211,30 @@ export function updateApplianceDetails(
       i.id === itemId ? { ...i, details } : i
     ),
   };
+}
+
+export async function setApplianceSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: AppliancePhotoSlotKey,
+  sourceUri: string,
+  fileName: string
+): Promise<AppState> {
+  return setItemSlotDocument(
+    state,
+    itemId,
+    slotKey,
+    sourceUri,
+    fileName,
+    asApplianceDetails,
+    clearApplianceSlotPhoto
+  );
+}
+
+export async function clearApplianceSlotDocument(
+  state: AppState,
+  itemId: string,
+  slotKey: AppliancePhotoSlotKey
+): Promise<AppState> {
+  return clearItemSlotDocument(state, itemId, slotKey, asApplianceDetails);
 }
