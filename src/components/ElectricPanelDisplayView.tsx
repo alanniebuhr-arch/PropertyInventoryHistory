@@ -56,7 +56,8 @@ export function ElectricPanelDisplayView(props: {
             itemId,
             key as ElectricPanelPhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

@@ -266,7 +266,8 @@ export async function setFurnaceSlotDocument(
   itemId: string,
   slotKey: FurnacePhotoSlotKey,
   sourceUri: string,
-  fileName: string
+  fileName: string,
+  mimeType?: string
 ): Promise<AppState> {
   return setItemSlotDocument(
     state,
@@ -275,7 +276,8 @@ export async function setFurnaceSlotDocument(
     sourceUri,
     fileName,
     asFurnaceDetails,
-    clearFurnaceSlotPhoto
+    clearFurnaceSlotPhoto,
+    mimeType
   );
 }
 

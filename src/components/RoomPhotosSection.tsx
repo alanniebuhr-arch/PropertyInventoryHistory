@@ -47,7 +47,8 @@ export function RoomPhotosSection(props: {
             roomId,
             key as RoomSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

@@ -81,7 +81,7 @@ export function TransferScreen(props: {
         for (const document of merged.documents) {
           const b64 = photoData[document.id];
           if (b64) {
-            const localUri = await writeDocumentFromBase64(document.id, b64);
+            const localUri = await writeDocumentFromBase64(document.id, b64, document.fileName);
             merged = {
               ...merged,
               documents: merged.documents.map((doc) =>

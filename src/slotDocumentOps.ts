@@ -5,20 +5,22 @@ import { uid, nowISO } from './utils';
 export type PickedDocument = {
   uri: string;
   fileName: string;
+  mimeType?: string;
 };
 
 export async function addDocumentToState(
   state: AppState,
   sourceUri: string,
-  fileName: string
+  fileName: string,
+  mimeType: string = 'application/pdf'
 ): Promise<{ state: AppState; document: StoredDocument }> {
   const documentId = uid('doc');
-  const localUri = await persistDocumentFromUri(sourceUri, documentId);
+  const localUri = await persistDocumentFromUri(sourceUri, documentId, fileName);
   const document: StoredDocument = {
     id: documentId,
     localUri,
     fileName,
-    mimeType: 'application/pdf',
+    mimeType,
     createdAtISO: nowISO(),
   };
   return {

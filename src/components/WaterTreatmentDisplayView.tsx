@@ -61,7 +61,8 @@ export function WaterTreatmentDisplayView(props: {
             itemId,
             key as WaterTreatmentPhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

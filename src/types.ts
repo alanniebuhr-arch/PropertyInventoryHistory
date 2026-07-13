@@ -254,7 +254,7 @@ export type StoredDocument = {
   id: string;
   localUri: string;
   fileName: string;
-  mimeType: 'application/pdf';
+  mimeType: string;
   createdAtISO: string;
 };
 

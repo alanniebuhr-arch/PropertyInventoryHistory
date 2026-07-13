@@ -70,7 +70,8 @@ export function AutomobileDisplayView(props: {
             itemId,
             key as AutomobilePhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

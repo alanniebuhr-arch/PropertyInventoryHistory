@@ -18,7 +18,7 @@ export function buildPropertyPhotoTiles(options: {
   getSlotUri: (key: string) => string | undefined;
   getSlotDocument?: (key: string) => SlotDocumentTileInfo | undefined;
   onAddSlot: (key: string, uri: string) => void | Promise<void>;
-  onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string }) => void | Promise<void>;
+  onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string; mimeType?: string }) => void | Promise<void>;
   onDeleteSlot: (key: string) => void | Promise<void>;
   onDeleteSlotDocument?: (key: string) => void | Promise<void>;
   extraPhotos: { id: string; localUri: string; caption?: string }[];
@@ -36,7 +36,7 @@ export function buildSlotAndExtraPhotoTiles(options: {
   getSlotUri: (key: string) => string | undefined;
   getSlotDocument?: (key: string) => SlotDocumentTileInfo | undefined;
   onAddSlot: (key: string, uri: string) => void | Promise<void>;
-  onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string }) => void | Promise<void>;
+  onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string; mimeType?: string }) => void | Promise<void>;
   onDeleteSlot: (key: string) => void | Promise<void>;
   onDeleteSlotDocument?: (key: string) => void | Promise<void>;
   extraPhotos: Pick<ItemPhoto, 'id' | 'localUri' | 'caption'>[];

@@ -9,6 +9,7 @@ export type SlotDocumentInfo = {
   id: string;
   fileName: string;
   localUri: string;
+  mimeType: string;
 };
 
 export function slotDocumentInfo(
@@ -17,5 +18,10 @@ export function slotDocumentInfo(
 ): SlotDocumentInfo | undefined {
   const doc = documentById(state, documentId);
   if (!doc) return undefined;
-  return { id: doc.id, fileName: doc.fileName, localUri: doc.localUri };
+  return {
+    id: doc.id,
+    fileName: doc.fileName,
+    localUri: doc.localUri,
+    mimeType: doc.mimeType,
+  };
 }

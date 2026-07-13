@@ -60,7 +60,8 @@ export function WasteWaterDisplayView(props: {
             itemId,
             key as WasteWaterPhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

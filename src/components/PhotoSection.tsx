@@ -23,6 +23,7 @@ export type SlotDocumentTileInfo = {
   id: string;
   fileName: string;
   localUri: string;
+  mimeType: string;
 };
 
 export type PhotoTile =
@@ -156,6 +157,7 @@ export function PhotoSection(props: {
         label: tile.shortLabel,
         fileName: tile.document.fileName,
         localUri: tile.document.localUri,
+        mimeType: tile.document.mimeType,
         onDelete: () => tile.onDeleteDocument?.(),
       });
     }
@@ -372,6 +374,20 @@ export function PhotoSection(props: {
   return (
     <View style={{ marginBottom: 4 }}>
       {heading}
+
+      {activeHeroLabel ? (
+        <Text
+          style={{
+            fontSize: 15,
+            fontWeight: '700',
+            color: colors.text,
+            marginBottom: 8,
+            textAlign: 'center',
+          }}
+        >
+          {activeHeroLabel}
+        </Text>
+      ) : null}
 
       <PhotoHeroCarousel
         photos={viewerPhotos.map((photo) => ({

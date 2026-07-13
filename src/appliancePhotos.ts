@@ -218,7 +218,8 @@ export async function setApplianceSlotDocument(
   itemId: string,
   slotKey: AppliancePhotoSlotKey,
   sourceUri: string,
-  fileName: string
+  fileName: string,
+  mimeType?: string
 ): Promise<AppState> {
   return setItemSlotDocument(
     state,
@@ -227,7 +228,8 @@ export async function setApplianceSlotDocument(
     sourceUri,
     fileName,
     asApplianceDetails,
-    clearApplianceSlotPhoto
+    clearApplianceSlotPhoto,
+    mimeType
   );
 }
 

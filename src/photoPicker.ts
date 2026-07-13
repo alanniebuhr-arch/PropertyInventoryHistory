@@ -1,13 +1,14 @@
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
 import { pickImagesFromLibrary } from './pickImages';
+import { pickFileAttachment } from './fileAttachment';
 
 export const ADD_PHOTO_TILE_LABEL = 'Add photo';
 
 export type PickedDocument = {
   uri: string;
   fileName: string;
+  mimeType: string;
 };
 
 export async function takePhotoFromCamera(): Promise<string | undefined> {
@@ -35,22 +36,18 @@ export async function pickSinglePhotoFromLibrary(): Promise<string | undefined> 
   return result.assets[0].uri;
 }
 
-export async function pickPdfDocument(): Promise<PickedDocument | undefined> {
-  const result = await DocumentPicker.getDocumentAsync({
-    type: 'application/pdf',
-    copyToCacheDirectory: true,
+function runLoadFileForPhoto(onPhoto: (uri: string) => void | Promise<void>) {
+  void pickFileAttachment().then((picked) => {
+    if (!picked) return;
+    if (picked.kind === 'image') {
+      void onPhoto(picked.uri);
+      return;
+    }
+    Alert.alert(
+      'Not a photo',
+      'Choose an image file to add as a photo. Use a named slot and Load file to attach a document.'
+    );
   });
-  if (result.canceled || !result.assets[0]?.uri) return undefined;
-  const asset = result.assets[0];
-  const mimeType = asset.mimeType ?? 'application/pdf';
-  if (mimeType !== 'application/pdf') {
-    Alert.alert('Not a PDF', 'Please choose a PDF file.');
-    return undefined;
-  }
-  return {
-    uri: asset.uri,
-    fileName: asset.name?.trim() || 'Document.pdf',
-  };
 }
 
 export function promptPickOrTakeSingle(onPhoto: (uri: string) => void | Promise<void>) {
@@ -71,6 +68,10 @@ export function promptPickOrTakeSingle(onPhoto: (uri: string) => void | Promise<
           if (uri) void onPhoto(uri);
         });
       },
+    },
+    {
+      text: 'Load file',
+      onPress: () => runLoadFileForPhoto(onPhoto),
     },
   ]);
 }
@@ -98,10 +99,19 @@ export function promptSlotAttachment(handlers: {
       },
     },
     {
-      text: 'Load PDF',
+      text: 'Load file',
       onPress: () => {
-        void pickPdfDocument().then((picked) => {
-          if (picked) void handlers.onDocument(picked);
+        void pickFileAttachment().then((picked) => {
+          if (!picked) return;
+          if (picked.kind === 'image') {
+            void handlers.onPhoto(picked.uri);
+          } else {
+            void handlers.onDocument({
+              uri: picked.uri,
+              fileName: picked.fileName,
+              mimeType: picked.mimeType,
+            });
+          }
         });
       },
     },
@@ -126,6 +136,10 @@ export function promptPickOrTakeMulti(onPhotos: (uris: string[]) => void | Promi
           if (uri) void onPhotos([uri]);
         });
       },
+    },
+    {
+      text: 'Load file',
+      onPress: () => runLoadFileForPhoto((uri) => onPhotos([uri])),
     },
   ]);
 }

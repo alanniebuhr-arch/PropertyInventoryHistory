@@ -58,7 +58,8 @@ export function WaterMainDisplayView(props: {
             itemId,
             key as WaterMainPhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

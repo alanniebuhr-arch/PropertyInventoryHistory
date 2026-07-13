@@ -115,7 +115,8 @@ export async function setPropertySlotDocument(
   propertyId: string,
   slotKey: PropertyPhotoSlotKey,
   sourceUri: string,
-  fileName: string
+  fileName: string,
+  mimeType?: string
 ): Promise<AppState> {
   const property = state.properties.find((p) => p.id === propertyId);
   if (!property) return state;
@@ -129,7 +130,12 @@ export async function setPropertySlotDocument(
     nextState = await removePropertySlotDocument(nextState, propertyId, slotKey);
   }
 
-  const { state: withDoc, document } = await addDocumentToState(nextState, sourceUri, fileName);
+  const { state: withDoc, document } = await addDocumentToState(
+    nextState,
+    sourceUri,
+    fileName,
+    mimeType
+  );
   const docKey = documentIdKeyForPhotoSlot(slotKey) as keyof Property;
 
   return {

@@ -260,3 +260,21 @@ export function itemCustomName(item: {
 
 }
 
+export function itemListRowLabels(item: {
+  itemTypeId: ItemTypeId;
+  displayName?: string;
+  details?: ItemDetails;
+}): { label: string; nameLabel?: string } {
+  if (item.itemTypeId === 'other') {
+    const customName = item.displayName?.trim();
+    if (customName) {
+      return { label: customName, nameLabel: catalogLabel('other') };
+    }
+    return { label: catalogLabel('other') };
+  }
+  return {
+    label: catalogLabel(item.itemTypeId),
+    nameLabel: itemCustomName(item),
+  };
+}
+

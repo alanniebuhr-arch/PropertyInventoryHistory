@@ -159,13 +159,19 @@ export async function setRoomSlotDocument(
   roomId: string,
   slotKey: RoomSlotKey,
   sourceUri: string,
-  fileName: string
+  fileName: string,
+  mimeType?: string
 ): Promise<AppState> {
   const room = state.rooms.find((r) => r.id === roomId);
   if (!room) return state;
 
   let nextState = await clearRoomSlotAttachment(state, roomId, slotKey);
-  const { state: withDoc, document } = await addDocumentToState(nextState, sourceUri, fileName);
+  const { state: withDoc, document } = await addDocumentToState(
+    nextState,
+    sourceUri,
+    fileName,
+    mimeType
+  );
   const attachment: SlotAttachment = { kind: 'document', id: document.id };
 
   return {

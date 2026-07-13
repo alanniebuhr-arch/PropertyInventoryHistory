@@ -216,7 +216,8 @@ export async function setElectricPanelSlotDocument(
   itemId: string,
   slotKey: ElectricPanelPhotoSlotKey,
   sourceUri: string,
-  fileName: string
+  fileName: string,
+  mimeType?: string
 ): Promise<AppState> {
   return setItemSlotDocument(
     state,
@@ -225,7 +226,8 @@ export async function setElectricPanelSlotDocument(
     sourceUri,
     fileName,
     asElectricPanelDetails,
-    clearElectricPanelSlotPhoto
+    clearElectricPanelSlotPhoto,
+    mimeType
   );
 }
 

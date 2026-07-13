@@ -34,7 +34,8 @@ export async function setItemSlotDocument<D extends ItemDetails>(
   sourceUri: string,
   fileName: string,
   asDetails: (details: ItemDetails) => D,
-  clearSlotPhoto: ClearItemSlotPhoto
+  clearSlotPhoto: ClearItemSlotPhoto,
+  mimeType?: string
 ): Promise<AppState> {
   const item = state.items.find((entry) => entry.id === itemId);
   if (!item) return state;
@@ -65,7 +66,12 @@ export async function setItemSlotDocument<D extends ItemDetails>(
     };
   }
 
-  const { state: withDoc, document } = await addDocumentToState(nextState, sourceUri, fileName);
+  const { state: withDoc, document } = await addDocumentToState(
+    nextState,
+    sourceUri,
+    fileName,
+    mimeType
+  );
 
   return {
     ...withDoc,

@@ -72,7 +72,8 @@ export function AirConditionerDisplayView(props: {
             itemId,
             key as AirConditionerPhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

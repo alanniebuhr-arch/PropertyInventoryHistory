@@ -83,7 +83,6 @@ export function ItemDetailScreen(props: {
   const [exportSnapshot, setExportSnapshot] = useState<ItemExportSnapshot | null>(null);
   const [exporting, setExporting] = useState(false);
   const exportRef = useRef<View>(null);
-  const [heroPhotoLabel, setHeroPhotoLabel] = useState<string | undefined>();
 
   const scrollFieldIntoView = useCallback(
     (windowY: number, height: number, kbHeight: number) => {
@@ -255,9 +254,7 @@ export function ItemDetailScreen(props: {
       />
       <Text style={sharedStyles.title}>{itemDisplayLabel({ ...inv, details })}</Text>
       <Text style={sharedStyles.subtitle}>
-        {[property?.name, room?.name, catalogLabel(inv.itemTypeId), heroPhotoLabel]
-          .filter(Boolean)
-          .join(' · ')}
+        {[property?.name, room?.name, catalogLabel(inv.itemTypeId)].filter(Boolean).join(' · ')}
       </Text>
       {nextDue ? (
         <Text style={[sharedStyles.cardMeta, overdue && { color: '#c62828', fontWeight: '700' }]}>
@@ -504,7 +501,6 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleApplianceDetailsChange}
             initialEditingSection={startEditingSection}
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isWaterMain && waterMainDetails ? (
           <WaterMainDisplayView
@@ -514,7 +510,6 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWaterMainDetailsChange}
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isFurnace && furnaceDetails ? (
           <FurnaceDisplayView
@@ -524,7 +519,6 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleFurnaceDetailsChange}
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isAirConditioner && airConditionerDetails ? (
           <AirConditionerDisplayView
@@ -534,7 +528,6 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleAirConditionerDetailsChange}
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isAutomobile && automobileDetails ? (
           <AutomobileDisplayView
@@ -544,7 +537,6 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleAutomobileDetailsChange}
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isWasteWater && wasteWaterDetails ? (
           <WasteWaterDisplayView
@@ -554,7 +546,6 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWasteWaterDetailsChange}
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isElectricPanel && electricPanelDetails ? (
           <ElectricPanelDisplayView
@@ -564,7 +555,6 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleElectricPanelDetailsChange}
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : isWaterTreatment && waterTreatmentDetails ? (
           <WaterTreatmentDisplayView
@@ -574,7 +564,6 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWaterTreatmentDetailsChange}
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         ) : (
           <ItemDisplayView
@@ -591,7 +580,6 @@ export function ItemDetailScreen(props: {
               inv.itemTypeId === 'other' ? handleDisplayNameChange : undefined
             }
             photoHeader={itemPhotoHeader}
-            onActiveHeroLabelChange={setHeroPhotoLabel}
           />
         )}
 

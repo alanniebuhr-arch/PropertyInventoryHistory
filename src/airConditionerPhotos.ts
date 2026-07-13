@@ -216,7 +216,8 @@ export async function setAirConditionerSlotDocument(
   itemId: string,
   slotKey: AirConditionerPhotoSlotKey,
   sourceUri: string,
-  fileName: string
+  fileName: string,
+  mimeType?: string
 ): Promise<AppState> {
   return setItemSlotDocument(
     state,
@@ -225,7 +226,8 @@ export async function setAirConditionerSlotDocument(
     sourceUri,
     fileName,
     asAirConditionerDetails,
-    clearAirConditionerSlotPhoto
+    clearAirConditionerSlotPhoto,
+    mimeType
   );
 }
 

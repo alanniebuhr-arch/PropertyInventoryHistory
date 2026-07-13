@@ -12,8 +12,13 @@ export type DocumentListRow = {
   label: string;
   fileName: string;
   localUri: string;
+  mimeType: string;
   onDelete: () => void;
 };
+
+function isPdfMimeType(mimeType: string): boolean {
+  return mimeType === 'application/pdf';
+}
 
 export function documentRowsFromState(
   state: AppState,
@@ -28,36 +33,40 @@ export function documentRowsFromState(
       label: entry.label,
       fileName: doc.fileName,
       localUri: doc.localUri,
+      mimeType: doc.mimeType,
       onDelete: entry.onDelete,
     });
   }
   return rows;
 }
 
-async function shareDocument(localUri: string, fileName: string) {
+async function shareDocument(localUri: string, fileName: string, mimeType: string) {
   const canShare = await Sharing.isAvailableAsync();
   if (!canShare) {
     Alert.alert('Unavailable', 'Sharing is not available on this device.');
     return;
   }
   await Sharing.shareAsync(localUri, {
-    mimeType: 'application/pdf',
+    mimeType,
     dialogTitle: fileName,
-    UTI: 'com.adobe.pdf',
   });
 }
 
 function confirmDeleteDocument(onDelete: () => void) {
-  Alert.alert('Remove document?', 'This PDF will be deleted from this slot.', [
+  Alert.alert('Remove document?', 'This file will be deleted from this slot.', [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Remove', style: 'destructive', onPress: onDelete },
   ]);
 }
 
-function showDocumentActions(row: DocumentListRow, onView: () => void) {
+function showDocumentActions(
+  row: DocumentListRow,
+  onView: () => void,
+  onShare: () => void
+) {
   Alert.alert(row.label, undefined, [
     { text: 'View', onPress: onView },
-    { text: 'Share', onPress: () => void shareDocument(row.localUri, row.fileName) },
+    { text: 'Share', onPress: onShare },
     { text: 'Delete', style: 'destructive', onPress: () => confirmDeleteDocument(row.onDelete) },
     { text: 'Cancel', style: 'cancel' },
   ]);
@@ -77,17 +86,31 @@ export function DocumentListSection(props: { rows: DocumentListRow[] }) {
 
   if (rows.length === 0) return null;
 
+  function viewDocument(row: DocumentListRow) {
+    if (isPdfMimeType(row.mimeType)) {
+      setViewingPdf(rowToViewerPdf(row));
+      return;
+    }
+    void shareDocument(row.localUri, row.fileName, row.mimeType);
+  }
+
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={sharedStyles.sectionTitle}>Documents</Text>
       {rows.map((row) => (
         <Pressable
           key={row.id}
-          onPress={() => setViewingPdf(rowToViewerPdf(row))}
-          onLongPress={() => showDocumentActions(row, () => setViewingPdf(rowToViewerPdf(row)))}
+          onPress={() => viewDocument(row)}
+          onLongPress={() =>
+            showDocumentActions(
+              row,
+              () => viewDocument(row),
+              () => void shareDocument(row.localUri, row.fileName, row.mimeType)
+            )
+          }
           accessibilityRole="button"
-          accessibilityLabel={`View ${row.label} PDF`}
-          accessibilityHint="Opens the PDF. Long press for Share, Delete, and other options."
+          accessibilityLabel={`View ${row.label} document`}
+          accessibilityHint="Opens the document. Long press for Share, Delete, and other options."
           style={({ pressed }) => [
             sharedStyles.card,
             {

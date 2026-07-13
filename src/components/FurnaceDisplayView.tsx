@@ -70,7 +70,8 @@ export function FurnaceDisplayView(props: {
             itemId,
             key as FurnacePhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

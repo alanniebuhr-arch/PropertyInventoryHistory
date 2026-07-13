@@ -250,7 +250,8 @@ export async function setWaterMainSlotDocument(
   itemId: string,
   slotKey: WaterMainPhotoSlotKey,
   sourceUri: string,
-  fileName: string
+  fileName: string,
+  mimeType?: string
 ): Promise<AppState> {
   return setItemSlotDocument(
     state,
@@ -259,7 +260,8 @@ export async function setWaterMainSlotDocument(
     sourceUri,
     fileName,
     asWaterMainDetails,
-    clearWaterMainSlotPhoto
+    clearWaterMainSlotPhoto,
+    mimeType
   );
 }
 

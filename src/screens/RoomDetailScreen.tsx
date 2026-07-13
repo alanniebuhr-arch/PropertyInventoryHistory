@@ -29,7 +29,7 @@ import {
 import {
   catalogLabel,
   createInventoryItem,
-  itemCustomName,
+  itemListRowLabels,
   namePlaceholderForItemType,
 } from '../itemCatalog';
 import { itemListSummaryFields } from '../itemListSummaryFields';
@@ -60,7 +60,6 @@ export function RoomDetailScreen(props: {
   const [newItemName, setNewItemName] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
-  const [heroPhotoLabel, setHeroPhotoLabel] = useState<string | undefined>();
 
   const room = roomById(state, roomId);
   const propertyRooms = room ? roomsForProperty(state, room.propertyId) : [];
@@ -117,7 +116,7 @@ export function RoomDetailScreen(props: {
 
   const rm = room;
   const property = propertyById(state, rm.propertyId);
-  const subtitleParts = [property?.name, heroPhotoLabel].filter(Boolean);
+  const subtitleParts = [property?.name].filter(Boolean);
 
   function startAddItem() {
     setPendingItemType(null);
@@ -215,11 +214,12 @@ export function RoomDetailScreen(props: {
       ) : (
         items.map((item) => {
           const lastEvent = eventsForItem(state, item.id)[0];
+          const { label, nameLabel } = itemListRowLabels(item);
           return (
             <ItemListRow
               key={item.id}
-              label={catalogLabel(item.itemTypeId)}
-              nameLabel={itemCustomName(item)}
+              label={label}
+              nameLabel={nameLabel}
               thumbnailUri={firstPhotoUriForItem(state, item)}
               detailFields={itemListSummaryFields(item)}
               lastServiceSummary={
@@ -274,7 +274,6 @@ export function RoomDetailScreen(props: {
           roomId={roomId}
           room={rm}
           onSave={onSave}
-          onActiveHeroLabelChange={setHeroPhotoLabel}
           childrenGesture={roomSwipeEnabled ? roomSwipeGestureForTitle : undefined}
         >
           <RoomNavigationDots

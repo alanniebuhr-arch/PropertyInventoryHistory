@@ -67,7 +67,8 @@ export function ApplianceDisplayView(props: {
             itemId,
             key as AppliancePhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

@@ -9,16 +9,22 @@ export async function ensureDocumentsDirectory(): Promise<void> {
   }
 }
 
-export function documentFilePath(documentId: string): string {
-  return `${DOCUMENTS_DIR}/${documentId}.pdf`;
+function extensionFromFileName(fileName?: string): string {
+  const match = fileName ? /\.([^.]+)$/.exec(fileName.trim().toLowerCase()) : null;
+  return match ? match[1] : 'pdf';
+}
+
+export function documentFilePath(documentId: string, fileName?: string): string {
+  return `${DOCUMENTS_DIR}/${documentId}.${extensionFromFileName(fileName)}`;
 }
 
 export async function persistDocumentFromUri(
   sourceUri: string,
-  documentId: string
+  documentId: string,
+  fileName?: string
 ): Promise<string> {
   await ensureDocumentsDirectory();
-  const dest = documentFilePath(documentId);
+  const dest = documentFilePath(documentId, fileName);
   await FileSystem.copyAsync({ from: sourceUri, to: dest });
   return dest;
 }
@@ -46,9 +52,13 @@ export async function readDocumentAsBase64(localUri: string): Promise<string | n
   }
 }
 
-export async function writeDocumentFromBase64(documentId: string, base64: string): Promise<string> {
+export async function writeDocumentFromBase64(
+  documentId: string,
+  base64: string,
+  fileName?: string
+): Promise<string> {
   await ensureDocumentsDirectory();
-  const dest = documentFilePath(documentId);
+  const dest = documentFilePath(documentId, fileName);
   await FileSystem.writeAsStringAsync(dest, base64, {
     encoding: FileSystem.EncodingType.Base64,
   });

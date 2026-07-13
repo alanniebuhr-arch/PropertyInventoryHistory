@@ -43,7 +43,8 @@ export function PropertyPhotosSection(props: {
             property.id,
             key as PropertyPhotoSlotKey,
             picked.uri,
-            picked.fileName
+            picked.fileName,
+            picked.mimeType
           ).then(onSave);
         },
         onDeleteSlot: (key) => {

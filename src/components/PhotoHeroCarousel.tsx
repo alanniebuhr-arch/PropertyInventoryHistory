@@ -24,6 +24,13 @@ export function PhotoHeroCarousel(props: {
   const [heroPageWidth, setHeroPageWidth] = useState(Math.max(windowWidth - 32, 1));
   const heroHeight = Math.round(heroPageWidth * HERO_ASPECT);
 
+  const loops = photos.length > 1;
+
+  const carouselPhotos = useMemo(() => {
+    if (!loops) return photos;
+    return [photos[photos.length - 1], ...photos, photos[0]];
+  }, [loops, photos]);
+
   const effectiveActiveId = useMemo(() => {
     if (activeId && photos.some((photo) => photo.id === activeId)) {
       return activeId;
@@ -37,18 +44,25 @@ export function PhotoHeroCarousel(props: {
     return index >= 0 ? index : 0;
   }, [effectiveActiveId, photos]);
 
+  const photoIds = photos.map((photo) => photo.id).join(',');
+
+  useEffect(() => {
+    isInitialHeroScroll.current = true;
+  }, [photoIds]);
+
   useEffect(() => {
     if (heroPageWidth <= 0 || photos.length === 0) return;
     if (skipNextHeroScroll.current) {
       skipNextHeroScroll.current = false;
       return;
     }
+    const scrollIndex = loops ? activeIndex + 1 : activeIndex;
     heroScrollRef.current?.scrollTo({
-      x: activeIndex * heroPageWidth,
+      x: scrollIndex * heroPageWidth,
       animated: !isInitialHeroScroll.current,
     });
     isInitialHeroScroll.current = false;
-  }, [activeIndex, heroPageWidth, photos.length]);
+  }, [activeIndex, heroPageWidth, photos.length, loops]);
 
   function handleHeroSwipe(index: number) {
     const photo = photos[index];
@@ -56,6 +70,38 @@ export function PhotoHeroCarousel(props: {
       skipNextHeroScroll.current = true;
       onActiveIdChange(photo.id);
     }
+  }
+
+  function handleScrollEnd(offsetX: number) {
+    if (heroPageWidth <= 0) return;
+    const scrollIndex = Math.round(offsetX / heroPageWidth);
+
+    if (!loops) {
+      handleHeroSwipe(scrollIndex);
+      return;
+    }
+
+    if (scrollIndex === 0) {
+      skipNextHeroScroll.current = true;
+      heroScrollRef.current?.scrollTo({
+        x: photos.length * heroPageWidth,
+        animated: false,
+      });
+      onActiveIdChange(photos[photos.length - 1].id);
+      return;
+    }
+
+    if (scrollIndex === carouselPhotos.length - 1) {
+      skipNextHeroScroll.current = true;
+      heroScrollRef.current?.scrollTo({
+        x: heroPageWidth,
+        animated: false,
+      });
+      onActiveIdChange(photos[0].id);
+      return;
+    }
+
+    handleHeroSwipe(scrollIndex - 1);
   }
 
   if (photos.length === 0) return null;
@@ -72,15 +118,17 @@ export function PhotoHeroCarousel(props: {
         nestedScrollEnabled
         showsHorizontalScrollIndicator={false}
         decelerationRate="fast"
-        onMomentumScrollEnd={(e) => {
-          if (heroPageWidth <= 0) return;
-          const index = Math.round(e.nativeEvent.contentOffset.x / heroPageWidth);
-          handleHeroSwipe(index);
+        onMomentumScrollEnd={(e) => handleScrollEnd(e.nativeEvent.contentOffset.x)}
+        onScrollEndDrag={(e) => {
+          const velocityX = e.nativeEvent.velocity?.x ?? 0;
+          if (Math.abs(velocityX) < 0.05) {
+            handleScrollEnd(e.nativeEvent.contentOffset.x);
+          }
         }}
       >
-        {photos.map((photo) => (
+        {carouselPhotos.map((photo, index) => (
           <Pressable
-            key={photo.id}
+            key={loops ? `${photo.id}-${index}` : photo.id}
             onPress={onOpenViewer}
             accessibilityRole="imagebutton"
             accessibilityLabel={photo.label}
