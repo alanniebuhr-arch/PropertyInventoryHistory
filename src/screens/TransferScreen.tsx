@@ -18,12 +18,17 @@ import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import {
   buildTransferBundle,
   mergeImportState,
-  parseTransferBundle,
   replaceImportState,
   transferBundleToJson,
 } from '../transfer';
-import { readPhotoAsBase64, writePhotoFromBase64 } from '../photoStorage';
-import { readDocumentAsBase64, writeDocumentFromBase64 } from '../documentStorage';
+import {
+  cleanupExtractRoot,
+  exportBackupToZip,
+  importBackupFromUri,
+  materializeZipMedia,
+} from '../transferPackage';
+import { writePhotoFromBase64 } from '../photoStorage';
+import { writeDocumentFromBase64 } from '../documentStorage';
 
 export function TransferScreen(props: {
   state: AppState;
@@ -101,33 +106,48 @@ export function TransferScreen(props: {
     }
   }
 
+  async function applyZipImport(
+    incoming: AppState,
+    mediaFiles: Record<string, string>,
+    extractRoot: string,
+    replace: boolean
+  ) {
+    setBusy(true);
+    try {
+      const withMedia = await materializeZipMedia(incoming, mediaFiles);
+      const merged = replace ? replaceImportState(withMedia) : mergeImportState(state, withMedia);
+      onImport(merged);
+      Alert.alert('Import complete', replace ? 'Data replaced.' : 'New records merged.');
+      onBack();
+    } catch (e) {
+      Alert.alert('Import failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      await cleanupExtractRoot(extractRoot);
+      setBusy(false);
+    }
+  }
+
   async function exportBackup() {
     setBusy(true);
     try {
-      let photoData: Record<string, string> | undefined;
       if (includePhotos) {
-        photoData = {};
-        for (const photo of state.photos) {
-          const b64 = await readPhotoAsBase64(photo.localUri);
-          if (b64) photoData[photo.id] = b64;
+        const path = await exportBackupToZip(state);
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(path, {
+            mimeType: 'application/zip',
+            UTI: 'public.zip-archive',
+            dialogTitle: 'Export Property Inventory History',
+          });
+        } else {
+          Alert.alert('Exported', `Backup saved to ${path}`);
         }
-        for (const photo of state.propertyPhotos) {
-          const b64 = await readPhotoAsBase64(photo.localUri);
-          if (b64) photoData[photo.id] = b64;
-        }
-        for (const photo of state.roomPhotos) {
-          const b64 = await readPhotoAsBase64(photo.localUri);
-          if (b64) photoData[photo.id] = b64;
-        }
-        for (const document of state.documents) {
-          const b64 = await readDocumentAsBase64(document.localUri);
-          if (b64) photoData[document.id] = b64;
-        }
+        return;
       }
+
       const bundle = buildTransferBundle({
         state,
         sourceLabel: 'Property Inventory History',
-        photoData,
       });
       const json = transferBundleToJson(bundle);
       const fileName = `property-inventory-${new Date().toISOString().slice(0, 10)}.json`;
@@ -151,22 +171,67 @@ export function TransferScreen(props: {
 
   async function pickImport() {
     setBusy(true);
+    let extractRoot: string | undefined;
     try {
+      // Use */* so iOS Files does not grey out ZIP backups (MIME/UTI filters are unreliable).
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
+        type: '*/*',
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets[0]?.uri) {
         return;
       }
-      const raw = await FileSystem.readAsStringAsync(result.assets[0].uri);
-      const parsed = parseTransferBundle(raw);
-      if (!parsed.ok) {
-        Alert.alert('Invalid file', parsed.error);
+      const asset = result.assets[0];
+      const imported = await importBackupFromUri(asset.uri, {
+        fileName: asset.name,
+        mimeType: asset.mimeType,
+      });
+      if (!imported.ok) {
+        Alert.alert('Invalid file', imported.error);
         return;
       }
-      const incoming = parsed.bundle.state;
-      const photoData = parsed.bundle.photoData;
+
+      if (imported.kind === 'zip') {
+        extractRoot = imported.extractRoot;
+        const incoming = imported.result.state;
+        const propCount = incoming.properties.length;
+        Alert.alert(
+          'Import backup',
+          `Found ${propCount} propert${propCount === 1 ? 'y' : 'ies'} (ZIP with media). Replace all data or merge new records?`,
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => void cleanupExtractRoot(extractRoot),
+            },
+            {
+              text: 'Merge',
+              onPress: () =>
+                void applyZipImport(
+                  incoming,
+                  imported.result.mediaFiles,
+                  imported.extractRoot,
+                  false
+                ),
+            },
+            {
+              text: 'Replace all',
+              style: 'destructive',
+              onPress: () =>
+                void applyZipImport(
+                  incoming,
+                  imported.result.mediaFiles,
+                  imported.extractRoot,
+                  true
+                ),
+            },
+          ]
+        );
+        return;
+      }
+
+      const incoming = imported.state;
+      const photoData = imported.photoData;
       const propCount = incoming.properties.length;
       Alert.alert(
         'Import backup',
@@ -174,10 +239,15 @@ export function TransferScreen(props: {
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Merge', onPress: () => void applyImport(incoming, photoData, false) },
-          { text: 'Replace all', style: 'destructive', onPress: () => void applyImport(incoming, photoData, true) },
+          {
+            text: 'Replace all',
+            style: 'destructive',
+            onPress: () => void applyImport(incoming, photoData, true),
+          },
         ]
       );
     } catch (e) {
+      await cleanupExtractRoot(extractRoot);
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setBusy(false);
@@ -196,12 +266,18 @@ export function TransferScreen(props: {
           Export or import your properties, rooms, items, events, and optionally photos and PDFs.
         </Text>
 
-        <View style={[sharedStyles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+        <View
+          style={[
+            sharedStyles.card,
+            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+          ]}
+        >
           <Text style={sharedStyles.cardTitle}>Include photos and PDFs in export</Text>
           <Switch value={includePhotos} onValueChange={setIncludePhotos} />
         </View>
         <Text style={sharedStyles.cardMeta}>
-          Photo and PDF exports are larger but restore files on import.
+          When on, backups export as a ZIP with photo and PDF files (required for large inventories).
+          Metadata-only exports stay as JSON.
         </Text>
 
         {busy ? <ActivityIndicator style={{ marginVertical: 16 }} /> : null}

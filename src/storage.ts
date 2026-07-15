@@ -489,10 +489,14 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
 }
 
 export async function loadAppState(): Promise<AppState> {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (!raw) return { ...EMPTY_APP_STATE };
   try {
-    return normalizeState(JSON.parse(raw) as AppState);
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ...EMPTY_APP_STATE };
+    try {
+      return normalizeState(JSON.parse(raw) as AppState);
+    } catch {
+      return { ...EMPTY_APP_STATE };
+    }
   } catch {
     return { ...EMPTY_APP_STATE };
   }

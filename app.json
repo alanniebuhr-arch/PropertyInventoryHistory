@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.alanniebuhr.propertyinventoryhistory",
-      "buildNumber": "11",
+      "buildNumber": "12",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Take photos of property items for your inventory.",
@@ -48,7 +48,8 @@
           "photosPermission": "Attach photos of property items to your inventory.",
           "cameraPermission": "Take photos of property items for your inventory."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
