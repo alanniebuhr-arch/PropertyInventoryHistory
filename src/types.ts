@@ -55,6 +55,8 @@ export type WasteWaterDetails = {
   kind: 'waste_water';
   system?: WasteWaterSystemType;
   systemOther?: string;
+  /** Septic tank capacity in gallons. */
+  gallons?: string;
   wasteLineExitPhotoId?: string;
   sewerBillPhotoId?: string;
   tankLocationPhotoId?: string;
@@ -319,6 +321,8 @@ export type InventoryItem = {
   displayName?: string;
   details: ItemDetails;
   photoIds: string[];
+  /** Extra documents beyond named photo-slot documents. */
+  documentIds: string[];
   createdAtISO: string;
 };
 
@@ -341,12 +345,21 @@ export type ItemEventType =
   | 'fuel_delivery'
   | 'other';
 
-export type RecurrenceInterval = 'monthly' | 'quarterly' | 'annual' | 'custom';
+export type RecurrenceInterval =
+  | 'monthly'
+  | 'quarterly'
+  | 'annual'
+  | 'every_2_years'
+  | 'every_3_years'
+  | 'custom'
+  | 'once';
 
 export type ItemEventRecurrence = {
   interval: RecurrenceInterval;
   intervalMonths?: number;
   nextDueAtISO?: string;
+  /** Reminder notes shown on upcoming service cards. */
+  notes?: string;
 };
 
 export type ItemEvent = {

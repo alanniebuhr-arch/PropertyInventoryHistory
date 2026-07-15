@@ -116,6 +116,7 @@ export function applyPropertyTemplate(
             : undefined,
         details: detailsForTemplateItem(templateItem),
         photoIds: [],
+        documentIds: [],
         createdAtISO,
       });
     }

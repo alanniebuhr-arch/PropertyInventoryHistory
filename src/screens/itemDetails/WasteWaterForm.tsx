@@ -22,6 +22,7 @@ export function WasteWaterForm(props: {
             ...details,
             system,
             systemOther: system === 'other' ? details.systemOther : undefined,
+            gallons: system === 'septic' ? details.gallons : undefined,
           })
         }
       />
@@ -31,6 +32,15 @@ export function WasteWaterForm(props: {
           value={details.systemOther ?? ''}
           onChangeText={(systemOther) => onChange({ ...details, systemOther })}
           placeholder="Describe the waste water system"
+        />
+      ) : null}
+      {details.system === 'septic' ? (
+        <FormField
+          label="Number of gallons"
+          value={details.gallons ?? ''}
+          onChangeText={(gallons) => onChange({ ...details, gallons })}
+          placeholder="e.g. 1000"
+          keyboardType="number-pad"
         />
       ) : null}
     </>

@@ -335,6 +335,9 @@ function buildDetailSections(item: InventoryItem): ItemExportSection[] {
       if (details.kind !== 'waste_water') break;
       pushSection(sections, section('Waste water', [
         row('System', wasteWaterSystemLabel(details.system, details.systemOther)),
+        ...(details.system === 'septic'
+          ? [row('Number of gallons', details.gallons)]
+          : []),
       ]));
       pushSection(sections, section('Notes', [row('Notes', details.notes)]));
       break;

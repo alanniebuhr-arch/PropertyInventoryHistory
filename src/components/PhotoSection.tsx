@@ -58,6 +58,12 @@ export function PhotoSection(props: {
   slotLabelWidth?: number;
   /** Adds photos and returns new photo ids for optional labeling. */
   onAddPhotos?: (uris: string[]) => Promise<string[] | void> | string[] | void;
+  /** When set, Add photo → Load file can attach non-image documents. */
+  onAddDocuments?: (
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) => void | Promise<void>;
+  /** Free-form documents shown after named-slot documents. */
+  extraDocumentRows?: DocumentListRow[];
   /** Called when the hero photo changes; undefined when there is no named label. */
   onActiveHeroLabelChange?: (label: string | undefined) => void;
   children?: ReactNode;
@@ -71,6 +77,8 @@ export function PhotoSection(props: {
     thumbSize = DEFAULT_THUMB_SIZE,
     slotLabelWidth = DEFAULT_SLOT_LABEL_WIDTH,
     onAddPhotos,
+    onAddDocuments,
+    extraDocumentRows,
     onActiveHeroLabelChange,
     children,
     childrenGesture,
@@ -129,6 +137,14 @@ export function PhotoSection(props: {
     [onAddPhotos, queueLabels]
   );
 
+  const handleAddDocuments = useCallback(
+    (picked: { uri: string; fileName: string; mimeType: string }) => {
+      if (!onAddDocuments) return;
+      void onAddDocuments([picked]);
+    },
+    [onAddDocuments]
+  );
+
   const stripTiles = useMemo((): PhotoTile[] => {
     const withoutAdd = tiles.filter(
       (tile) => tile.kind !== 'add' && !(tile.kind === 'reserved' && tile.document)
@@ -142,11 +158,14 @@ export function PhotoSection(props: {
       {
         kind: 'add' as const,
         onAdd: () => {
-          promptPickOrTakeMulti(handleAddPhotos);
+          promptPickOrTakeMulti(
+            handleAddPhotos,
+            onAddDocuments ? handleAddDocuments : undefined
+          );
         },
       },
     ];
-  }, [handleAddPhotos, onAddPhotos, tiles]);
+  }, [handleAddDocuments, handleAddPhotos, onAddDocuments, onAddPhotos, tiles]);
 
   const documentRows = useMemo((): DocumentListRow[] => {
     const rows: DocumentListRow[] = [];
@@ -161,8 +180,11 @@ export function PhotoSection(props: {
         onDelete: () => tile.onDeleteDocument?.(),
       });
     }
+    if (extraDocumentRows?.length) {
+      rows.push(...extraDocumentRows);
+    }
     return rows;
-  }, [tiles]);
+  }, [extraDocumentRows, tiles]);
 
   const viewerPhotos = useMemo((): ViewerPhoto[] => {
     const photos: ViewerPhoto[] = [];

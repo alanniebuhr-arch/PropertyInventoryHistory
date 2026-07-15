@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -9,31 +9,56 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, Room } from '../types';
-import { OverdueBadge, RoomListRow } from '../components/ListRows';
+import { RoomListRow } from '../components/ListRows';
+import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
 import { RenameModal } from '../components/RenameModal';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
-import { sharedStyles } from '../theme';
+import { sharedStyles, colors } from '../theme';
 import { uid } from '../utils';
 import {
   deletePropertyCascade,
-  itemsForProperty,
+  itemById,
   nextRoomSortOrder,
   propertyById,
   roomsForProperty,
 } from '../storage';
-import { overdueCountForProperty, overdueCountForRoom } from '../itemMaintenance';
+import { overdueCountForRoom } from '../itemMaintenance';
+import { itemDisplayLabel } from '../itemCatalog';
 import { firstPhotoUriForRoom } from '../roomPhotos';
+import {
+  filterUpcomingByHorizon,
+  upcomingHorizonLabel,
+  upcomingServiceEventsForProperty,
+  UPCOMING_HORIZON_OPTIONS,
+  type UpcomingHorizon,
+} from '../eventRecurrence';
+import {
+  getPropertyUpcomingHorizon,
+  loadPropertyUpcomingHorizon,
+  setPropertyUpcomingHorizon,
+} from '../upcomingHorizonPrefs';
 
 export function PropertyDetailScreen(props: {
   state: AppState;
   propertyId: string;
   onBack: () => void;
   onOpenRoom: (roomId: string) => void;
+  onEditEvent: (itemId: string, eventId: string) => void;
+  onLogUpcomingService: (itemId: string, completeFromEventId: string) => void;
   onSave: (state: AppState) => void;
 }) {
-  const { state, propertyId, onBack, onOpenRoom, onSave } = props;
+  const {
+    state,
+    propertyId,
+    onBack,
+    onOpenRoom,
+    onEditEvent,
+    onLogUpcomingService,
+    onSave,
+  } = props;
   const insets = useSafeAreaInsets();
   const property = propertyById(state, propertyId);
   const rooms = roomsForProperty(state, propertyId);
@@ -41,6 +66,19 @@ export function PropertyDetailScreen(props: {
   const [roomName, setRoomName] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
+  const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
+    getPropertyUpcomingHorizon
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPropertyUpcomingHorizon().then((horizon) => {
+      if (!cancelled) setUpcomingHorizon(horizon);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!property) {
     return (
@@ -54,8 +92,29 @@ export function PropertyDetailScreen(props: {
   }
 
   const prop = property;
-  const overdue = overdueCountForProperty(state, propertyId);
-  const itemCount = itemsForProperty(state, propertyId).length;
+  const upcomingEvents = filterUpcomingByHorizon(
+    upcomingServiceEventsForProperty(state, propertyId),
+    upcomingHorizon
+  );
+
+  function selectUpcomingHorizon(horizon: UpcomingHorizon) {
+    setUpcomingHorizon(horizon);
+    void setPropertyUpcomingHorizon(horizon);
+  }
+
+  function openUpcomingHorizonPicker() {
+    Alert.alert(
+      'Show upcoming through',
+      undefined,
+      [
+        ...UPCOMING_HORIZON_OPTIONS.map((opt) => ({
+          text: opt.label,
+          onPress: () => selectUpcomingHorizon(opt.id),
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]
+    );
+  }
 
   function addRoom() {
     const trimmed = roomName.trim();
@@ -131,10 +190,60 @@ export function PropertyDetailScreen(props: {
           </Pressable>
           {prop.address ? <Text style={sharedStyles.subtitle}>{prop.address}</Text> : null}
         </PropertyPhotosSection>
-        <Text style={sharedStyles.cardMeta}>
-          {rooms.length} room{rooms.length === 1 ? '' : 's'} · {itemCount} item{itemCount === 1 ? '' : 's'}
-        </Text>
-        <OverdueBadge count={overdue} />
+
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+            Services upcoming
+          </Text>
+          <Pressable
+            onPress={openUpcomingHorizonPicker}
+            accessibilityRole="button"
+            accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
+            accessibilityHint="Opens a list of time ranges for upcoming service."
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 2,
+              opacity: pressed ? 0.7 : 1,
+              paddingVertical: 4,
+              paddingLeft: 8,
+            })}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+              {upcomingHorizonLabel(upcomingHorizon)}
+            </Text>
+            <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
+          </Pressable>
+        </View>
+        {upcomingEvents.length === 0 ? (
+          <Text style={[sharedStyles.cardMeta, { marginBottom: 16 }]}>
+            No upcoming service scheduled.
+          </Text>
+        ) : (
+          <View style={{ marginBottom: 16 }}>
+            {upcomingEvents.map((e) => {
+              const item = itemById(state, e.itemId);
+              return (
+                <UpcomingServiceCard
+                  key={e.id}
+                  event={e}
+                  leadingLabel={item ? itemDisplayLabel(item) : undefined}
+                  onPressDetails={() => onEditEvent(e.itemId, e.id)}
+                  onLogService={() => onLogUpcomingService(e.itemId, e.id)}
+                />
+              );
+            })}
+          </View>
+        )}
 
         <Text style={sharedStyles.sectionTitle}>Rooms</Text>
         {rooms.length === 0 ? (

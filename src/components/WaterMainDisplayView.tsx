@@ -25,6 +25,11 @@ import {
   waterMainSlotDocumentInfo,
   waterMainSlotPhotoUri,
 } from '../waterMainPhotos';
+import {
+  addItemExtraDocuments,
+  itemExtraDocumentRows,
+  removeItemExtraDocument,
+} from '../itemExtraDocuments';
 import { WaterMainForm } from '../screens/itemDetails/WaterMainForm';
 
 export function WaterMainDisplayView(props: {
@@ -86,13 +91,33 @@ export function WaterMainDisplayView(props: {
     return item ? item.photoIds.slice(-sourceUris.length) : [];
   }
 
+  const extraDocumentRows = useMemo(
+    () =>
+      itemExtraDocumentRows(state, state.items.find((entry) => entry.id === itemId), (documentId) => {
+        void removeItemExtraDocument(state, itemId, documentId).then(onSave);
+      }),
+    [itemId, onSave, state]
+  );
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addItemExtraDocuments(state, itemId, picked));
+  }
+
   function updateDetails(next: WaterMainDetails) {
     onDetailsChange(next);
   }
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
+      <PhotoSection
+        tiles={photoTiles}
+        onAddPhotos={handleAddPhotos}
+        onAddDocuments={handleAddDocuments}
+        extraDocumentRows={extraDocumentRows}
+        onActiveHeroLabelChange={onActiveHeroLabelChange}
+      >
         {photoHeader}
       </PhotoSection>
 

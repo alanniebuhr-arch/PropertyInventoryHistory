@@ -32,6 +32,11 @@ import {
   setFurnaceSlotPhoto,
 } from '../furnacePhotos';
 import {
+  addItemExtraDocuments,
+  itemExtraDocumentRows,
+  removeItemExtraDocument,
+} from '../itemExtraDocuments';
+import {
   FurnaceEquipmentFields,
   FurnaceInstallFields,
   FurnaceNotesFields,
@@ -98,13 +103,34 @@ export function FurnaceDisplayView(props: {
     return item ? item.photoIds.slice(-sourceUris.length) : [];
   }
 
+  const extraDocumentRows = useMemo(
+    () =>
+      itemExtraDocumentRows(state, state.items.find((entry) => entry.id === itemId), (documentId) => {
+        void removeItemExtraDocument(state, itemId, documentId).then(onSave);
+      }),
+    [itemId, onSave, state]
+  );
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addItemExtraDocuments(state, itemId, picked));
+  }
+
   function updateDetails(next: FurnaceDetails) {
     onDetailsChange(next);
   }
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} slotLabelWidth={88} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
+      <PhotoSection
+        tiles={photoTiles}
+        slotLabelWidth={88}
+        onAddPhotos={handleAddPhotos}
+        onAddDocuments={handleAddDocuments}
+        extraDocumentRows={extraDocumentRows}
+        onActiveHeroLabelChange={onActiveHeroLabelChange}
+      >
         {photoHeader}
       </PhotoSection>
 

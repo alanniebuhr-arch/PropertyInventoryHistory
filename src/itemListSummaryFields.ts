@@ -118,6 +118,9 @@ export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField
         'System',
         wasteWaterSystemLabel(details.system, details.systemOther)
       );
+      if (details.system === 'septic') {
+        pushField(fields, 'Gallons', details.gallons);
+      }
       pushField(fields, 'Notes', details.notes);
       break;
     }

@@ -36,11 +36,22 @@ export async function pickSinglePhotoFromLibrary(): Promise<string | undefined> 
   return result.assets[0].uri;
 }
 
-function runLoadFileForPhoto(onPhoto: (uri: string) => void | Promise<void>) {
+function runLoadFileForPhoto(
+  onPhoto: (uri: string) => void | Promise<void>,
+  onDocument?: (picked: PickedDocument) => void | Promise<void>
+) {
   void pickFileAttachment().then((picked) => {
     if (!picked) return;
     if (picked.kind === 'image') {
       void onPhoto(picked.uri);
+      return;
+    }
+    if (onDocument) {
+      void onDocument({
+        uri: picked.uri,
+        fileName: picked.fileName,
+        mimeType: picked.mimeType,
+      });
       return;
     }
     Alert.alert(
@@ -118,7 +129,10 @@ export function promptSlotAttachment(handlers: {
   ]);
 }
 
-export function promptPickOrTakeMulti(onPhotos: (uris: string[]) => void | Promise<void>) {
+export function promptPickOrTakeMulti(
+  onPhotos: (uris: string[]) => void | Promise<void>,
+  onDocument?: (picked: PickedDocument) => void | Promise<void>
+) {
   Alert.alert('Add photo', undefined, [
     { text: 'Cancel', style: 'cancel' },
     {
@@ -139,7 +153,7 @@ export function promptPickOrTakeMulti(onPhotos: (uris: string[]) => void | Promi
     },
     {
       text: 'Load file',
-      onPress: () => runLoadFileForPhoto((uri) => onPhotos([uri])),
+      onPress: () => runLoadFileForPhoto((uri) => onPhotos([uri]), onDocument),
     },
   ]);
 }

@@ -23,6 +23,11 @@ import {
   waterTreatmentSlotDocumentInfo,
   waterTreatmentSlotPhotoUri,
 } from '../waterTreatmentPhotos';
+import {
+  addItemExtraDocuments,
+  itemExtraDocumentRows,
+  removeItemExtraDocument,
+} from '../itemExtraDocuments';
 import { WaterTreatmentForm } from '../screens/itemDetails/WaterTreatmentForm';
 
 export function WaterTreatmentDisplayView(props: {
@@ -95,13 +100,33 @@ export function WaterTreatmentDisplayView(props: {
     return item ? item.photoIds.slice(-sourceUris.length) : [];
   }
 
+  const extraDocumentRows = useMemo(
+    () =>
+      itemExtraDocumentRows(state, state.items.find((entry) => entry.id === itemId), (documentId) => {
+        void removeItemExtraDocument(state, itemId, documentId).then(onSave);
+      }),
+    [itemId, onSave, state]
+  );
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addItemExtraDocuments(state, itemId, picked));
+  }
+
   function updateDetails(next: WaterTreatmentDetails) {
     onDetailsChange(next);
   }
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
+      <PhotoSection
+        tiles={photoTiles}
+        onAddPhotos={handleAddPhotos}
+        onAddDocuments={handleAddDocuments}
+        extraDocumentRows={extraDocumentRows}
+        onActiveHeroLabelChange={onActiveHeroLabelChange}
+      >
         {photoHeader}
       </PhotoSection>
 

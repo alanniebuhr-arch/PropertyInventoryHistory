@@ -7,6 +7,7 @@ import { PhotoSection } from './PhotoSection';
 import { sharedStyles } from '../theme';
 import { formatStoredDate, hasAnyValue } from '../itemDetailDisplayHelpers';
 import { buildExtraOnlyPhotoTiles } from '../photoSectionBuilders';
+import type { DocumentListRow } from './DocumentListSection';
 import { GasMainForm } from '../screens/itemDetails/GasMainForm';
 import { WaterHeaterForm } from '../screens/itemDetails/WaterHeaterForm';
 import {
@@ -25,6 +26,10 @@ export function ItemDisplayView(props: {
   photos: GalleryPhoto[];
   onAddPhoto: (uri: string) => void;
   onAddPhotos: (uris: string[]) => Promise<string[] | void> | string[] | void;
+  onAddDocuments?: (
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) => void | Promise<void>;
+  extraDocumentRows?: DocumentListRow[];
   onDeletePhoto: (photoId: string) => void;
   onPhotoCaptionChange?: (photoId: string, caption: string) => void;
   onDetailsChange: (details: ItemDetails) => void;
@@ -39,6 +44,8 @@ export function ItemDisplayView(props: {
     photos,
     onAddPhoto,
     onAddPhotos,
+    onAddDocuments,
+    extraDocumentRows,
     onDeletePhoto,
     onPhotoCaptionChange,
     onDetailsChange,
@@ -219,7 +226,13 @@ export function ItemDisplayView(props: {
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} onAddPhotos={onAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
+      <PhotoSection
+        tiles={photoTiles}
+        onAddPhotos={onAddPhotos}
+        onAddDocuments={onAddDocuments}
+        extraDocumentRows={extraDocumentRows}
+        onActiveHeroLabelChange={onActiveHeroLabelChange}
+      >
         {photoHeader}
       </PhotoSection>
       {renderDetailSections()}

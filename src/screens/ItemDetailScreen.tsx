@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, AirConditionerDetails, ApplianceDetails, AutomobileDetails, ElectricPanelDetails, FurnaceDetails, InventoryItem, ItemDetails, ItemPhoto, WasteWaterDetails, WaterMainDetails, WaterTreatmentDetails } from '../types';
 import { EventListRow } from '../components/ListRows';
+import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { ItemDisplayView } from '../components/ItemDisplayView';
 import {
   ApplianceDisplayView,
@@ -37,8 +38,17 @@ import {
 } from '../storage';
 import { catalogLabel, itemDisplayLabel } from '../itemCatalog';
 import { isItemOverdue, nextDueLabelForItem } from '../itemMaintenance';
-import { EVENT_TYPE_LABELS, recurrenceLabel } from '../eventRecurrence';
+import {
+  EVENT_TYPE_LABELS,
+  filterUpcomingByHorizon,
+  recurrenceLabel,
+  upcomingHorizonLabel,
+  upcomingServiceEvents,
+  UPCOMING_HORIZON_OPTIONS,
+  type UpcomingHorizon,
+} from '../eventRecurrence';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { deleteDocumentFile } from '../documentStorage';
 import { updateApplianceDetails } from '../appliancePhotos';
 import { updateWaterMainDetails, applyWaterMainDetailsChange } from '../waterMainPhotos';
 import { furnaceUsesFuelShutoff, furnaceUsesFuelTank } from '../furnaceSlots';
@@ -48,6 +58,11 @@ import { updateElectricPanelDetails } from '../electricPanelPhotos';
 import { updateWaterTreatmentDetails } from '../waterTreatmentPhotos';
 import { updateAirConditionerDetails } from '../airConditionerPhotos';
 import { updateAutomobileDetails } from '../automobilePhotos';
+import {
+  addItemExtraDocuments,
+  itemExtraDocumentRows,
+  removeItemExtraDocument,
+} from '../itemExtraDocuments';
 import { WaterMainDisplayView } from '../components/WaterMainDisplayView';
 import { WaterTreatmentDisplayView } from '../components/WaterTreatmentDisplayView';
 import { ElectricPanelDisplayView } from '../components/ElectricPanelDisplayView';
@@ -70,9 +85,20 @@ export function ItemDetailScreen(props: {
   onNavigateItem: (itemId: string) => void;
   onAddEvent: () => void;
   onEditEvent: (eventId: string) => void;
+  onLogUpcomingService: (completeFromEventId: string) => void;
   onSave: (state: AppState) => void;
 }) {
-  const { state, itemId, startEditingSection, onBack, onNavigateItem, onAddEvent, onEditEvent, onSave } = props;
+  const {
+    state,
+    itemId,
+    startEditingSection,
+    onBack,
+    onNavigateItem,
+    onAddEvent,
+    onEditEvent,
+    onLogUpcomingService,
+    onSave,
+  } = props;
   const insets = useSafeAreaInsets();
   const item = itemById(state, itemId);
   const [details, setDetails] = useState<ItemDetails | null>(null);
@@ -82,6 +108,7 @@ export function ItemDetailScreen(props: {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [exportSnapshot, setExportSnapshot] = useState<ItemExportSnapshot | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>('1y');
   const exportRef = useRef<View>(null);
 
   const scrollFieldIntoView = useCallback(
@@ -238,6 +265,10 @@ export function ItemDetailScreen(props: {
   const waterTreatmentDetails = details.kind === 'water_treatment' ? details : null;
   const photos = photosForItem(state, itemId);
   const events = eventsForItem(state, itemId);
+  const upcomingEvents = filterUpcomingByHorizon(
+    upcomingServiceEvents(events),
+    upcomingHorizon
+  );
   const nextDue = nextDueLabelForItem(state, itemId);
   const overdue = isItemOverdue(state, itemId);
 
@@ -418,6 +449,16 @@ export function ItemDetailScreen(props: {
     });
   }
 
+  const extraDocumentRows = itemExtraDocumentRows(state, inv, (documentId) => {
+    void removeItemExtraDocument(state, itemId, documentId).then(onSave);
+  });
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addItemExtraDocuments(state, itemId, picked));
+  }
+
   function confirmDeleteItem() {
     Alert.alert(
       'Delete item?',
@@ -431,6 +472,10 @@ export function ItemDetailScreen(props: {
             for (const p of state.photos.filter((ph) => ph.itemId === itemId)) {
               await deletePhotoFile(p.localUri);
             }
+            for (const documentId of inv.documentIds ?? []) {
+              const doc = state.documents.find((d) => d.id === documentId);
+              if (doc) await deleteDocumentFile(doc.localUri);
+            }
             onSave(deleteItemCascade(state, itemId));
             onBack();
           },
@@ -438,6 +483,112 @@ export function ItemDetailScreen(props: {
       ]
     );
   }
+
+  const serviceSections = (
+    <View>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginTop: 8,
+          marginBottom: 8,
+        }}
+      >
+        <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+          Service upcoming
+        </Text>
+        <Pressable
+          onPress={() => {
+            Alert.alert(
+              'Show upcoming through',
+              undefined,
+              [
+                ...UPCOMING_HORIZON_OPTIONS.map((opt) => ({
+                  text: opt.label,
+                  onPress: () => setUpcomingHorizon(opt.id),
+                })),
+                { text: 'Cancel', style: 'cancel' as const },
+              ]
+            );
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
+          accessibilityHint="Opens a list of time ranges for upcoming service."
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 2,
+            opacity: pressed ? 0.7 : 1,
+            paddingVertical: 4,
+            paddingLeft: 8,
+          })}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+            {upcomingHorizonLabel(upcomingHorizon)}
+          </Text>
+          <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
+        </Pressable>
+      </View>
+      {upcomingEvents.length === 0 ? (
+        <Text style={[sharedStyles.cardMeta, { marginBottom: 16 }]}>
+          No upcoming service scheduled.
+        </Text>
+      ) : (
+        <View style={{ marginBottom: 16 }}>
+          {upcomingEvents.map((e) => (
+            <UpcomingServiceCard
+              key={e.id}
+              event={e}
+              onPressDetails={() => onEditEvent(e.id)}
+              onLogService={() => onLogUpcomingService(e.id)}
+            />
+          ))}
+        </View>
+      )}
+
+      <Text style={sharedStyles.sectionTitle}>Service history</Text>
+      <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
+        Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
+      </Text>
+      <Pressable
+        onPress={onAddEvent}
+        style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
+      >
+        <Text style={sharedStyles.primaryBtnText}>Log service event</Text>
+      </Pressable>
+      {events.length === 0 ? (
+        <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
+          No service events yet — e.g. annual maintenance or a repair.
+        </Text>
+      ) : (
+        <View style={{ marginTop: 12 }}>
+          {events.map((e) => {
+            const eventPhotos = photosForEvent(state, e.id);
+            return (
+              <EventListRow
+                key={e.id}
+                title={e.title}
+                eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
+                dateLabel={formatDate(e.occurredAtISO)}
+                costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
+                recurrenceLabel={e.recurrence ? recurrenceLabel(e.recurrence) : undefined}
+                notes={e.notes}
+                thumbnailUri={eventPhotos[0]?.localUri}
+                photoCount={eventPhotos.length}
+                onPress={() => onEditEvent(e.id)}
+              />
+            );
+          })}
+        </View>
+      )}
+
+      <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
+        <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
+      </Pressable>
+    </View>
+  );
 
   return (
     <ItemDetailScrollContext.Provider value={handleFieldFocus}>
@@ -573,6 +724,8 @@ export function ItemDetailScreen(props: {
             photos={photos}
             onAddPhoto={addPhoto}
             onAddPhotos={addPhotos}
+            onAddDocuments={handleAddDocuments}
+            extraDocumentRows={extraDocumentRows}
             onDeletePhoto={removePhoto}
             onPhotoCaptionChange={handlePhotoCaptionChange}
             onDetailsChange={handleDetailsChange}
@@ -585,90 +738,10 @@ export function ItemDetailScreen(props: {
 
         {itemSwipeEnabled ? (
           <GestureDetector gesture={itemSwipeGestureForServiceHistory}>
-            <View>
-              <Text style={sharedStyles.sectionTitle}>Service history</Text>
-              <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
-                Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
-              </Text>
-              <Pressable
-                onPress={onAddEvent}
-                style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
-              >
-                <Text style={sharedStyles.primaryBtnText}>Log service event</Text>
-              </Pressable>
-              {events.length === 0 ? (
-                <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
-                  No service events yet — e.g. annual maintenance or a repair.
-                </Text>
-              ) : (
-                <View style={{ marginTop: 12 }}>
-                  {events.map((e) => {
-                    const eventPhotos = photosForEvent(state, e.id);
-                    return (
-                      <EventListRow
-                        key={e.id}
-                        title={e.title}
-                        eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
-                        dateLabel={formatDate(e.occurredAtISO)}
-                        costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
-                        recurrenceLabel={e.recurrence ? recurrenceLabel(e.recurrence) : undefined}
-                        notes={e.notes}
-                        thumbnailUri={eventPhotos[0]?.localUri}
-                        photoCount={eventPhotos.length}
-                        onPress={() => onEditEvent(e.id)}
-                      />
-                    );
-                  })}
-                </View>
-              )}
-
-              <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
-                <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
-              </Pressable>
-            </View>
+            <View>{serviceSections}</View>
           </GestureDetector>
         ) : (
-          <>
-            <Text style={sharedStyles.sectionTitle}>Service history</Text>
-            <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
-              Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
-            </Text>
-            <Pressable
-              onPress={onAddEvent}
-              style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
-            >
-              <Text style={sharedStyles.primaryBtnText}>Log service event</Text>
-            </Pressable>
-            {events.length === 0 ? (
-              <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
-                No service events yet — e.g. annual maintenance or a repair.
-              </Text>
-            ) : (
-              <View style={{ marginTop: 12 }}>
-                {events.map((e) => {
-                  const eventPhotos = photosForEvent(state, e.id);
-                  return (
-                    <EventListRow
-                      key={e.id}
-                      title={e.title}
-                      eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
-                      dateLabel={formatDate(e.occurredAtISO)}
-                      costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
-                      recurrenceLabel={e.recurrence ? recurrenceLabel(e.recurrence) : undefined}
-                      notes={e.notes}
-                      thumbnailUri={eventPhotos[0]?.localUri}
-                      photoCount={eventPhotos.length}
-                      onPress={() => onEditEvent(e.id)}
-                    />
-                  );
-                })}
-              </View>
-            )}
-
-            <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
-              <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
-            </Pressable>
-          </>
+          serviceSections
         )}
         </ScrollView>
       </KeyboardAvoidingView>

@@ -9,10 +9,10 @@ export function PropertyListRow(props: {
   thumbnailUri?: string;
   roomCount: number;
   itemCount: number;
-  overdueCount: number;
+  dueSoonCount: number;
   onPress: () => void;
 }) {
-  const { name, address, thumbnailUri, roomCount, itemCount, overdueCount, onPress } = props;
+  const { name, address, thumbnailUri, roomCount, itemCount, dueSoonCount, onPress } = props;
   return (
     <Pressable
       onPress={onPress}
@@ -35,9 +35,14 @@ export function PropertyListRow(props: {
           <Text style={sharedStyles.cardTitle}>{name}</Text>
           {address ? <Text style={sharedStyles.cardMeta}>{address}</Text> : null}
           <Text style={sharedStyles.cardMeta}>
-            {roomCount} room{roomCount === 1 ? '' : 's'} · {itemCount} item{itemCount === 1 ? '' : 's'}
-            {overdueCount > 0 ? ` · ${overdueCount} overdue` : ''}
+            {roomCount} room{roomCount === 1 ? '' : 's'} · {itemCount} item
+            {itemCount === 1 ? '' : 's'}
           </Text>
+          {dueSoonCount > 0 ? (
+            <Text style={[sharedStyles.cardMeta, { color: colors.overdue, fontWeight: '600' }]}>
+              {dueSoonCount} service{dueSoonCount === 1 ? '' : 's'} due this month
+            </Text>
+          ) : null}
         </View>
       </View>
     </Pressable>

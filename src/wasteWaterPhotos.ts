@@ -237,6 +237,8 @@ export async function applyWasteWaterDetailsChange(
       next.system === 'other'
         ? next.systemOther?.trim() || undefined
         : undefined,
+    gallons:
+      next.system === 'septic' ? next.gallons?.trim() || undefined : undefined,
     sewerBillPhotoId: next.system === 'sewer' ? currentDetails.sewerBillPhotoId : undefined,
     tankLocationPhotoId:
       next.system === 'septic' || next.system === 'cesspool'

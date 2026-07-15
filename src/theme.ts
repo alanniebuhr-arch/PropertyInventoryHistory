@@ -12,6 +12,9 @@ export const colors = {
   overdue: '#c62828',
   dueSoon: '#e65100',
   accent: '#2e7d32',
+  upcomingMonthBg: '#fff3b0',
+  upcomingWeekBg: '#f5d76e',
+  upcomingOverdueBg: '#fdecea',
 };
 
 export const sharedStyles = StyleSheet.create({

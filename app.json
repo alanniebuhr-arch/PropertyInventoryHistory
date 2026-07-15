@@ -2,7 +2,7 @@
   "expo": {
     "name": "Property Inventory History",
     "slug": "PropertyInventoryHistory",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.alanniebuhr.propertyinventoryhistory",
-      "buildNumber": "8",
+      "buildNumber": "11",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Take photos of property items for your inventory.",
@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "versionCode": 7,
+      "versionCode": 10,
       "adaptiveIcon": {
         "backgroundColor": "#1f5fbf",
         "foregroundImage": "./assets/android-icon-foreground.png",

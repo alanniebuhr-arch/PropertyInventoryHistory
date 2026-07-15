@@ -115,6 +115,7 @@ export function createInventoryItem(
     displayName,
     details,
     photoIds: [],
+    documentIds: [],
     createdAtISO: nowISO(),
   };
 }

@@ -25,6 +25,11 @@ import {
   wasteWaterSlotPhotoUri,
 } from '../wasteWaterPhotos';
 import {
+  addItemExtraDocuments,
+  itemExtraDocumentRows,
+  removeItemExtraDocument,
+} from '../itemExtraDocuments';
+import {
   WasteWaterForm,
   WasteWaterNotesFields,
 } from '../screens/itemDetails/WasteWaterForm';
@@ -90,13 +95,34 @@ export function WasteWaterDisplayView(props: {
     return item ? item.photoIds.slice(-sourceUris.length) : [];
   }
 
+  const extraDocumentRows = useMemo(
+    () =>
+      itemExtraDocumentRows(state, state.items.find((entry) => entry.id === itemId), (documentId) => {
+        void removeItemExtraDocument(state, itemId, documentId).then(onSave);
+      }),
+    [itemId, onSave, state]
+  );
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addItemExtraDocuments(state, itemId, picked));
+  }
+
   function updateDetails(next: WasteWaterDetails) {
     onDetailsChange(next);
   }
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} slotLabelWidth={88} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
+      <PhotoSection
+        tiles={photoTiles}
+        slotLabelWidth={88}
+        onAddPhotos={handleAddPhotos}
+        onAddDocuments={handleAddDocuments}
+        extraDocumentRows={extraDocumentRows}
+        onActiveHeroLabelChange={onActiveHeroLabelChange}
+      >
         {photoHeader}
       </PhotoSection>
 
@@ -109,10 +135,15 @@ export function WasteWaterDisplayView(props: {
         {editingSection === 'main' ? (
           <WasteWaterForm details={details} onChange={updateDetails} />
         ) : wasteWaterHasInfo(details) ? (
-          <DetailDisplayRow
-            label="System"
-            value={wasteWaterSystemLabel(details.system, details.systemOther)}
-          />
+          <>
+            <DetailDisplayRow
+              label="System"
+              value={wasteWaterSystemLabel(details.system, details.systemOther)}
+            />
+            {details.system === 'septic' ? (
+              <DetailDisplayRow label="Number of gallons" value={details.gallons} />
+            ) : null}
+          </>
         ) : (
           <Text style={sharedStyles.cardMeta}>Not set</Text>
         )}

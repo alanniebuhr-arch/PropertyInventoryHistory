@@ -28,6 +28,11 @@ import {
   setAutomobileSlotPhoto,
 } from '../automobilePhotos';
 import {
+  addItemExtraDocuments,
+  itemExtraDocumentRows,
+  removeItemExtraDocument,
+} from '../itemExtraDocuments';
+import {
   AutomobileMaintenanceFields,
   AutomobileNotesFields,
   AutomobilePurchaseFields,
@@ -100,13 +105,34 @@ export function AutomobileDisplayView(props: {
     return item ? item.photoIds.slice(-sourceUris.length) : [];
   }
 
+  const extraDocumentRows = useMemo(
+    () =>
+      itemExtraDocumentRows(state, state.items.find((entry) => entry.id === itemId), (documentId) => {
+        void removeItemExtraDocument(state, itemId, documentId).then(onSave);
+      }),
+    [itemId, onSave, state]
+  );
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addItemExtraDocuments(state, itemId, picked));
+  }
+
   function updateDetails(next: AutomobileDetails) {
     onDetailsChange(next);
   }
 
   return (
     <View>
-      <PhotoSection tiles={photoTiles} slotLabelWidth={88} onAddPhotos={handleAddPhotos} onActiveHeroLabelChange={onActiveHeroLabelChange}>
+      <PhotoSection
+        tiles={photoTiles}
+        slotLabelWidth={88}
+        onAddPhotos={handleAddPhotos}
+        onAddDocuments={handleAddDocuments}
+        extraDocumentRows={extraDocumentRows}
+        onActiveHeroLabelChange={onActiveHeroLabelChange}
+      >
         {photoHeader}
       </PhotoSection>
 

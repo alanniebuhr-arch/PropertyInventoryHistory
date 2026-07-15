@@ -1,7 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Dimensions,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Switch,
@@ -9,16 +13,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import type { ScrollView as RNScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, ItemEvent, ItemEventRecurrence, ItemEventType, ItemPhoto, RecurrenceInterval } from '../types';
 import { EventPhotoSection } from '../components/EventPhotoSection';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { sharedStyles, colors } from '../theme';
-import { uid, nowISO, dateInputValue, parseDateInputToISO } from '../utils';
+import { uid, nowISO, dateInputValue, parseDateInputToISO, parseDateInputValue } from '../utils';
 import { deleteEventCascade, itemById, photosForEvent } from '../storage';
 import {
-  advanceRecurrenceAfterEvent,
+  clearEventNextDue,
   computeNextDueFromOccurrence,
   EVENT_TYPE_LABELS,
 } from '../eventRecurrence';
@@ -37,7 +42,100 @@ const EVENT_TYPES: ItemEventType[] = [
   'fuel_delivery',
   'other',
 ];
-const RECURRENCE_OPTIONS: RecurrenceInterval[] = ['monthly', 'quarterly', 'annual', 'custom'];
+
+type ScheduleMode = 'repeat' | 'onetime';
+
+function prefillsFromSource(source: ItemEvent | undefined): {
+  title: string;
+  eventType: ItemEventType;
+  recurring: boolean;
+  scheduleMode: ScheduleMode;
+  interval: Exclude<RecurrenceInterval, 'once'>;
+  customMonths: string;
+  scheduleNotes: string;
+} {
+  if (!source) {
+    return {
+      title: '',
+      eventType: 'maintenance',
+      recurring: false,
+      scheduleMode: 'repeat',
+      interval: 'annual',
+      customMonths: '12',
+      scheduleNotes: '',
+    };
+  }
+  const sourceInterval = source.recurrence?.interval;
+  const scheduleNotes = source.recurrence?.notes ?? '';
+  if (sourceInterval && sourceInterval !== 'once') {
+    return {
+      title: source.title,
+      eventType: source.eventType,
+      recurring: true,
+      scheduleMode: 'repeat',
+      interval: sourceInterval,
+      customMonths: String(source.recurrence?.intervalMonths ?? 12),
+      scheduleNotes,
+    };
+  }
+  return {
+    title: source.title,
+    eventType: source.eventType,
+    recurring: false,
+    scheduleMode: 'repeat',
+    interval: 'annual',
+    customMonths: '12',
+    scheduleNotes,
+  };
+}
+
+const REPEAT_OPTIONS: Exclude<RecurrenceInterval, 'once'>[] = [
+  'monthly',
+  'quarterly',
+  'annual',
+  'every_2_years',
+  'every_3_years',
+  'custom',
+];
+
+function repeatPeriodLabel(opt: Exclude<RecurrenceInterval, 'once'>): string {
+  switch (opt) {
+    case 'monthly':
+      return 'Monthly';
+    case 'quarterly':
+      return 'Quarterly';
+    case 'annual':
+      return 'Annual';
+    case 'every_2_years':
+      return '2 Year';
+    case 'every_3_years':
+      return '3 Year';
+    case 'custom':
+      return 'Custom';
+  }
+}
+
+function draftRecurrence(
+  interval: Exclude<RecurrenceInterval, 'once'>,
+  customMonths: string
+): ItemEventRecurrence {
+  return {
+    interval,
+    intervalMonths: interval === 'custom' ? Math.max(1, parseInt(customMonths, 10) || 12) : undefined,
+  };
+}
+
+function computedNextDueLabel(
+  dateStr: string,
+  interval: Exclude<RecurrenceInterval, 'once'>,
+  customMonths: string
+): string {
+  const occurredAtISO = parseDateInputToISO(dateStr);
+  if (!occurredAtISO) return '—';
+  return dateInputValue(
+    computeNextDueFromOccurrence(occurredAtISO, draftRecurrence(interval, customMonths))
+  );
+}
 
 function defaultTitleForType(eventType: ItemEventType, itemTypeId?: string): string {
   if (eventType === 'maintenance') {
@@ -59,41 +157,142 @@ export function AddEditEventScreen(props: {
   state: AppState;
   itemId: string;
   eventId?: string;
+  /** When set, creating a new event that completes this reminder. */
+  completeFromEventId?: string;
   onBack: () => void;
   onSave: (state: AppState) => void;
 }) {
-  const { state, itemId, eventId, onBack, onSave } = props;
+  const { state, itemId, eventId, completeFromEventId, onBack, onSave } = props;
   const insets = useSafeAreaInsets();
   const item = itemById(state, itemId);
   const existing = eventId ? eventByIdHelper(state, eventId) : undefined;
+  const completeFrom =
+    !existing && completeFromEventId
+      ? eventByIdHelper(state, completeFromEventId)
+      : undefined;
+  const fromReminder = prefillsFromSource(completeFrom);
 
-  const [title, setTitle] = useState(existing?.title ?? '');
-  const [eventType, setEventType] = useState<ItemEventType>(existing?.eventType ?? 'maintenance');
+  const [title, setTitle] = useState(existing?.title ?? fromReminder.title);
+  const [eventType, setEventType] = useState<ItemEventType>(
+    existing?.eventType ?? fromReminder.eventType
+  );
   const [dateStr, setDateStr] = useState(
     existing ? dateInputValue(existing.occurredAtISO) : dateInputValue(nowISO())
   );
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [costStr, setCostStr] = useState(existing?.cost != null ? String(existing.cost) : '');
-  const [recurring, setRecurring] = useState(Boolean(existing?.recurrence));
-  const [interval, setInterval] = useState<RecurrenceInterval>(existing?.recurrence?.interval ?? 'annual');
-  const [customMonths, setCustomMonths] = useState(
-    String(existing?.recurrence?.intervalMonths ?? 12)
+  const [recurring, setRecurring] = useState(
+    existing ? Boolean(existing.recurrence) : fromReminder.recurring
+  );
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(() => {
+    if (existing?.recurrence?.interval === 'once') return 'onetime';
+    if (existing) return 'repeat';
+    return fromReminder.scheduleMode;
+  });
+  const [interval, setInterval] = useState<Exclude<RecurrenceInterval, 'once'>>(() => {
+    const existingInterval = existing?.recurrence?.interval;
+    if (existingInterval && existingInterval !== 'once') return existingInterval;
+    return fromReminder.interval;
+  });
+  const [customMonths, setCustomMonths] = useState(() => {
+    if (existing?.recurrence?.intervalMonths != null) {
+      return String(existing.recurrence.intervalMonths);
+    }
+    return fromReminder.customMonths;
+  });
+  const [nextDueStr, setNextDueStr] = useState(() => {
+    if (existing?.recurrence?.interval === 'once' && existing.recurrence.nextDueAtISO) {
+      return dateInputValue(existing.recurrence.nextDueAtISO);
+    }
+    return '';
+  });
+  const [scheduleNotes, setScheduleNotes] = useState(
+    existing?.recurrence?.notes ?? fromReminder.scheduleNotes
   );
   const [eventPhotos, setEventPhotos] = useState<ItemPhoto[]>(() =>
     existing ? photosForEvent(state, existing.id) : []
   );
-  const [titleTouched, setTitleTouched] = useState(Boolean(existing?.title));
+  const [titleTouched, setTitleTouched] = useState(
+    Boolean(existing?.title) || Boolean(completeFrom?.title)
+  );
   const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const scrollRef = useRef<RNScrollView>(null);
+  const scrollYRef = useRef(0);
+  const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
+  const nextDueInputRef = useRef<TextInput>(null);
+  const customMonthsInputRef = useRef<TextInput>(null);
+  const scheduleNotesInputRef = useRef<TextInput>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  const scrollFieldIntoView = useCallback(
+    (windowY: number, height: number, kbHeight: number) => {
+      const visibleBottom = Dimensions.get('window').height - kbHeight - insets.bottom - 24;
+      const fieldBottom = windowY + height;
+      if (fieldBottom > visibleBottom) {
+        scrollRef.current?.scrollTo({
+          y: scrollYRef.current + (fieldBottom - visibleBottom),
+          animated: true,
+        });
+      }
+    },
+    [insets.bottom]
+  );
+
+  const handleFieldFocus = useCallback(
+    (windowY: number, height: number) => {
+      pendingFocusRef.current = { y: windowY, height };
+      scrollFieldIntoView(windowY, height, keyboardHeight || 320);
+    },
+    [keyboardHeight, scrollFieldIntoView]
+  );
+
+  const measureAndScroll = useCallback(
+    (input: TextInput | null) => {
+      // Defer so layout reflects the focused field before measuring.
+      requestAnimationFrame(() => {
+        input?.measureInWindow((_x, y, _w, height) => {
+          handleFieldFocus(y, height);
+        });
+      });
+    },
+    [handleFieldFocus]
+  );
 
   useEffect(() => {
-    if (existing || titleTouched) return;
+    if (existing || titleTouched || completeFrom) return;
     const suggested = defaultTitleForType(eventType, item?.itemTypeId);
     if (suggested) setTitle(suggested);
     if (eventType === 'maintenance' && (item?.itemTypeId === 'furnace' || item?.itemTypeId === 'air_conditioner' || item?.itemTypeId === 'automobile' || item?.itemTypeId === 'waste_water' || item?.itemTypeId === 'water_treatment')) {
       setRecurring(true);
+      setScheduleMode('repeat');
       setInterval('annual');
     }
-  }, [existing, eventType, item?.itemTypeId, titleTouched]);
+  }, [completeFrom, existing, eventType, item?.itemTypeId, titleTouched]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        const kbHeight = e.endCoordinates.height;
+        setKeyboardHeight(kbHeight);
+        const pending = pendingFocusRef.current;
+        if (pending) {
+          scrollFieldIntoView(pending.y, pending.height, kbHeight);
+        }
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+        pendingFocusRef.current = null;
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scrollFieldIntoView]);
 
   if (!item) {
     return (
@@ -160,15 +359,23 @@ export function AddEditEventScreen(props: {
     setEventPhotos((prev) => prev.filter((p) => p.id !== photoId));
   }
 
-  function buildRecurrence(occurredAtISO: string): ItemEventRecurrence | undefined {
+  function buildRecurrence(): ItemEventRecurrence | undefined {
     if (!recurring) return undefined;
-    const recurrence: ItemEventRecurrence = {
-      interval,
-      intervalMonths: interval === 'custom' ? Math.max(1, parseInt(customMonths, 10) || 12) : undefined,
-    };
+    const notes = scheduleNotes.trim() || undefined;
+
+    if (scheduleMode === 'onetime') {
+      const nextDueAtISO = parseDateInputToISO(nextDueStr);
+      if (!nextDueAtISO) return undefined;
+      return { interval: 'once', nextDueAtISO, notes };
+    }
+
+    const occurredAtISO = parseDateInputToISO(dateStr);
+    if (!occurredAtISO) return undefined;
+    const draft = draftRecurrence(interval, customMonths);
     return {
-      ...recurrence,
-      nextDueAtISO: computeNextDueFromOccurrence(occurredAtISO, recurrence),
+      ...draft,
+      nextDueAtISO: computeNextDueFromOccurrence(occurredAtISO, draft),
+      notes,
     };
   }
 
@@ -180,7 +387,16 @@ export function AddEditEventScreen(props: {
     }
     if (t === 'maintenance' && !existing) {
       setRecurring(true);
-      if (it.itemTypeId === 'furnace' || it.itemTypeId === 'air_conditioner' || it.itemTypeId === 'automobile' || it.itemTypeId === 'waste_water' || it.itemTypeId === 'water_treatment') setInterval('annual');
+      setScheduleMode('repeat');
+      if (
+        it.itemTypeId === 'furnace' ||
+        it.itemTypeId === 'air_conditioner' ||
+        it.itemTypeId === 'automobile' ||
+        it.itemTypeId === 'waste_water' ||
+        it.itemTypeId === 'water_treatment'
+      ) {
+        setInterval('annual');
+      }
     }
   }
 
@@ -195,8 +411,27 @@ export function AddEditEventScreen(props: {
       Alert.alert('Invalid date', 'Enter the date as MM/DD/YYYY.');
       return;
     }
+
+    if (recurring && scheduleMode === 'onetime') {
+      const nextDueAtISO = parseDateInputToISO(nextDueStr);
+      if (!nextDueAtISO) {
+        Alert.alert('Invalid next due date', 'Enter the next due date as MM/DD/YYYY.');
+        return;
+      }
+      const occurredYmd = parseDateInputValue(dateStr);
+      const nextDueYmd = parseDateInputValue(nextDueStr);
+      if (occurredYmd && nextDueYmd && nextDueYmd < occurredYmd) {
+        Alert.alert('Invalid next due date', 'Next due date must be on or after the service date.');
+        return;
+      }
+    }
+
     const cost = costStr.trim() ? parseFloat(costStr) : undefined;
-    const recurrence = buildRecurrence(occurredAtISO);
+    const recurrence = buildRecurrence();
+    if (recurring && !recurrence) {
+      Alert.alert('Schedule incomplete', 'Choose a repeat period or enter a one-time next due date.');
+      return;
+    }
     const photoIds = eventPhotos.map((p) => p.id);
 
     if (existing) {
@@ -221,9 +456,6 @@ export function AddEditEventScreen(props: {
         recurrence: recurring ? recurrence : undefined,
         photoIds,
       };
-      if (updated.recurrence && !existing.recurrence?.nextDueAtISO) {
-        updated.recurrence = advanceRecurrenceAfterEvent(updated) ?? updated.recurrence;
-      }
       onSave({
         ...state,
         photos: [...keptPhotos, ...newPhotos],
@@ -246,10 +478,16 @@ export function AddEditEventScreen(props: {
         recurrence,
         photoIds,
       };
+      let nextEvents = [...state.events, event];
+      if (completeFrom) {
+        nextEvents = nextEvents.map((e) =>
+          e.id === completeFrom.id ? clearEventNextDue(e) : e
+        );
+      }
       onSave({
         ...state,
         photos: [...state.photos, ...photoRecords],
-        events: [...state.events, event],
+        events: nextEvents,
       });
     }
     onBack();
@@ -274,16 +512,36 @@ export function AddEditEventScreen(props: {
   }
 
   return (
-    <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
+    <KeyboardAvoidingView
+      style={[sharedStyles.screen, { paddingTop: insets.top }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={insets.top}
+    >
       <ScreenBackHeader onPress={onBack} label="← Cancel" />
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
+        contentContainerStyle={[
+          sharedStyles.content,
+          { paddingTop: 0, paddingBottom: keyboardHeight > 0 ? keyboardHeight + 24 : 32 },
+        ]}
         keyboardShouldPersistTaps="handled"
+        onScroll={(e) => {
+          scrollYRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
-        <Text style={sharedStyles.title}>{existing ? 'Edit service event' : 'Log service event'}</Text>
+        <Text style={sharedStyles.title}>
+          {existing
+            ? 'Edit service event'
+            : completeFrom
+              ? 'Log scheduled service'
+              : 'Log service event'}
+        </Text>
         <Text style={sharedStyles.subtitle}>
-          Record maintenance, repairs, or inspections. Add receipt and parts photos below.
+          {completeFrom
+            ? 'Record that this scheduled service was performed. Saving moves it to service history.'
+            : 'Record maintenance, repairs, or inspections. Add receipt and parts photos below.'}
         </Text>
 
         <Text style={sharedStyles.fieldLabel}>Title</Text>
@@ -313,7 +571,12 @@ export function AddEditEventScreen(props: {
         </Pressable>
 
         <Text style={sharedStyles.fieldLabel}>Date (MM/DD/YYYY)</Text>
-        <TextInput value={dateStr} onChangeText={setDateStr} style={sharedStyles.input} placeholder="03/15/2026" />
+        <TextInput
+          value={dateStr}
+          onChangeText={setDateStr}
+          style={sharedStyles.input}
+          placeholder="03/15/2026"
+        />
 
         <Text style={sharedStyles.fieldLabel}>Notes</Text>
         <TextInput
@@ -348,35 +611,84 @@ export function AddEditEventScreen(props: {
 
         {recurring ? (
           <>
-            <Text style={sharedStyles.fieldLabel}>Repeat</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {RECURRENCE_OPTIONS.map((opt) => (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+              {([
+                { id: 'repeat' as const, label: 'Repeat' },
+                { id: 'onetime' as const, label: 'Onetime' },
+              ]).map((mode) => (
                 <Pressable
-                  key={opt}
-                  onPress={() => setInterval(opt)}
+                  key={mode.id}
+                  onPress={() => setScheduleMode(mode.id)}
                   style={[
                     sharedStyles.secondaryBtn,
                     { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
-                    interval === opt && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
+                    scheduleMode === mode.id && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
                   ]}
                 >
-                  <Text style={sharedStyles.secondaryBtnText}>
-                    {opt === 'custom' ? 'Custom' : opt.charAt(0).toUpperCase() + opt.slice(1)}
-                  </Text>
+                  <Text style={sharedStyles.secondaryBtnText}>{mode.label}</Text>
                 </Pressable>
               ))}
             </View>
-            {interval === 'custom' ? (
+
+            {scheduleMode === 'repeat' ? (
               <>
-                <Text style={sharedStyles.fieldLabel}>Every N months</Text>
+                <Text style={sharedStyles.fieldLabel}>Repeat</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {REPEAT_OPTIONS.map((opt) => (
+                    <Pressable
+                      key={opt}
+                      onPress={() => setInterval(opt)}
+                      style={[
+                        sharedStyles.secondaryBtn,
+                        { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
+                        interval === opt && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
+                      ]}
+                    >
+                      <Text style={sharedStyles.secondaryBtnText}>{repeatPeriodLabel(opt)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {interval === 'custom' ? (
+                  <>
+                    <Text style={sharedStyles.fieldLabel}>Every N months</Text>
+                    <TextInput
+                      ref={customMonthsInputRef}
+                      value={customMonths}
+                      onChangeText={setCustomMonths}
+                      onFocus={() => measureAndScroll(customMonthsInputRef.current)}
+                      style={sharedStyles.input}
+                      keyboardType="number-pad"
+                    />
+                  </>
+                ) : null}
+                <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
+                  Next service: {computedNextDueLabel(dateStr, interval, customMonths)}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={sharedStyles.fieldLabel}>Next due date (MM/DD/YYYY)</Text>
                 <TextInput
-                  value={customMonths}
-                  onChangeText={setCustomMonths}
+                  ref={nextDueInputRef}
+                  value={nextDueStr}
+                  onChangeText={setNextDueStr}
+                  onFocus={() => measureAndScroll(nextDueInputRef.current)}
                   style={sharedStyles.input}
-                  keyboardType="number-pad"
+                  placeholder="06/15/2027"
                 />
               </>
-            ) : null}
+            )}
+
+            <Text style={sharedStyles.fieldLabel}>Notes</Text>
+            <TextInput
+              ref={scheduleNotesInputRef}
+              value={scheduleNotes}
+              onChangeText={setScheduleNotes}
+              onFocus={() => measureAndScroll(scheduleNotesInputRef.current)}
+              style={[sharedStyles.input, sharedStyles.inputMultiline]}
+              multiline
+              placeholder="Reminders for the next service…"
+            />
           </>
         ) : null}
 
@@ -448,6 +760,6 @@ export function AddEditEventScreen(props: {
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

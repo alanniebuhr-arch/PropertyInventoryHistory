@@ -53,7 +53,7 @@ async function shareDocument(localUri: string, fileName: string, mimeType: strin
 }
 
 function confirmDeleteDocument(onDelete: () => void) {
-  Alert.alert('Remove document?', 'This file will be deleted from this slot.', [
+  Alert.alert('Remove document?', 'This file will be removed from this item.', [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Remove', style: 'destructive', onPress: onDelete },
   ]);
@@ -110,7 +110,7 @@ export function DocumentListSection(props: { rows: DocumentListRow[] }) {
           }
           accessibilityRole="button"
           accessibilityLabel={`View ${row.label} document`}
-          accessibilityHint="Opens the document. Long press for Share, Delete, and other options."
+          accessibilityHint="Opens the document. Use the trash button to delete, or long press for more options."
           style={({ pressed }) => [
             sharedStyles.card,
             {
@@ -140,7 +140,18 @@ export function DocumentListSection(props: { rows: DocumentListRow[] }) {
               {row.fileName}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          <Pressable
+            onPress={() => confirmDeleteDocument(row.onDelete)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${row.label} document`}
+            style={({ pressed }) => ({
+              padding: 6,
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Ionicons name="trash-outline" size={20} color={colors.danger} />
+          </Pressable>
         </Pressable>
       ))}
       <PdfViewerModal pdf={viewingPdf} onClose={() => setViewingPdf(null)} />

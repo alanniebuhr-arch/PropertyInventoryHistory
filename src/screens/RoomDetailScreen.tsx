@@ -9,18 +9,21 @@ import {
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, InventoryItem, ItemTypeId } from '../types';
 import { ItemListRow } from '../components/ListRows';
+import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { RoomPhotosSection } from '../components/RoomPhotosSection';
 import { RoomNavigationDots } from '../components/RoomNavigationDots';
 import { RenameModal } from '../components/RenameModal';
 import { ItemTypePickerModal } from '../components/ItemTypePickerModal';
-import { sharedStyles } from '../theme';
+import { sharedStyles, colors } from '../theme';
 import {
   deleteRoomCascade,
   eventsForItem,
   firstPhotoUriForItem,
+  itemById,
   itemsForRoom,
   propertyById,
   roomById,
@@ -29,6 +32,7 @@ import {
 import {
   catalogLabel,
   createInventoryItem,
+  itemDisplayLabel,
   itemListRowLabels,
   namePlaceholderForItemType,
 } from '../itemCatalog';
@@ -37,7 +41,14 @@ import {
   isItemOverdue,
   nextDueLabelForItem,
 } from '../itemMaintenance';
-import { formatServiceEventSummary } from '../eventRecurrence';
+import {
+  filterUpcomingByHorizon,
+  formatServiceEventSummary,
+  upcomingHorizonLabel,
+  upcomingServiceEventsForRoom,
+  UPCOMING_HORIZON_OPTIONS,
+  type UpcomingHorizon,
+} from '../eventRecurrence';
 import { photosForRoom } from '../roomPhotos';
 import { deletePhotoFile } from '../photoStorage';
 import { authenticateForRoom, markRoomUnlocked } from '../roomAuth';
@@ -48,9 +59,20 @@ export function RoomDetailScreen(props: {
   onBack: () => void;
   onNavigateRoom: (roomId: string) => void;
   onOpenItem: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
+  onEditEvent: (itemId: string, eventId: string) => void;
+  onLogUpcomingService: (itemId: string, completeFromEventId: string) => void;
   onSave: (state: AppState) => void;
 }) {
-  const { state, roomId, onBack, onNavigateRoom, onOpenItem, onSave } = props;
+  const {
+    state,
+    roomId,
+    onBack,
+    onNavigateRoom,
+    onOpenItem,
+    onEditEvent,
+    onLogUpcomingService,
+    onSave,
+  } = props;
   const insets = useSafeAreaInsets();
   const items = itemsForRoom(state, roomId);
 
@@ -60,6 +82,7 @@ export function RoomDetailScreen(props: {
   const [newItemName, setNewItemName] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
+  const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>('1y');
 
   const room = roomById(state, roomId);
   const propertyRooms = room ? roomsForProperty(state, room.propertyId) : [];
@@ -117,6 +140,24 @@ export function RoomDetailScreen(props: {
   const rm = room;
   const property = propertyById(state, rm.propertyId);
   const subtitleParts = [property?.name].filter(Boolean);
+  const upcomingEvents = filterUpcomingByHorizon(
+    upcomingServiceEventsForRoom(state, roomId),
+    upcomingHorizon
+  );
+
+  function openUpcomingHorizonPicker() {
+    Alert.alert(
+      'Show upcoming through',
+      undefined,
+      [
+        ...UPCOMING_HORIZON_OPTIONS.map((opt) => ({
+          text: opt.label,
+          onPress: () => setUpcomingHorizon(opt.id),
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]
+    );
+  }
 
   function startAddItem() {
     setPendingItemType(null);
@@ -208,6 +249,60 @@ export function RoomDetailScreen(props: {
 
   const itemsSection = (
     <>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginTop: 8,
+          marginBottom: 8,
+        }}
+      >
+        <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+          Service upcoming
+        </Text>
+        <Pressable
+          onPress={openUpcomingHorizonPicker}
+          accessibilityRole="button"
+          accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
+          accessibilityHint="Opens a list of time ranges for upcoming service."
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 2,
+            opacity: pressed ? 0.7 : 1,
+            paddingVertical: 4,
+            paddingLeft: 8,
+          })}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+            {upcomingHorizonLabel(upcomingHorizon)}
+          </Text>
+          <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
+        </Pressable>
+      </View>
+      {upcomingEvents.length === 0 ? (
+        <Text style={[sharedStyles.cardMeta, { marginBottom: 16 }]}>
+          No upcoming service scheduled.
+        </Text>
+      ) : (
+        <View style={{ marginBottom: 16 }}>
+          {upcomingEvents.map((e) => {
+            const item = itemById(state, e.itemId);
+            return (
+              <UpcomingServiceCard
+                key={e.id}
+                event={e}
+                leadingLabel={item ? itemDisplayLabel(item) : undefined}
+                onPressDetails={() => onEditEvent(e.itemId, e.id)}
+                onLogService={() => onLogUpcomingService(e.itemId, e.id)}
+              />
+            );
+          })}
+        </View>
+      )}
+
       <Text style={sharedStyles.sectionTitle}>Items</Text>
       {items.length === 0 ? (
         <Text style={sharedStyles.emptyText}>Add items like water heater, heating, or electric panel.</Text>

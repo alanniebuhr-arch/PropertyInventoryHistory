@@ -143,6 +143,12 @@ function normalizeWasteWaterDetails(details: ItemDetails): ItemDetails {
           ? details.systemOther.trim() || undefined
           : undefined
         : undefined,
+    gallons:
+      system === 'septic'
+        ? typeof details.gallons === 'string'
+          ? details.gallons.trim() || undefined
+          : undefined
+        : undefined,
     wasteLineExitPhotoId: details.wasteLineExitPhotoId,
     sewerBillPhotoId: details.sewerBillPhotoId,
     tankLocationPhotoId: details.tankLocationPhotoId,
@@ -342,6 +348,7 @@ function normalizeItem(raw: InventoryItem): InventoryItem {
     displayName: raw.displayName,
     details: normalizeDetails(itemTypeId, raw.details ?? defaultDetailsForType(itemTypeId)),
     photoIds: Array.isArray(raw.photoIds) ? raw.photoIds : [],
+    documentIds: Array.isArray(raw.documentIds) ? raw.documentIds : [],
     createdAtISO: raw.createdAtISO ?? new Date().toISOString(),
   };
 }
@@ -468,6 +475,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       photoIds: i.photoIds.filter((pid) =>
         cleanPhotos.some((p) => p.id === pid && !p.eventId)
       ),
+      documentIds: (i.documentIds ?? []).filter((id) => validDocumentIds.has(id)),
     })),
     photos: cleanPhotos,
     propertyPhotos: cleanPropertyPhotos,
@@ -630,10 +638,13 @@ export function deleteRoomCascade(state: AppState, roomId: string): AppState {
 }
 
 export function deleteItemCascade(state: AppState, itemId: string): AppState {
+  const item = state.items.find((i) => i.id === itemId);
+  const dropDocumentIds = new Set(item?.documentIds ?? []);
   return {
     ...state,
     items: state.items.filter((i) => i.id !== itemId),
     photos: state.photos.filter((p) => p.itemId !== itemId),
+    documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
     events: state.events.filter((e) => e.itemId !== itemId),
   };
 }

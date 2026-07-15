@@ -26,7 +26,7 @@ type Route =
   | { name: 'property'; propertyId: string }
   | { name: 'room'; roomId: string }
   | { name: 'item'; itemId: string; startEditingSection?: ApplianceEditingSection }
-  | { name: 'event'; itemId: string; eventId?: string }
+  | { name: 'event'; itemId: string; eventId?: string; completeFromEventId?: string }
   | { name: 'transfer' };
 
 export default function App() {
@@ -107,6 +107,10 @@ export default function App() {
           propertyId={route.propertyId}
           onBack={pop}
           onOpenRoom={(roomId) => void openRoom(roomId, (id) => push({ name: 'room', roomId: id }))}
+          onEditEvent={(itemId, eventId) => push({ name: 'event', itemId, eventId })}
+          onLogUpcomingService={(itemId, completeFromEventId) =>
+            push({ name: 'event', itemId, completeFromEventId })
+          }
           onSave={(next) => void persist(next)}
         />
       );
@@ -124,6 +128,10 @@ export default function App() {
           onOpenItem={(itemId, startEditingSection) =>
             push({ name: 'item', itemId, startEditingSection })
           }
+          onEditEvent={(itemId, eventId) => push({ name: 'event', itemId, eventId })}
+          onLogUpcomingService={(itemId, completeFromEventId) =>
+            push({ name: 'event', itemId, completeFromEventId })
+          }
           onSave={(next) => void persist(next)}
         />
       );
@@ -139,6 +147,9 @@ export default function App() {
           onNavigateItem={(nextItemId) => replaceTopRoute({ name: 'item', itemId: nextItemId })}
           onAddEvent={() => push({ name: 'event', itemId: route.itemId })}
           onEditEvent={(eventId) => push({ name: 'event', itemId: route.itemId, eventId })}
+          onLogUpcomingService={(completeFromEventId) =>
+            push({ name: 'event', itemId: route.itemId, completeFromEventId })
+          }
           onSave={(next) => void persist(next)}
         />
       );
@@ -149,6 +160,7 @@ export default function App() {
           state={state}
           itemId={route.itemId}
           eventId={route.eventId}
+          completeFromEventId={route.completeFromEventId}
           onBack={pop}
           onSave={(next) => void persist(next)}
         />

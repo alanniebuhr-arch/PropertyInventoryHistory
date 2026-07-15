@@ -22,7 +22,7 @@ import {
   roomsForProperty,
 } from '../storage';
 import { propertyCoverPhotoUri } from '../propertyPhotos';
-import { overdueCountForProperty } from '../itemMaintenance';
+import { upcomingServiceCountForProperty } from '../eventRecurrence';
 import { applyPropertyTemplate, type DwellingType } from '../propertyTemplate';
 
 function DwellingPicker(props: {
@@ -136,7 +136,7 @@ export function HomeScreen(props: {
                 thumbnailUri={propertyCoverPhotoUri(state, p)}
                 roomCount={rooms.length}
                 itemCount={items.length}
-                overdueCount={overdueCountForProperty(state, p.id)}
+                dueSoonCount={upcomingServiceCountForProperty(state, p.id)}
                 onPress={() => onOpenProperty(p.id)}
               />
             );
