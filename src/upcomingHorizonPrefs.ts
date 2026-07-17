@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UPCOMING_HORIZON_OPTIONS, type UpcomingHorizon } from './eventRecurrence';
 
-const PROPERTY_HORIZON_KEY = 'pih.propertyUpcomingHorizon';
-const DEFAULT_PROPERTY_HORIZON: UpcomingHorizon = '1m';
+/** Shared across Property / Room / Item "Services upcoming" horizon pickers. */
+const UPCOMING_HORIZON_KEY = 'pih.propertyUpcomingHorizon';
+const DEFAULT_UPCOMING_HORIZON: UpcomingHorizon = '1m';
 
-let cachedPropertyHorizon: UpcomingHorizon = DEFAULT_PROPERTY_HORIZON;
+let cachedUpcomingHorizon: UpcomingHorizon = DEFAULT_UPCOMING_HORIZON;
 let loadedFromDisk = false;
 
 function parseHorizon(raw: string | null): UpcomingHorizon | null {
@@ -14,28 +15,28 @@ function parseHorizon(raw: string | null): UpcomingHorizon | null {
     : null;
 }
 
-/** Sync read of last Property Services upcoming horizon (memory, falls back to 1 month). */
+/** Sync read of last Services upcoming horizon (memory, falls back to 1 month). */
 export function getPropertyUpcomingHorizon(): UpcomingHorizon {
-  return cachedPropertyHorizon;
+  return cachedUpcomingHorizon;
 }
 
 export async function loadPropertyUpcomingHorizon(): Promise<UpcomingHorizon> {
-  if (loadedFromDisk) return cachedPropertyHorizon;
+  if (loadedFromDisk) return cachedUpcomingHorizon;
   try {
-    const parsed = parseHorizon(await AsyncStorage.getItem(PROPERTY_HORIZON_KEY));
-    if (parsed) cachedPropertyHorizon = parsed;
+    const parsed = parseHorizon(await AsyncStorage.getItem(UPCOMING_HORIZON_KEY));
+    if (parsed) cachedUpcomingHorizon = parsed;
   } catch {
     // Keep default / cache.
   }
   loadedFromDisk = true;
-  return cachedPropertyHorizon;
+  return cachedUpcomingHorizon;
 }
 
 export async function setPropertyUpcomingHorizon(horizon: UpcomingHorizon): Promise<void> {
-  cachedPropertyHorizon = horizon;
+  cachedUpcomingHorizon = horizon;
   loadedFromDisk = true;
   try {
-    await AsyncStorage.setItem(PROPERTY_HORIZON_KEY, horizon);
+    await AsyncStorage.setItem(UPCOMING_HORIZON_KEY, horizon);
   } catch {
     // Memory cache still updated for this session.
   }

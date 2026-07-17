@@ -25,7 +25,7 @@ import {
   type ApplianceEditingSection,
 } from '../components/ApplianceDisplayView';
 import { sharedStyles, colors } from '../theme';
-import { formatCurrency, formatDate, uid, nowISO } from '../utils';
+import { formatDate, uid, nowISO } from '../utils';
 import {
   deleteItemCascade,
   eventsForItem,
@@ -41,12 +41,16 @@ import { isItemOverdue, nextDueLabelForItem } from '../itemMaintenance';
 import {
   EVENT_TYPE_LABELS,
   filterUpcomingByHorizon,
-  recurrenceLabel,
   upcomingHorizonLabel,
   upcomingServiceEvents,
   UPCOMING_HORIZON_OPTIONS,
   type UpcomingHorizon,
 } from '../eventRecurrence';
+import {
+  getPropertyUpcomingHorizon,
+  loadPropertyUpcomingHorizon,
+  setPropertyUpcomingHorizon,
+} from '../upcomingHorizonPrefs';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
 import { deleteDocumentFile } from '../documentStorage';
 import { updateApplianceDetails } from '../appliancePhotos';
@@ -108,8 +112,20 @@ export function ItemDetailScreen(props: {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [exportSnapshot, setExportSnapshot] = useState<ItemExportSnapshot | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>('1y');
+  const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
+    getPropertyUpcomingHorizon
+  );
   const exportRef = useRef<View>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPropertyUpcomingHorizon().then((horizon) => {
+      if (!cancelled) setUpcomingHorizon(horizon);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const scrollFieldIntoView = useCallback(
     (windowY: number, height: number, kbHeight: number) => {
@@ -507,7 +523,10 @@ export function ItemDetailScreen(props: {
               [
                 ...UPCOMING_HORIZON_OPTIONS.map((opt) => ({
                   text: opt.label,
-                  onPress: () => setUpcomingHorizon(opt.id),
+                  onPress: () => {
+                    setUpcomingHorizon(opt.id);
+                    void setPropertyUpcomingHorizon(opt.id);
+                  },
                 })),
                 { text: 'Cancel', style: 'cancel' as const },
               ]
@@ -572,11 +591,8 @@ export function ItemDetailScreen(props: {
                 title={e.title}
                 eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
                 dateLabel={formatDate(e.occurredAtISO)}
-                costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
-                recurrenceLabel={e.recurrence ? recurrenceLabel(e.recurrence) : undefined}
                 notes={e.notes}
                 thumbnailUri={eventPhotos[0]?.localUri}
-                photoCount={eventPhotos.length}
                 onPress={() => onEditEvent(e.id)}
               />
             );

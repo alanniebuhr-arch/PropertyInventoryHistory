@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import type { AppState } from './src/types';
 import { EMPTY_APP_STATE } from './src/types';
 import { loadAppState, saveAppState, roomById } from './src/storage';
+import { loadPropertyUpcomingHorizon } from './src/upcomingHorizonPrefs';
 import {
   authenticateForRoom,
   isRoomUnlocked,
@@ -40,7 +41,7 @@ export default function App() {
     let cancelled = false;
     async function boot() {
       try {
-        const s = await loadAppState();
+        const [s] = await Promise.all([loadAppState(), loadPropertyUpcomingHorizon()]);
         if (!cancelled) setState(s);
       } catch {
         if (!cancelled) setState({ ...EMPTY_APP_STATE });

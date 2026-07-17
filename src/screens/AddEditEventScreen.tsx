@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -18,16 +19,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, ItemEvent, ItemEventRecurrence, ItemEventType, ItemPhoto, RecurrenceInterval } from '../types';
 import { EventPhotoSection } from '../components/EventPhotoSection';
+import { EventListRow } from '../components/ListRows';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { sharedStyles, colors } from '../theme';
-import { uid, nowISO, dateInputValue, parseDateInputToISO, parseDateInputValue } from '../utils';
-import { deleteEventCascade, itemById, photosForEvent } from '../storage';
+import { uid, nowISO, dateInputValue, parseDateInputToISO, parseDateInputValue, formatDate } from '../utils';
+import { deleteEventCascade, eventsForItem, firstPhotoUriForItem, itemById, photosForEvent } from '../storage';
+import { itemDisplayLabel } from '../itemCatalog';
 import {
   clearEventNextDue,
   computeNextDueFromOccurrence,
+  daysOverdue,
   EVENT_TYPE_LABELS,
+  isOverdue,
+  sameCalendarDay,
+  upcomingDueAtISO,
 } from '../eventRecurrence';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+
+type HistoryMode = 'related' | 'all';
 
 function eventByIdHelper(state: AppState, eventId: string): ItemEvent | undefined {
   return state.events.find((e) => e.id === eventId);
@@ -171,19 +180,44 @@ export function AddEditEventScreen(props: {
       ? eventByIdHelper(state, completeFromEventId)
       : undefined;
   const fromReminder = prefillsFromSource(completeFrom);
+  const activeReminder = existing?.recurrence?.nextDueAtISO
+    ? existing
+    : completeFrom?.recurrence?.nextDueAtISO
+      ? completeFrom
+      : undefined;
+  const showServiceCompletedToggle = Boolean(activeReminder);
+  /** Completed history entry — edit details only, no new scheduling. */
+  const isPastHistoryEdit = Boolean(existing && !existing.recurrence?.nextDueAtISO);
+  const showScheduleControls = !isPastHistoryEdit;
+  const activeDueAt = activeReminder ? upcomingDueAtISO(activeReminder) : undefined;
+  const activeDueOverdue = isOverdue(activeDueAt);
+  const activeDaysLate = daysOverdue(activeDueAt);
 
   const [title, setTitle] = useState(existing?.title ?? fromReminder.title);
   const [eventType, setEventType] = useState<ItemEventType>(
     existing?.eventType ?? fromReminder.eventType
   );
-  const [dateStr, setDateStr] = useState(
-    existing ? dateInputValue(existing.occurredAtISO) : dateInputValue(nowISO())
-  );
+  const [serviceCompleted, setServiceCompleted] = useState(() => {
+    if (completeFrom) return true;
+    if (existing?.recurrence?.nextDueAtISO) {
+      return isOverdue(upcomingDueAtISO(existing));
+    }
+    return false;
+  });
+  const [dateStr, setDateStr] = useState(() => {
+    if (completeFrom) return dateInputValue(nowISO());
+    if (existing?.recurrence?.nextDueAtISO && isOverdue(upcomingDueAtISO(existing))) {
+      return dateInputValue(nowISO());
+    }
+    if (existing) return dateInputValue(existing.occurredAtISO);
+    return dateInputValue(nowISO());
+  });
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [costStr, setCostStr] = useState(existing?.cost != null ? String(existing.cost) : '');
-  const [recurring, setRecurring] = useState(
-    existing ? Boolean(existing.recurrence) : fromReminder.recurring
-  );
+  const [recurring, setRecurring] = useState(() => {
+    if (existing && !existing.recurrence?.nextDueAtISO) return false;
+    return existing ? Boolean(existing.recurrence) : fromReminder.recurring;
+  });
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(() => {
     if (existing?.recurrence?.interval === 'once') return 'onetime';
     if (existing) return 'repeat';
@@ -216,6 +250,7 @@ export function AddEditEventScreen(props: {
     Boolean(existing?.title) || Boolean(completeFrom?.title)
   );
   const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const [historyMode, setHistoryMode] = useState<HistoryMode>('related');
   const scrollRef = useRef<RNScrollView>(null);
   const scrollYRef = useRef(0);
   const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
@@ -294,6 +329,18 @@ export function AddEditEventScreen(props: {
     };
   }, [scrollFieldIntoView]);
 
+  const allPastEvents = useMemo(
+    () => eventsForItem(state, itemId).filter((e) => e.id !== existing?.id),
+    [state, itemId, existing?.id]
+  );
+  const relatedPastEvents = useMemo(() => {
+    const key = title.trim().toLowerCase();
+    if (!key) return [];
+    return allPastEvents.filter((e) => e.title.trim().toLowerCase() === key);
+  }, [allPastEvents, title]);
+  const historyEvents = historyMode === 'all' ? allPastEvents : relatedPastEvents;
+  const titleKey = title.trim().toLowerCase();
+
   if (!item) {
     return (
       <View style={[sharedStyles.screen, { paddingTop: insets.top, padding: 16 }]}>
@@ -306,6 +353,8 @@ export function AddEditEventScreen(props: {
   }
 
   const it = item;
+  const itemThumbUri = firstPhotoUriForItem(state, it);
+  const itemLabel = itemDisplayLabel(it);
 
   async function addReceiptPhoto(sourceUri: string) {
     const existingReceipt = eventPhotos.find((p) => p.caption === 'receipt');
@@ -400,6 +449,19 @@ export function AddEditEventScreen(props: {
     }
   }
 
+  function handleServiceCompletedChange(on: boolean) {
+    setServiceCompleted(on);
+    const prior = existing ?? completeFrom;
+    if (on) {
+      const currentISO = parseDateInputToISO(dateStr);
+      if (prior && (!currentISO || sameCalendarDay(currentISO, prior.occurredAtISO))) {
+        setDateStr(dateInputValue(nowISO()));
+      }
+    } else if (prior) {
+      setDateStr(dateInputValue(prior.occurredAtISO));
+    }
+  }
+
   function saveEvent() {
     const trimmed = title.trim();
     if (!trimmed) {
@@ -427,39 +489,89 @@ export function AddEditEventScreen(props: {
     }
 
     const cost = costStr.trim() ? parseFloat(costStr) : undefined;
-    const recurrence = buildRecurrence();
-    if (recurring && !recurrence) {
+    const recurrence = isPastHistoryEdit
+      ? existing?.recurrence
+      : buildRecurrence();
+    if (!isPastHistoryEdit && recurring && !recurrence) {
       Alert.alert('Schedule incomplete', 'Choose a repeat period or enter a one-time next due date.');
       return;
     }
     const photoIds = eventPhotos.map((p) => p.id);
+    const completing =
+      showServiceCompletedToggle && serviceCompleted
+        ? (existing ?? completeFrom)
+        : undefined;
 
-    if (existing) {
-      const removedPhotoIds = new Set(
-        photosForEvent(state, existing.id)
-          .map((p) => p.id)
-          .filter((id) => !photoIds.includes(id))
-      );
-      const updatedPhotos = eventPhotos.map((p) => ({ ...p, eventId: existing.id }));
-      const keptPhotos = state.photos.filter(
-        (p) => p.eventId !== existing.id || !removedPhotoIds.has(p.id)
-      );
-      const newPhotos = updatedPhotos.filter((p) => !state.photos.some((x) => x.id === p.id));
-
-      const updated: ItemEvent = {
-        ...existing,
+    if (completing) {
+      // Preserve the previous occurrence as history; save form data as a new event.
+      const frozen = clearEventNextDue(completing);
+      const originalPhotoIds = new Set(completing.photoIds);
+      const newEventId = uid('event');
+      const carriedPhotos = existing
+        ? eventPhotos.filter((p) => !originalPhotoIds.has(p.id))
+        : eventPhotos;
+      const carriedPhotoIds = carriedPhotos.map((p) => p.id);
+      const newEvent: ItemEvent = {
+        id: newEventId,
+        itemId,
         title: trimmed,
         eventType,
         occurredAtISO,
         notes: notes.trim() || undefined,
         cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
-        recurrence: recurring ? recurrence : undefined,
+        recurrence: isPastHistoryEdit
+          ? existing?.recurrence
+          : recurring
+            ? recurrence
+            : undefined,
+        photoIds: carriedPhotoIds,
+      };
+      onSave({
+        ...state,
+        photos: [
+          ...state.photos.filter((p) => !carriedPhotoIds.includes(p.id)),
+          ...carriedPhotos.map((p) => ({ ...p, eventId: newEventId })),
+        ],
+        events: [
+          ...state.events.map((e) => (e.id === completing.id ? frozen : e)),
+          newEvent,
+        ],
+      });
+      onBack();
+      return;
+    }
+
+    if (existing || (completeFrom && showServiceCompletedToggle && !serviceCompleted)) {
+      const target = existing ?? completeFrom!;
+      const removedPhotoIds = new Set(
+        photosForEvent(state, target.id)
+          .map((p) => p.id)
+          .filter((id) => !photoIds.includes(id))
+      );
+      const updatedPhotos = eventPhotos.map((p) => ({ ...p, eventId: target.id }));
+      const keptPhotos = state.photos.filter(
+        (p) => p.eventId !== target.id || !removedPhotoIds.has(p.id)
+      );
+      const newPhotos = updatedPhotos.filter((p) => !state.photos.some((x) => x.id === p.id));
+
+      const updated: ItemEvent = {
+        ...target,
+        title: trimmed,
+        eventType,
+        occurredAtISO,
+        notes: notes.trim() || undefined,
+        cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
+        recurrence: isPastHistoryEdit
+          ? target.recurrence
+          : recurring
+            ? recurrence
+            : undefined,
         photoIds,
       };
       onSave({
         ...state,
         photos: [...keptPhotos, ...newPhotos],
-        events: state.events.map((e) => (e.id === existing.id ? updated : e)),
+        events: state.events.map((e) => (e.id === target.id ? updated : e)),
       });
     } else {
       const newEventId = uid('event');
@@ -478,16 +590,10 @@ export function AddEditEventScreen(props: {
         recurrence,
         photoIds,
       };
-      let nextEvents = [...state.events, event];
-      if (completeFrom) {
-        nextEvents = nextEvents.map((e) =>
-          e.id === completeFrom.id ? clearEventNextDue(e) : e
-        );
-      }
       onSave({
         ...state,
         photos: [...state.photos, ...photoRecords],
-        events: nextEvents,
+        events: [...state.events, event],
       });
     }
     onBack();
@@ -517,7 +623,47 @@ export function AddEditEventScreen(props: {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={insets.top}
     >
-      <ScreenBackHeader onPress={onBack} label="← Cancel" />
+      <ScreenBackHeader onPress={onBack} label="← Cancel">
+        <View
+          style={{
+            marginLeft: 'auto',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          {existing ? (
+            <Pressable
+              onPress={confirmDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Delete event"
+              hitSlop={8}
+              style={({ pressed }) => ({
+                paddingVertical: 8,
+                paddingHorizontal: 10,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ color: colors.danger, fontSize: 16, fontWeight: '600' }}>Delete</Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={saveEvent}
+            accessibilityRole="button"
+            accessibilityLabel="Save service event"
+            hitSlop={8}
+            style={({ pressed }) => ({
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+              borderRadius: 8,
+              backgroundColor: colors.primary,
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Save</Text>
+          </Pressable>
+        </View>
+      </ScreenBackHeader>
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
@@ -531,18 +677,85 @@ export function AddEditEventScreen(props: {
         }}
         scrollEventThrottle={16}
       >
-        <Text style={sharedStyles.title}>
-          {existing
-            ? 'Edit service event'
-            : completeFrom
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 8,
+          }}
+        >
+          {itemThumbUri ? (
+            <Image
+              source={{ uri: itemThumbUri }}
+              accessibilityLabel={`${itemLabel} photo`}
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 8,
+                backgroundColor: colors.border,
+              }}
+            />
+          ) : null}
+          <Text style={[sharedStyles.title, { marginBottom: 0 }]} numberOfLines={2}>
+            {itemLabel}
+          </Text>
+        </View>
+        <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>
+          {showServiceCompletedToggle
+            ? serviceCompleted
               ? 'Log scheduled service'
+              : 'Edit service event'
+            : existing
+              ? 'Edit service event'
               : 'Log service event'}
         </Text>
-        <Text style={sharedStyles.subtitle}>
-          {completeFrom
-            ? 'Record that this scheduled service was performed. Saving moves it to service history.'
-            : 'Record maintenance, repairs, or inspections. Add receipt and parts photos below.'}
-        </Text>
+        {activeDueOverdue && activeDueAt ? (
+          <View
+            style={{
+              backgroundColor: colors.upcomingOverdueBg,
+              borderWidth: 1,
+              borderColor: colors.overdue,
+              borderRadius: 8,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: colors.overdue, fontWeight: '800', fontSize: 15 }}>
+              Missed service — due {formatDate(activeDueAt)}
+              {activeDaysLate > 0
+                ? ` · ${activeDaysLate} day${activeDaysLate === 1 ? '' : 's'} late`
+                : ''}
+            </Text>
+          </View>
+        ) : null}
+        {showServiceCompletedToggle ? (
+          <>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 4,
+              }}
+            >
+              <Text style={[sharedStyles.fieldLabel, { marginBottom: 0 }]}>Service completed</Text>
+              <Switch value={serviceCompleted} onValueChange={handleServiceCompletedChange} />
+            </View>
+            <Text style={[sharedStyles.subtitle, { marginBottom: 12 }]}>
+              {serviceCompleted
+                ? recurring
+                  ? 'Record this service and schedule the next.'
+                  : 'Record this service.'
+                : 'Update this reminder.'}
+            </Text>
+          </>
+        ) : (
+          <Text style={sharedStyles.subtitle}>
+            Record maintenance, repairs, or inspections. Add receipt and parts photos below.
+          </Text>
+        )}
 
         <Text style={sharedStyles.fieldLabel}>Title</Text>
         <TextInput
@@ -554,6 +767,68 @@ export function AddEditEventScreen(props: {
           style={sharedStyles.input}
           placeholder="Annual maintenance, Repair leak…"
         />
+
+        <View style={{ marginTop: 4, marginBottom: 12 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 8,
+            }}
+          >
+            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+              {historyMode === 'related' ? 'Related history' : 'Service history'}
+            </Text>
+            {allPastEvents.length > 0 ? (
+              <Pressable
+                onPress={() =>
+                  setHistoryMode((mode) => (mode === 'related' ? 'all' : 'related'))
+                }
+                accessibilityRole="button"
+                accessibilityLabel={
+                  historyMode === 'related' ? 'Show all history' : 'Show related only'
+                }
+                hitSlop={8}
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, paddingVertical: 4 })}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+                  {historyMode === 'related' ? 'Show all history' : 'Show related only'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {allPastEvents.length === 0 ? (
+            <Text style={sharedStyles.cardMeta}>
+              No other service events for this item yet. Past logs will show here.
+            </Text>
+          ) : historyEvents.length === 0 ? (
+            <Text style={sharedStyles.cardMeta}>
+              {historyMode === 'related'
+                ? titleKey
+                  ? 'No past events with this title. Tap Show all history to see other services.'
+                  : 'Enter a title to find related past services, or tap Show all history.'
+                : 'No other service events yet.'}
+            </Text>
+          ) : (
+            <View>
+              {historyEvents.map((e) => {
+                const eventPhotos = photosForEvent(state, e.id);
+                return (
+                  <EventListRow
+                    key={e.id}
+                    title={e.title}
+                    eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
+                    dateLabel={formatDate(e.occurredAtISO)}
+                    notes={e.notes}
+                    thumbnailUri={eventPhotos[0]?.localUri}
+                  />
+                );
+              })}
+            </View>
+          )}
+        </View>
 
         <Text style={sharedStyles.fieldLabel}>Type</Text>
         <Pressable
@@ -604,105 +879,96 @@ export function AddEditEventScreen(props: {
           onLabelPhoto={handleEventPhotoLabel}
         />
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
-          <Text style={sharedStyles.fieldLabel}>Schedule next service</Text>
-          <Switch value={recurring} onValueChange={setRecurring} />
-        </View>
-
-        {recurring ? (
+        {showScheduleControls ? (
           <>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-              {([
-                { id: 'repeat' as const, label: 'Repeat' },
-                { id: 'onetime' as const, label: 'Onetime' },
-              ]).map((mode) => (
-                <Pressable
-                  key={mode.id}
-                  onPress={() => setScheduleMode(mode.id)}
-                  style={[
-                    sharedStyles.secondaryBtn,
-                    { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
-                    scheduleMode === mode.id && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
-                  ]}
-                >
-                  <Text style={sharedStyles.secondaryBtnText}>{mode.label}</Text>
-                </Pressable>
-              ))}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
+              <Text style={sharedStyles.fieldLabel}>Schedule next service</Text>
+              <Switch value={recurring} onValueChange={setRecurring} />
             </View>
 
-            {scheduleMode === 'repeat' ? (
+            {recurring ? (
               <>
-                <Text style={sharedStyles.fieldLabel}>Repeat</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {REPEAT_OPTIONS.map((opt) => (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  {([
+                    { id: 'repeat' as const, label: 'Repeat' },
+                    { id: 'onetime' as const, label: 'Onetime' },
+                  ]).map((mode) => (
                     <Pressable
-                      key={opt}
-                      onPress={() => setInterval(opt)}
+                      key={mode.id}
+                      onPress={() => setScheduleMode(mode.id)}
                       style={[
                         sharedStyles.secondaryBtn,
                         { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
-                        interval === opt && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
+                        scheduleMode === mode.id && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
                       ]}
                     >
-                      <Text style={sharedStyles.secondaryBtnText}>{repeatPeriodLabel(opt)}</Text>
+                      <Text style={sharedStyles.secondaryBtnText}>{mode.label}</Text>
                     </Pressable>
                   ))}
                 </View>
-                {interval === 'custom' ? (
+
+                {scheduleMode === 'repeat' ? (
                   <>
-                    <Text style={sharedStyles.fieldLabel}>Every N months</Text>
+                    <Text style={sharedStyles.fieldLabel}>Repeat</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {REPEAT_OPTIONS.map((opt) => (
+                        <Pressable
+                          key={opt}
+                          onPress={() => setInterval(opt)}
+                          style={[
+                            sharedStyles.secondaryBtn,
+                            { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
+                            interval === opt && { borderColor: '#1f5fbf', backgroundColor: '#e8f0fc' },
+                          ]}
+                        >
+                          <Text style={sharedStyles.secondaryBtnText}>{repeatPeriodLabel(opt)}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    {interval === 'custom' ? (
+                      <>
+                        <Text style={sharedStyles.fieldLabel}>Every N months</Text>
+                        <TextInput
+                          ref={customMonthsInputRef}
+                          value={customMonths}
+                          onChangeText={setCustomMonths}
+                          onFocus={() => measureAndScroll(customMonthsInputRef.current)}
+                          style={sharedStyles.input}
+                          keyboardType="number-pad"
+                        />
+                      </>
+                    ) : null}
+                    <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
+                      Next service: {computedNextDueLabel(dateStr, interval, customMonths)}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={sharedStyles.fieldLabel}>Next due date (MM/DD/YYYY)</Text>
                     <TextInput
-                      ref={customMonthsInputRef}
-                      value={customMonths}
-                      onChangeText={setCustomMonths}
-                      onFocus={() => measureAndScroll(customMonthsInputRef.current)}
+                      ref={nextDueInputRef}
+                      value={nextDueStr}
+                      onChangeText={setNextDueStr}
+                      onFocus={() => measureAndScroll(nextDueInputRef.current)}
                       style={sharedStyles.input}
-                      keyboardType="number-pad"
+                      placeholder="06/15/2027"
                     />
                   </>
-                ) : null}
-                <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
-                  Next service: {computedNextDueLabel(dateStr, interval, customMonths)}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={sharedStyles.fieldLabel}>Next due date (MM/DD/YYYY)</Text>
+                )}
+
+                <Text style={sharedStyles.fieldLabel}>Notes</Text>
                 <TextInput
-                  ref={nextDueInputRef}
-                  value={nextDueStr}
-                  onChangeText={setNextDueStr}
-                  onFocus={() => measureAndScroll(nextDueInputRef.current)}
-                  style={sharedStyles.input}
-                  placeholder="06/15/2027"
+                  ref={scheduleNotesInputRef}
+                  value={scheduleNotes}
+                  onChangeText={setScheduleNotes}
+                  onFocus={() => measureAndScroll(scheduleNotesInputRef.current)}
+                  style={[sharedStyles.input, sharedStyles.inputMultiline]}
+                  multiline
+                  placeholder="Reminders for the next service…"
                 />
               </>
-            )}
-
-            <Text style={sharedStyles.fieldLabel}>Notes</Text>
-            <TextInput
-              ref={scheduleNotesInputRef}
-              value={scheduleNotes}
-              onChangeText={setScheduleNotes}
-              onFocus={() => measureAndScroll(scheduleNotesInputRef.current)}
-              style={[sharedStyles.input, sharedStyles.inputMultiline]}
-              multiline
-              placeholder="Reminders for the next service…"
-            />
+            ) : null}
           </>
-        ) : null}
-
-        <Pressable
-          onPress={saveEvent}
-          style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
-        >
-          <Text style={sharedStyles.primaryBtnText}>Save service event</Text>
-        </Pressable>
-
-        {existing ? (
-          <Pressable onPress={confirmDelete} style={sharedStyles.dangerBtn}>
-            <Text style={sharedStyles.dangerBtnText}>Delete event</Text>
-          </Pressable>
         ) : null}
       </ScrollView>
 

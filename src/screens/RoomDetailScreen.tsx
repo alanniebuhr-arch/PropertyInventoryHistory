@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -49,6 +49,11 @@ import {
   UPCOMING_HORIZON_OPTIONS,
   type UpcomingHorizon,
 } from '../eventRecurrence';
+import {
+  getPropertyUpcomingHorizon,
+  loadPropertyUpcomingHorizon,
+  setPropertyUpcomingHorizon,
+} from '../upcomingHorizonPrefs';
 import { photosForRoom } from '../roomPhotos';
 import { deletePhotoFile } from '../photoStorage';
 import { authenticateForRoom, markRoomUnlocked } from '../roomAuth';
@@ -82,7 +87,19 @@ export function RoomDetailScreen(props: {
   const [newItemName, setNewItemName] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
-  const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>('1y');
+  const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
+    getPropertyUpcomingHorizon
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPropertyUpcomingHorizon().then((horizon) => {
+      if (!cancelled) setUpcomingHorizon(horizon);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const room = roomById(state, roomId);
   const propertyRooms = room ? roomsForProperty(state, room.propertyId) : [];
@@ -145,6 +162,11 @@ export function RoomDetailScreen(props: {
     upcomingHorizon
   );
 
+  function selectUpcomingHorizon(horizon: UpcomingHorizon) {
+    setUpcomingHorizon(horizon);
+    void setPropertyUpcomingHorizon(horizon);
+  }
+
   function openUpcomingHorizonPicker() {
     Alert.alert(
       'Show upcoming through',
@@ -152,7 +174,7 @@ export function RoomDetailScreen(props: {
       [
         ...UPCOMING_HORIZON_OPTIONS.map((opt) => ({
           text: opt.label,
-          onPress: () => setUpcomingHorizon(opt.id),
+          onPress: () => selectUpcomingHorizon(opt.id),
         })),
         { text: 'Cancel', style: 'cancel' as const },
       ]

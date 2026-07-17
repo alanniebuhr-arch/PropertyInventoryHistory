@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { colors } from '../theme';
 
-const HERO_ASPECT = 0.55;
+const HERO_ASPECT = 0.6875;
 
 export type HeroPhoto = {
   id: string;

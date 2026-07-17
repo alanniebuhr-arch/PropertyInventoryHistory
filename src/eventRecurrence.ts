@@ -73,6 +73,11 @@ export function upcomingServiceEventsForRoom(state: AppState, roomId: string): I
   return upcomingServiceEvents(state.events.filter((event) => itemIds.has(event.itemId)));
 }
 
+/** Upcoming scheduled events across all properties, earliest first. */
+export function upcomingServiceEventsForApp(state: AppState): ItemEvent[] {
+  return upcomingServiceEvents(state.events);
+}
+
 /** Upcoming scheduled events across all items in a property, earliest first. */
 export function upcomingServiceEventsForProperty(
   state: AppState,
@@ -153,17 +158,35 @@ export function clearEventNextDue(event: ItemEvent): ItemEvent {
   };
 }
 
+function calendarDayKey(iso: string | null | undefined): number | null {
+  const due = calendarYmdFromISO(iso);
+  return due ? calendarKey(due) : null;
+}
+
+/** True when two ISO timestamps fall on the same calendar day. */
+export function sameCalendarDay(a: string | null | undefined, b: string | null | undefined): boolean {
+  const ka = calendarDayKey(a);
+  const kb = calendarDayKey(b);
+  return ka != null && kb != null && ka === kb;
+}
+
 export function isOverdue(nextDueAtISO: string | null | undefined): boolean {
-  if (!nextDueAtISO) return false;
+  return daysOverdue(nextDueAtISO) > 0;
+}
+
+/** Whole days past due (0 if not overdue or invalid). */
+export function daysOverdue(nextDueAtISO: string | null | undefined, now: Date = new Date()): number {
   const due = calendarYmdFromISO(nextDueAtISO);
-  if (!due) return false;
-  const now = new Date();
+  if (!due) return 0;
   const today = {
     year: now.getFullYear(),
     month: now.getMonth() + 1,
     day: now.getDate(),
   };
-  return calendarKey(due) < calendarKey(today);
+  const dueUtc = Date.UTC(due.year, due.month - 1, due.day);
+  const todayUtc = Date.UTC(today.year, today.month - 1, today.day);
+  const days = Math.round((dueUtc - todayUtc) / (24 * 60 * 60 * 1000));
+  return days < 0 ? -days : 0;
 }
 
 /** Calendar Y-M-D from stored ISO (app dates use UTC noon / YYYY-MM-DD). */
@@ -188,6 +211,21 @@ function calendarKey(parts: { year: number; month: number; day: number }): numbe
   return parts.year * 10000 + parts.month * 100 + parts.day;
 }
 
+/** True when the stored calendar date is strictly after local today. */
+export function isAfterToday(
+  iso: string | null | undefined,
+  now: Date = new Date()
+): boolean {
+  const due = calendarYmdFromISO(iso);
+  if (!due) return false;
+  const today = {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+  };
+  return calendarKey(due) > calendarKey(today);
+}
+
 /** True when the stored calendar date is today or later (vs local today). */
 export function isOnOrAfterToday(
   iso: string | null | undefined,
@@ -205,15 +243,15 @@ export function isOnOrAfterToday(
 
 /**
  * Date used for upcoming lists: the earliest of scheduled next due and a
- * service date that is today or in the future (so a future-dated log shows up
- * even when a later next-due was also computed).
+ * future service date (planned visit). A service dated today is treated as
+ * completed history and does not keep the event in upcoming by itself.
  */
 export function upcomingDueAtISO(event: ItemEvent): string | undefined {
   const candidates: string[] = [];
   if (event.recurrence?.nextDueAtISO) {
     candidates.push(event.recurrence.nextDueAtISO);
   }
-  if (isOnOrAfterToday(event.occurredAtISO)) {
+  if (isAfterToday(event.occurredAtISO)) {
     candidates.push(event.occurredAtISO);
   }
   if (candidates.length === 0) return undefined;

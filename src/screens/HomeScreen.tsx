@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, Property } from '../types';
 import { PropertyListRow } from '../components/ListRows';
 import { sharedStyles, colors } from '../theme';
@@ -22,7 +23,17 @@ import {
   roomsForProperty,
 } from '../storage';
 import { propertyCoverPhotoUri } from '../propertyPhotos';
-import { upcomingServiceCountForProperty } from '../eventRecurrence';
+import {
+  upcomingHorizonLabel,
+  upcomingServiceCountForProperty,
+  UPCOMING_HORIZON_OPTIONS,
+  type UpcomingHorizon,
+} from '../eventRecurrence';
+import {
+  getPropertyUpcomingHorizon,
+  loadPropertyUpcomingHorizon,
+  setPropertyUpcomingHorizon,
+} from '../upcomingHorizonPrefs';
 import { applyPropertyTemplate, type DwellingType } from '../propertyTemplate';
 
 function DwellingPicker(props: {
@@ -69,6 +80,21 @@ function DwellingPicker(props: {
   );
 }
 
+function dueSoonPeriodLabel(horizon: UpcomingHorizon): string {
+  switch (horizon) {
+    case '1m':
+      return 'within 1 month';
+    case '3m':
+      return 'within 3 months';
+    case '6m':
+      return 'within 6 months';
+    case '1y':
+      return 'within 1 year';
+    case 'all':
+      return '(all time)';
+  }
+}
+
 export function HomeScreen(props: {
   state: AppState;
   onOpenProperty: (propertyId: string) => void;
@@ -83,6 +109,19 @@ export function HomeScreen(props: {
   const [address, setAddress] = useState('');
   const [dwellingType, setDwellingType] = useState<DwellingType>('house');
   const [useDefaultLayout, setUseDefaultLayout] = useState(true);
+  const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
+    getPropertyUpcomingHorizon
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPropertyUpcomingHorizon().then((horizon) => {
+      if (!cancelled) setUpcomingHorizon(horizon);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function openAdd() {
     setName('');
@@ -112,7 +151,27 @@ export function HomeScreen(props: {
     setModalOpen(false);
   }
 
+  function selectUpcomingHorizon(horizon: UpcomingHorizon) {
+    setUpcomingHorizon(horizon);
+    void setPropertyUpcomingHorizon(horizon);
+  }
+
+  function openUpcomingHorizonPicker() {
+    Alert.alert(
+      'Show upcoming through',
+      undefined,
+      [
+        ...UPCOMING_HORIZON_OPTIONS.map((opt) => ({
+          text: opt.label,
+          onPress: () => selectUpcomingHorizon(opt.id),
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]
+    );
+  }
+
   const sorted = [...state.properties].sort((a, b) => a.name.localeCompare(b.name));
+  const periodLabel = dueSoonPeriodLabel(upcomingHorizon);
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
@@ -120,6 +179,39 @@ export function HomeScreen(props: {
         <Text style={sharedStyles.title}>Property Inventory History</Text>
         <Text style={sharedStyles.subtitle}>Track rooms, items, maintenance, and photos.</Text>
 
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+            Properties
+          </Text>
+          <Pressable
+            onPress={openUpcomingHorizonPicker}
+            accessibilityRole="button"
+            accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
+            accessibilityHint="Opens a list of time ranges for upcoming service counts."
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 2,
+              opacity: pressed ? 0.7 : 1,
+              paddingVertical: 4,
+              paddingLeft: 8,
+            })}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+              {upcomingHorizonLabel(upcomingHorizon)}
+            </Text>
+            <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
+          </Pressable>
+        </View>
         {sorted.length === 0 ? (
           <Text style={sharedStyles.emptyText}>
             No properties yet. Add a rental unit or property to get started.
@@ -136,7 +228,12 @@ export function HomeScreen(props: {
                 thumbnailUri={propertyCoverPhotoUri(state, p)}
                 roomCount={rooms.length}
                 itemCount={items.length}
-                dueSoonCount={upcomingServiceCountForProperty(state, p.id)}
+                dueSoonCount={upcomingServiceCountForProperty(
+                  state,
+                  p.id,
+                  upcomingHorizon
+                )}
+                dueSoonPeriodLabel={periodLabel}
                 onPress={() => onOpenProperty(p.id)}
               />
             );

@@ -3,7 +3,13 @@ import { Pressable, Text, View } from 'react-native';
 import type { ItemEvent } from '../types';
 import { sharedStyles, colors } from '../theme';
 import { formatDate } from '../utils';
-import { isOverdue, recurrenceIntervalLabel, upcomingDueAtISO, upcomingUrgency } from '../eventRecurrence';
+import {
+  daysOverdue,
+  isOverdue,
+  recurrenceIntervalLabel,
+  upcomingDueAtISO,
+  upcomingUrgency,
+} from '../eventRecurrence';
 
 const NOTES_DISPLAY_MAX = 80;
 
@@ -38,6 +44,7 @@ export function UpcomingServiceCard(props: {
   const dueAt = upcomingDueAtISO(event);
   const hasScheduledNextDue = Boolean(event.recurrence?.nextDueAtISO);
   const dueOverdue = isOverdue(dueAt);
+  const daysLate = daysOverdue(dueAt);
   const bg = urgencyBackground(dueAt);
   const intervalText =
     hasScheduledNextDue && event.recurrence
@@ -47,6 +54,8 @@ export function UpcomingServiceCard(props: {
     ? `${leadingLabel.trim()} · ${event.title}`
     : event.title;
   const notesText = truncateNotes(event.recurrence?.notes ?? event.notes);
+  // Active reminders: open Log flow so previous occurrences stay in history.
+  const onOpen = hasScheduledNextDue ? onLogService : onPressDetails;
 
   return (
     <View
@@ -58,15 +67,37 @@ export function UpcomingServiceCard(props: {
           alignItems: 'center',
           gap: 12,
           ...(bg ? { backgroundColor: bg } : null),
+          ...(dueOverdue
+            ? { borderWidth: 2, borderColor: colors.overdue }
+            : null),
         },
       ]}
     >
       <Pressable
-        onPress={onPressDetails}
+        onPress={onOpen}
         accessibilityRole="button"
-        accessibilityLabel={`Edit ${titleText}`}
+        accessibilityLabel={
+          hasScheduledNextDue
+            ? dueOverdue
+              ? `Overdue: log service for ${titleText}`
+              : `Log service for ${titleText}`
+            : `Edit ${titleText}`
+        }
         style={{ flex: 1 }}
       >
+        {dueOverdue ? (
+          <Text
+            style={{
+              color: colors.overdue,
+              fontWeight: '800',
+              fontSize: 12,
+              letterSpacing: 0.6,
+              marginBottom: 2,
+            }}
+          >
+            OVERDUE
+          </Text>
+        ) : null}
         <Text style={sharedStyles.cardTitle}>{titleText}</Text>
         <Text
           style={[
@@ -75,8 +106,14 @@ export function UpcomingServiceCard(props: {
           ]}
         >
           Due {dueAt ? formatDate(dueAt) : '—'}
-          {intervalText ? ` · ${intervalText}` : ''}
+          {dueOverdue && daysLate > 0
+            ? ` · ${daysLate} day${daysLate === 1 ? '' : 's'} late`
+            : ''}
+          {!dueOverdue && intervalText ? ` · ${intervalText}` : ''}
         </Text>
+        {dueOverdue && intervalText ? (
+          <Text style={[sharedStyles.cardMeta, { color: colors.overdue }]}>{intervalText}</Text>
+        ) : null}
         {notesText ? <Text style={sharedStyles.cardMeta}>{notesText}</Text> : null}
       </Pressable>
       {hasScheduledNextDue ? (
@@ -86,7 +123,7 @@ export function UpcomingServiceCard(props: {
             paddingVertical: 8,
             paddingHorizontal: 10,
             borderRadius: 8,
-            backgroundColor: colors.primary,
+            backgroundColor: dueOverdue ? colors.overdue : colors.primary,
             justifyContent: 'center',
             opacity: pressed ? 0.85 : 1,
           })}

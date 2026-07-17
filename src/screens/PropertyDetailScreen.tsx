@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
@@ -10,6 +11,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import type { AppState, Room } from '../types';
 import { RoomListRow } from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
@@ -40,6 +43,8 @@ import {
   loadPropertyUpcomingHorizon,
   setPropertyUpcomingHorizon,
 } from '../upcomingHorizonPrefs';
+import { buildTransferBundle, sliceAppStateForProperty, transferBundleToJson } from '../transfer';
+import { exportBackupToZip } from '../transferPackage';
 
 export function PropertyDetailScreen(props: {
   state: AppState;
@@ -66,6 +71,7 @@ export function PropertyDetailScreen(props: {
   const [roomName, setRoomName] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
@@ -173,6 +179,67 @@ export function PropertyDetailScreen(props: {
     );
   }
 
+  function promptExportProperty() {
+    Alert.alert(
+      'Export property',
+      `Share "${prop.name}" so another user can import it (Export / import backup → Merge).`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Data only', onPress: () => void exportProperty(false) },
+        { text: 'Include photos', onPress: () => void exportProperty(true) },
+      ]
+    );
+  }
+
+  async function exportProperty(includePhotos: boolean) {
+    const sliced = sliceAppStateForProperty(state, propertyId);
+    if (!sliced) {
+      Alert.alert('Export failed', 'Property not found.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const safeName = prop.name.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '') || 'property';
+      const sourceLabel = `Property: ${prop.name}`;
+      if (includePhotos) {
+        const path = await exportBackupToZip(sliced, {
+          fileNamePrefix: safeName,
+          sourceLabel,
+        });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(path, {
+            mimeType: 'application/zip',
+            UTI: 'public.zip-archive',
+            dialogTitle: `Export ${prop.name}`,
+          });
+        } else {
+          Alert.alert('Exported', `Backup saved to ${path}`);
+        }
+        return;
+      }
+
+      const bundle = buildTransferBundle({ state: sliced, sourceLabel });
+      const json = transferBundleToJson(bundle);
+      const fileName = `${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
+      const path = `${FileSystem.cacheDirectory ?? ''}${fileName}`;
+      await FileSystem.writeAsStringAsync(path, json);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(path, {
+          mimeType: 'application/json',
+          dialogTitle: `Export ${prop.name}`,
+        });
+      } else {
+        Alert.alert('Exported', `Backup saved to ${path}`);
+      }
+    } catch (e) {
+      Alert.alert('Export failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScreenBackHeader onPress={onBack} />
@@ -270,6 +337,25 @@ export function PropertyDetailScreen(props: {
           style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
         >
           <Text style={sharedStyles.primaryBtnText}>Add room</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={promptExportProperty}
+          disabled={exporting}
+          style={({ pressed }) => [
+            sharedStyles.secondaryBtn,
+            pressed && !exporting && { opacity: 0.85 },
+            exporting && { opacity: 0.6 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Export property"
+          accessibilityHint="Shares this property so another user can import it."
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text style={sharedStyles.secondaryBtnText}>Export property</Text>
+          )}
         </Pressable>
 
         <Pressable onPress={confirmDeleteProperty} style={sharedStyles.dangerBtn}>

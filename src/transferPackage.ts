@@ -73,10 +73,17 @@ async function readFileBytes(uri: string): Promise<Uint8Array> {
 }
 
 /** Stream a ZIP of state.json + binary media copies. Returns the zip file:// URI. */
-export async function exportBackupToZip(state: AppState): Promise<string> {
+export async function exportBackupToZip(
+  state: AppState,
+  options?: { fileNamePrefix?: string; sourceLabel?: string }
+): Promise<string> {
   const stamp = new Date().toISOString().slice(0, 10);
   const stageRoot = `${Paths.cache.uri}backup-stage-${Date.now()}`;
-  const zipName = `property-inventory-${stamp}.zip`;
+  const prefix = (options?.fileNamePrefix ?? 'property-inventory')
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'property-inventory';
+  const zipName = `${prefix}-${stamp}.zip`;
   const zipFile = new File(Paths.cache, zipName);
 
   await ensureEmptyDir(stageRoot);
@@ -87,7 +94,7 @@ export async function exportBackupToZip(state: AppState): Promise<string> {
     formatVersion: ZIP_TRANSFER_FORMAT_VERSION,
     kind: 'property-inventory' as const,
     exportedAtISO: new Date().toISOString(),
-    sourceLabel: 'Property Inventory History',
+    sourceLabel: options?.sourceLabel ?? 'Property Inventory History',
     state,
   };
   await FileSystem.writeAsStringAsync(`${stageRoot}/state.json`, JSON.stringify(manifest));

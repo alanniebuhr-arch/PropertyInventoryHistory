@@ -10,9 +10,20 @@ export function PropertyListRow(props: {
   roomCount: number;
   itemCount: number;
   dueSoonCount: number;
+  /** e.g. "within 3 months" — replaces the old fixed "this month" wording. */
+  dueSoonPeriodLabel: string;
   onPress: () => void;
 }) {
-  const { name, address, thumbnailUri, roomCount, itemCount, dueSoonCount, onPress } = props;
+  const {
+    name,
+    address,
+    thumbnailUri,
+    roomCount,
+    itemCount,
+    dueSoonCount,
+    dueSoonPeriodLabel,
+    onPress,
+  } = props;
   return (
     <Pressable
       onPress={onPress}
@@ -40,7 +51,7 @@ export function PropertyListRow(props: {
           </Text>
           {dueSoonCount > 0 ? (
             <Text style={[sharedStyles.cardMeta, { color: colors.overdue, fontWeight: '600' }]}>
-              {dueSoonCount} service{dueSoonCount === 1 ? '' : 's'} due this month
+              {dueSoonCount} service{dueSoonCount === 1 ? '' : 's'} due {dueSoonPeriodLabel}
             </Text>
           ) : null}
         </View>
@@ -168,53 +179,45 @@ export function EventListRow(props: {
   notes?: string;
   thumbnailUri?: string;
   photoCount?: number;
-  onPress: () => void;
+  /** When omitted, the row is read-only (not pressable). */
+  onPress?: () => void;
 }) {
-  const {
-    title,
-    eventTypeLabel,
-    dateLabel,
-    costLabel,
-    recurrenceLabel,
-    notes,
-    thumbnailUri,
-    photoCount,
-    onPress,
-  } = props;
+  const { title, dateLabel, notes, thumbnailUri, onPress } = props;
   const notesText = notes?.trim();
+  const secondLine = notesText ? `${dateLabel} · ${notesText}` : dateLabel;
+  const body = (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+      {thumbnailUri ? (
+        <Image
+          source={{ uri: thumbnailUri }}
+          style={{
+            width: EVENT_LIST_THUMB_SIZE,
+            height: EVENT_LIST_THUMB_SIZE,
+            borderRadius: 8,
+            backgroundColor: colors.border,
+          }}
+        />
+      ) : null}
+      <View style={{ flex: 1 }}>
+        <Text style={sharedStyles.cardTitle}>{title}</Text>
+        <Text style={sharedStyles.cardMeta} numberOfLines={6}>
+          {secondLine}
+        </Text>
+      </View>
+    </View>
+  );
+
+  if (!onPress) {
+    return <View style={sharedStyles.card}>{body}</View>;
+  }
+
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [sharedStyles.card, pressed && sharedStyles.cardPressed]}
       accessibilityRole="button"
     >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-        {thumbnailUri ? (
-          <Image
-            source={{ uri: thumbnailUri }}
-            style={{
-              width: EVENT_LIST_THUMB_SIZE,
-              height: EVENT_LIST_THUMB_SIZE,
-              borderRadius: 8,
-              backgroundColor: colors.border,
-            }}
-          />
-        ) : null}
-        <View style={{ flex: 1 }}>
-          <Text style={sharedStyles.cardTitle}>{title}</Text>
-          <Text style={sharedStyles.cardMeta}>
-            {eventTypeLabel} · {dateLabel}
-            {costLabel ? ` · ${costLabel}` : ''}
-            {photoCount != null && photoCount > 0 ? ` · ${photoCount} photo${photoCount === 1 ? '' : 's'}` : ''}
-          </Text>
-          {notesText ? (
-            <Text style={[sharedStyles.cardMeta, { marginTop: 4 }]} numberOfLines={6}>
-              {notesText}
-            </Text>
-          ) : null}
-          {recurrenceLabel ? <Text style={sharedStyles.cardMeta}>{recurrenceLabel}</Text> : null}
-        </View>
-      </View>
+      {body}
     </Pressable>
   );
 }
