@@ -9,6 +9,7 @@ export function PropertyListRow(props: {
   thumbnailUri?: string;
   roomCount: number;
   itemCount: number;
+  overdueCount: number;
   dueSoonCount: number;
   /** e.g. "within 3 months" — replaces the old fixed "this month" wording. */
   dueSoonPeriodLabel: string;
@@ -20,6 +21,7 @@ export function PropertyListRow(props: {
     thumbnailUri,
     roomCount,
     itemCount,
+    overdueCount,
     dueSoonCount,
     dueSoonPeriodLabel,
     onPress,
@@ -61,11 +63,16 @@ export function PropertyListRow(props: {
       <Text style={[sharedStyles.cardTitle, { fontSize: 20 }]}>{name}</Text>
       {address ? <Text style={sharedStyles.cardMeta}>{address}</Text> : null}
       <Text style={sharedStyles.cardMeta}>
-        {roomCount} room{roomCount === 1 ? '' : 's'} · {itemCount} item
+        {roomCount} room{roomCount === 1 ? '' : 's'} · {itemCount} asset
         {itemCount === 1 ? '' : 's'}
+        {overdueCount > 0 ? (
+          <Text style={{ color: colors.overdue, fontWeight: '600' }}>
+            {` · ${overdueCount} overdue`}
+          </Text>
+        ) : null}
       </Text>
       {dueSoonCount > 0 ? (
-        <Text style={[sharedStyles.cardMeta, { color: colors.overdue, fontWeight: '600' }]}>
+        <Text style={[sharedStyles.cardMeta, { color: colors.dueSoon, fontWeight: '600' }]}>
           {dueSoonCount} service{dueSoonCount === 1 ? '' : 's'} due {dueSoonPeriodLabel}
         </Text>
       ) : null}
@@ -78,10 +85,12 @@ export function RoomListRow(props: {
   thumbnailUri?: string;
   itemCount: number;
   overdueCount: number;
+  upcomingCount?: number;
   requiresAuth?: boolean;
   onPress: () => void;
 }) {
-  const { name, thumbnailUri, itemCount, overdueCount, requiresAuth, onPress } = props;
+  const { name, thumbnailUri, itemCount, overdueCount, upcomingCount = 0, requiresAuth, onPress } =
+    props;
   return (
     <Pressable
       onPress={onPress}
@@ -126,8 +135,17 @@ export function RoomListRow(props: {
           ) : null}
         </View>
         <Text style={sharedStyles.cardMeta}>
-          {itemCount} item{itemCount === 1 ? '' : 's'}
-          {overdueCount > 0 ? ` · ${overdueCount} overdue` : ''}
+          {itemCount} asset{itemCount === 1 ? '' : 's'}
+          {overdueCount > 0 ? (
+            <Text style={{ color: colors.overdue, fontWeight: '600' }}>
+              {` · ${overdueCount} overdue`}
+            </Text>
+          ) : null}
+          {upcomingCount > 0 ? (
+            <Text style={{ color: colors.dueSoon, fontWeight: '600' }}>
+              {` · ${upcomingCount} upcoming`}
+            </Text>
+          ) : null}
         </Text>
       </View>
     </Pressable>
@@ -244,7 +262,10 @@ export function ItemListRow(props: {
             showPhotoColumn || lastServiceDate
               ? { marginLeft: leftColWidth + 12 }
               : null,
-            overdue && { color: colors.overdue, fontWeight: '600' },
+            {
+              color: overdue ? colors.overdue : colors.dueSoon,
+              fontWeight: '600',
+            },
           ]}
         >
           Next due: {nextDueLabel}
@@ -254,15 +275,71 @@ export function ItemListRow(props: {
   );
 }
 
-/** Photo-forward tile for room item gallery grids. */
+/** Photo-forward tile for property room gallery grids. */
+export function RoomGalleryTile(props: {
+  name: string;
+  thumbnailUri?: string;
+  itemCount: number;
+  overdueCount: number;
+  upcomingCount?: number;
+  requiresAuth?: boolean;
+  onPress: () => void;
+}) {
+  const {
+    name,
+    thumbnailUri,
+    itemCount,
+    overdueCount,
+    upcomingCount = 0,
+    requiresAuth,
+    onPress,
+  } = props;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [sharedStyles.galleryTile, pressed && sharedStyles.cardPressed]}
+      accessibilityRole="button"
+    >
+      {thumbnailUri ? (
+        <Image source={{ uri: thumbnailUri }} style={sharedStyles.galleryImage} />
+      ) : (
+        <View style={sharedStyles.galleryImage} />
+      )}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
+        <Text style={[sharedStyles.galleryCaption, { marginTop: 0, flex: 1 }]} numberOfLines={1}>
+          {name}
+        </Text>
+        {requiresAuth ? (
+          <MaterialIcons name="lock" size={14} color={colors.textMuted} accessibilityLabel="Locked" />
+        ) : null}
+      </View>
+      <Text style={sharedStyles.galleryMeta} numberOfLines={2}>
+        {itemCount} asset{itemCount === 1 ? '' : 's'}
+        {overdueCount > 0 ? (
+          <Text style={{ color: colors.overdue, fontWeight: '600' }}>
+            {` · ${overdueCount} overdue`}
+          </Text>
+        ) : null}
+        {upcomingCount > 0 ? (
+          <Text style={{ color: colors.dueSoon, fontWeight: '600' }}>
+            {` · ${upcomingCount} upcoming`}
+          </Text>
+        ) : null}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Photo-forward tile for room asset gallery grids. */
 export function ItemGalleryTile(props: {
   label: string;
   nameLabel?: string;
   thumbnailUri?: string;
+  nextDueLabel?: string | null;
   overdue?: boolean;
   onPress: () => void;
 }) {
-  const { label, nameLabel, thumbnailUri, overdue, onPress } = props;
+  const { label, nameLabel, thumbnailUri, nextDueLabel, overdue, onPress } = props;
   return (
     <Pressable
       onPress={onPress}
@@ -282,9 +359,18 @@ export function ItemGalleryTile(props: {
           {nameLabel}
         </Text>
       ) : null}
-      {overdue ? (
-        <Text style={[sharedStyles.galleryMeta, { color: colors.overdue, fontWeight: '600' }]}>
-          Overdue
+      {nextDueLabel ? (
+        <Text
+          style={[
+            sharedStyles.galleryMeta,
+            {
+              color: overdue ? colors.overdue : colors.dueSoon,
+              fontWeight: '600',
+            },
+          ]}
+          numberOfLines={1}
+        >
+          {overdue ? 'Overdue' : 'Next due'}: {nextDueLabel}
         </Text>
       ) : null}
     </Pressable>

@@ -23,10 +23,10 @@ import {
   clearAirConditionerSlotDocument,
   clearAirConditionerSlotPhoto,
   removeAirConditionerExtraPhoto,
-  setAirConditionerExtraPhotoCaption,
   setAirConditionerSlotDocument,
   setAirConditionerSlotPhoto,
 } from '../airConditionerPhotos';
+import { setItemPhotoCaptionAndNotes, setItemPhotoFavorite, setItemPhotoNotes } from '../photoMeta';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
@@ -63,6 +63,15 @@ export function AirConditionerDisplayView(props: {
           airConditionerSlotPhotoUri(state, details, key as AirConditionerPhotoSlotKey),
         getSlotDocument: (key) =>
           airConditionerSlotDocumentInfo(state, details, key as AirConditionerPhotoSlotKey),
+        getSlotNotes: (key) => {
+          const photoId = details[key as AirConditionerPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.notes : undefined;
+        },
+        getSlotPhotoId: (key) => details[key as AirConditionerPhotoSlotKey],
+        getSlotFavorite: (key) => {
+          const photoId = details[key as AirConditionerPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.favorite : undefined;
+        },
         onAddSlot: (key, uri) => {
           void setAirConditionerSlotPhoto(
             state,
@@ -93,12 +102,19 @@ export function AirConditionerDisplayView(props: {
             key as AirConditionerPhotoSlotKey
           ).then(onSave);
         },
+        onLabelSlot: (key, notes) => {
+          const photoId = details[key as AirConditionerPhotoSlotKey];
+          if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
+        },
+        onToggleFavorite: (photoId, favorite) => {
+          onSave(setItemPhotoFavorite(state, photoId, favorite));
+        },
         extraPhotos,
         onDeleteExtra: (photoId) => {
           void removeAirConditionerExtraPhoto(state, itemId, photoId).then(onSave);
         },
-        onLabelExtra: (photoId, label) => {
-          onSave(setAirConditionerExtraPhotoCaption(state, photoId, label));
+        onLabelExtra: (photoId, label, notes) => {
+          onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
     [details, extraPhotos, itemId, onSave, state]

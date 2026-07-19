@@ -6,7 +6,7 @@ export function RoomNavigationDots(props: {
   count: number;
   activeIndex: number;
   onSelect: (index: number) => void;
-  /** Singular label for accessibility, e.g. "Room" or "Item". */
+  /** Singular label for accessibility, e.g. "Room" or "Asset". */
   unitLabel?: string;
 }) {
   const { count, activeIndex, onSelect, unitLabel = 'Room' } = props;

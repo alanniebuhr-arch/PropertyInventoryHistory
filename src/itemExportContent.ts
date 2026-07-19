@@ -394,7 +394,7 @@ function buildDetailSections(item: InventoryItem): ItemExportSection[] {
     case 'other':
     default: {
       const other = details.kind === 'other' ? details : { kind: 'other' as const };
-      pushSection(sections, section('Item', [
+      pushSection(sections, section('Asset', [
         row('Name', displayName),
         row('Notes', other.notes),
       ]));
@@ -411,6 +411,7 @@ function buildEventExports(state: AppState, itemId: string): ItemExportEvent[] {
       EVENT_TYPE_LABELS[event.eventType],
       formatDate(event.occurredAtISO),
       event.cost != null ? formatCurrency(event.cost) : undefined,
+      event.serviceCompany?.trim() || undefined,
       event.recurrence ? recurrenceLabel(event.recurrence) : undefined,
       event.notes?.trim() || undefined,
     ].filter((line): line is string => Boolean(line));
@@ -445,7 +446,7 @@ export function buildItemExportSnapshot(state: AppState, itemId: string): ItemEx
 
   return {
     title: itemDisplayLabel({ ...item, details: item.details }),
-    subtitle: 'Property Inventory History',
+    subtitle: 'Property Asset Manager',
     metaLines,
     sections: buildDetailSections(item),
     photos: collectItemPhotos(state, item),

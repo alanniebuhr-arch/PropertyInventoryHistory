@@ -1,6 +1,6 @@
-# Property Inventory History
+# Property Asset Manager
 
-Track rental units and properties: rooms, inventory items (gas main, water main, electric panel, furnace, internet, custom), photos, maintenance events, and backups.
+Track rental units and properties: rooms, assets (gas main, water main, electric panel, furnace, internet, custom), photos, maintenance events, and backups.
 
 ## Run locally
 
@@ -13,7 +13,7 @@ npm start
 
 - **Properties** — multiple units with optional address
 - **Rooms** — user-named spaces (Basement, Kitchen, etc.)
-- **Items** — catalog types with dedicated detail forms, or **Other** with a custom name
+- **Assets** — catalog types with dedicated detail forms, or **Other** with a custom name
 - **Photos** — attach from camera or library
 - **Events** — maintenance history with optional recurring schedule and overdue indicators
 - **Backup** — export/import JSON (optional embedded photos)

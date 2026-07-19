@@ -8,7 +8,7 @@ import { EVENT_LIST_THUMB_SIZE } from './ListRows';
 
 export function UpcomingServiceCard(props: {
   event: ItemEvent;
-  /** Shown first on the title row when set (e.g. room or item name). */
+  /** Shown first on the title row when set (e.g. room or asset name). */
   leadingLabel?: string;
   thumbnailUri?: string;
   onPressDetails: () => void;

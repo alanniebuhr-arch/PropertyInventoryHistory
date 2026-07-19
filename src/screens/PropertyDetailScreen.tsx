@@ -14,7 +14,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import type { AppState, Room } from '../types';
-import { RoomListRow } from '../components/ListRows';
+import { RoomGalleryTile, RoomListRow } from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
 import { RenameModal } from '../components/RenameModal';
@@ -32,9 +32,12 @@ import {
 import { overdueCountForRoom } from '../itemMaintenance';
 import { itemDisplayLabel } from '../itemCatalog';
 import { firstPhotoUriForRoom } from '../roomPhotos';
+import { favoriteHeroPhotosForProperty } from '../propertyFavoritePhotos';
+import { PhotoViewerModal, type ViewerPhoto } from '../components/PhotoViewerModal';
 import {
   filterUpcomingByHorizon,
   upcomingHorizonLabel,
+  upcomingNotOverdueCountForRoom,
   upcomingServiceEventsForProperty,
   UPCOMING_HORIZON_OPTIONS,
   type UpcomingHorizon,
@@ -44,6 +47,12 @@ import {
   loadPropertyUpcomingHorizon,
   setPropertyUpcomingHorizon,
 } from '../upcomingHorizonPrefs';
+import {
+  getPropertyRoomViewMode,
+  loadPropertyRoomViewMode,
+  setPropertyRoomViewMode,
+  type PropertyRoomViewMode,
+} from '../propertyRoomViewPrefs';
 import { buildTransferBundle, sliceAppStateForProperty, transferBundleToJson } from '../transfer';
 import { exportBackupToZip } from '../transferPackage';
 
@@ -73,14 +82,19 @@ export function PropertyDetailScreen(props: {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
+  const [roomViewMode, setRoomViewMode] = useState<PropertyRoomViewMode>(getPropertyRoomViewMode);
 
   useEffect(() => {
     let cancelled = false;
     void loadPropertyUpcomingHorizon().then((horizon) => {
       if (!cancelled) setUpcomingHorizon(horizon);
+    });
+    void loadPropertyRoomViewMode().then((mode) => {
+      if (!cancelled) setRoomViewMode(mode);
     });
     return () => {
       cancelled = true;
@@ -99,10 +113,29 @@ export function PropertyDetailScreen(props: {
   }
 
   const prop = property;
+  const favoritePhotos = favoriteHeroPhotosForProperty(state, propertyId);
+  const slideshowPhotos: ViewerPhoto[] = favoritePhotos.map((photo) => ({
+    id: photo.id,
+    uri: photo.uri,
+    label: photo.label,
+    notes: photo.notes,
+    onDelete: () => {},
+  }));
   const upcomingEvents = filterUpcomingByHorizon(
     upcomingServiceEventsForProperty(state, propertyId),
     upcomingHorizon
   );
+
+  function openFavoriteSlideshow() {
+    if (slideshowPhotos.length === 0) {
+      Alert.alert(
+        'No favorite photos',
+        'Mark photos as favorites with the star on property, room, or asset heroes to include them here.'
+      );
+      return;
+    }
+    setSlideshowIndex(0);
+  }
 
   function selectUpcomingHorizon(horizon: UpcomingHorizon) {
     setUpcomingHorizon(horizon);
@@ -165,7 +198,7 @@ export function PropertyDetailScreen(props: {
     const propName = prop.name;
     Alert.alert(
       'Delete property?',
-      `Remove "${propName}" and all its rooms, items, photos, and events?`,
+      `Remove "${propName}" and all its rooms, assets, photos, and events?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -315,9 +348,79 @@ export function PropertyDetailScreen(props: {
           </View>
         )}
 
-        <Text style={sharedStyles.sectionTitle}>Rooms</Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+            Rooms
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Pressable
+              onPress={() => {
+                setRoomViewMode('gallery');
+                void setPropertyRoomViewMode('gallery');
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: roomViewMode === 'gallery' }}
+              accessibilityLabel="Compact gallery view"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 6,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name="grid-view"
+                size={22}
+                color={roomViewMode === 'gallery' ? colors.primary : colors.textMuted}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setRoomViewMode('list');
+                void setPropertyRoomViewMode('list');
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: roomViewMode === 'list' }}
+              accessibilityLabel="Detailed list view"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 6,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name="view-list"
+                size={22}
+                color={roomViewMode === 'list' ? colors.primary : colors.textMuted}
+              />
+            </Pressable>
+          </View>
+        </View>
         {rooms.length === 0 ? (
           <Text style={sharedStyles.emptyText}>Add a room like Utilities or Kitchen.</Text>
+        ) : roomViewMode === 'gallery' ? (
+          <View style={sharedStyles.galleryRow}>
+            {rooms.map((r) => (
+              <RoomGalleryTile
+                key={r.id}
+                name={r.name}
+                thumbnailUri={firstPhotoUriForRoom(state, r)}
+                itemCount={state.items.filter((i) => i.roomId === r.id).length}
+                overdueCount={overdueCountForRoom(state, r.id)}
+                upcomingCount={upcomingNotOverdueCountForRoom(state, r.id, upcomingHorizon)}
+                requiresAuth={r.requiresAuth}
+                onPress={() => onOpenRoom(r.id)}
+              />
+            ))}
+          </View>
         ) : (
           rooms.map((r) => (
             <RoomListRow
@@ -326,6 +429,7 @@ export function PropertyDetailScreen(props: {
               thumbnailUri={firstPhotoUriForRoom(state, r)}
               itemCount={state.items.filter((i) => i.roomId === r.id).length}
               overdueCount={overdueCountForRoom(state, r.id)}
+              upcomingCount={upcomingNotOverdueCountForRoom(state, r.id, upcomingHorizon)}
               requiresAuth={r.requiresAuth}
               onPress={() => onOpenRoom(r.id)}
             />
@@ -345,6 +449,21 @@ export function PropertyDetailScreen(props: {
           })}
         >
           <Text style={sharedStyles.textLink}>Add room</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={openFavoriteSlideshow}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            paddingVertical: 8,
+            opacity: pressed ? 0.7 : 1,
+            marginTop: 0,
+          })}
+          accessibilityRole="button"
+          accessibilityLabel="Slideshow"
+          accessibilityHint="Shows favorite photos from this property in full screen."
+        >
+          <Text style={sharedStyles.textLink}>Slideshow</Text>
         </Pressable>
 
         <Pressable
@@ -401,6 +520,13 @@ export function PropertyDetailScreen(props: {
         onSave={savePropertyName}
         onClose={() => setRenameOpen(false)}
         placeholder="Property name"
+      />
+
+      <PhotoViewerModal
+        photos={slideshowPhotos}
+        index={slideshowIndex}
+        onIndexChange={setSlideshowIndex}
+        browseOnly
       />
     </View>
   );

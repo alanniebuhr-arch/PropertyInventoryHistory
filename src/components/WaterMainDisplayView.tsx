@@ -18,13 +18,13 @@ import {
   clearWaterMainSlotDocument,
   clearWaterMainSlotPhoto,
   removeWaterMainExtraPhoto,
-  setWaterMainExtraPhotoCaption,
   setWaterMainSlotDocument,
   setWaterMainSlotPhoto,
   waterMainExtraPhotos,
   waterMainSlotDocumentInfo,
   waterMainSlotPhotoUri,
 } from '../waterMainPhotos';
+import { setItemPhotoCaptionAndNotes, setItemPhotoFavorite, setItemPhotoNotes } from '../photoMeta';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
@@ -54,6 +54,15 @@ export function WaterMainDisplayView(props: {
         getSlotUri: (key) => waterMainSlotPhotoUri(state, details, key as WaterMainPhotoSlotKey),
         getSlotDocument: (key) =>
           waterMainSlotDocumentInfo(state, details, key as WaterMainPhotoSlotKey),
+        getSlotNotes: (key) => {
+          const photoId = details[key as WaterMainPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.notes : undefined;
+        },
+        getSlotPhotoId: (key) => details[key as WaterMainPhotoSlotKey],
+        getSlotFavorite: (key) => {
+          const photoId = details[key as WaterMainPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.favorite : undefined;
+        },
         onAddSlot: (key, uri) => {
           void setWaterMainSlotPhoto(state, itemId, key as WaterMainPhotoSlotKey, uri).then(onSave);
         },
@@ -73,12 +82,19 @@ export function WaterMainDisplayView(props: {
         onDeleteSlotDocument: (key) => {
           void clearWaterMainSlotDocument(state, itemId, key as WaterMainPhotoSlotKey).then(onSave);
         },
+        onLabelSlot: (key, notes) => {
+          const photoId = details[key as WaterMainPhotoSlotKey];
+          if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
+        },
+        onToggleFavorite: (photoId, favorite) => {
+          onSave(setItemPhotoFavorite(state, photoId, favorite));
+        },
         extraPhotos,
         onDeleteExtra: (photoId) => {
           void removeWaterMainExtraPhoto(state, itemId, photoId).then(onSave);
         },
-        onLabelExtra: (photoId, label) => {
-          onSave(setWaterMainExtraPhotoCaption(state, photoId, label));
+        onLabelExtra: (photoId, label, notes) => {
+          onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
     [details, extraPhotos, itemId, onSave, slots, state]

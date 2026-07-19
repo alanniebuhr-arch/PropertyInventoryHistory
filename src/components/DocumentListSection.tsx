@@ -53,7 +53,7 @@ async function shareDocument(localUri: string, fileName: string, mimeType: strin
 }
 
 function confirmDeleteDocument(onDelete: () => void) {
-  Alert.alert('Remove document?', 'This file will be removed from this item.', [
+  Alert.alert('Remove document?', 'This file will be removed from this asset.', [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Remove', style: 'destructive', onPress: onDelete },
   ]);

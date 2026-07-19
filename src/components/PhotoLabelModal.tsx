@@ -6,21 +6,28 @@ export function PhotoLabelModal(props: {
   visible: boolean;
   draft: string;
   onChangeDraft: (value: string) => void;
+  notesDraft: string;
+  onChangeNotesDraft: (value: string) => void;
   onSave: () => void;
   onClose: () => void;
   placeholder?: string;
   title?: string;
   saveLabel?: string;
+  /** When true, label field is shown but not editable (named slots). */
+  labelLocked?: boolean;
 }) {
   const {
     visible,
     draft,
     onChangeDraft,
+    notesDraft,
+    onChangeNotesDraft,
     onSave,
     onClose,
     placeholder = 'e.g. Water hookup, damage',
     title = 'Label photo',
     saveLabel = 'Save',
+    labelLocked = false,
   } = props;
 
   return (
@@ -46,17 +53,34 @@ export function PhotoLabelModal(props: {
         >
           <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>{title}</Text>
           <Text style={[sharedStyles.cardMeta, { marginBottom: 12 }]}>
-            {title === 'Rename label'
-              ? 'Update the label shown under this photo.'
-              : 'Add a short label to describe this photo.'}
+            {labelLocked
+              ? 'Add notes to show with this photo in the large view.'
+              : title === 'Rename label'
+                ? 'Update the label and notes shown with this photo.'
+                : 'Add a short label and optional notes for this photo.'}
           </Text>
+          <Text style={[sharedStyles.cardMeta, { marginBottom: 4 }]}>Label</Text>
           <TextInput
             value={draft}
             onChangeText={onChangeDraft}
-            style={sharedStyles.input}
+            style={[
+              sharedStyles.input,
+              labelLocked ? { opacity: 0.7, marginBottom: 12 } : { marginBottom: 12 },
+            ]}
             placeholder={placeholder}
-            autoFocus
+            autoFocus={!labelLocked}
+            editable={!labelLocked}
             maxLength={40}
+          />
+          <Text style={[sharedStyles.cardMeta, { marginBottom: 4 }]}>Notes</Text>
+          <TextInput
+            value={notesDraft}
+            onChangeText={onChangeNotesDraft}
+            style={[sharedStyles.input, { minHeight: 72, textAlignVertical: 'top' }]}
+            placeholder="Optional notes shown with the photo"
+            autoFocus={labelLocked}
+            multiline
+            maxLength={500}
           />
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
             <Pressable

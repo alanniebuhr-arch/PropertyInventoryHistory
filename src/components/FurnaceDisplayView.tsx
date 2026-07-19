@@ -27,10 +27,10 @@ import {
   furnaceSlotDocumentInfo,
   furnaceSlotPhotoUri,
   removeFurnaceExtraPhoto,
-  setFurnaceExtraPhotoCaption,
   setFurnaceSlotDocument,
   setFurnaceSlotPhoto,
 } from '../furnacePhotos';
+import { setItemPhotoCaptionAndNotes, setItemPhotoFavorite, setItemPhotoNotes } from '../photoMeta';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
@@ -66,6 +66,15 @@ export function FurnaceDisplayView(props: {
         getSlotUri: (key) => furnaceSlotPhotoUri(state, details, key as FurnacePhotoSlotKey),
         getSlotDocument: (key) =>
           furnaceSlotDocumentInfo(state, details, key as FurnacePhotoSlotKey),
+        getSlotNotes: (key) => {
+          const photoId = details[key as FurnacePhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.notes : undefined;
+        },
+        getSlotPhotoId: (key) => details[key as FurnacePhotoSlotKey],
+        getSlotFavorite: (key) => {
+          const photoId = details[key as FurnacePhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.favorite : undefined;
+        },
         onAddSlot: (key, uri) => {
           void setFurnaceSlotPhoto(state, itemId, key as FurnacePhotoSlotKey, uri).then(onSave);
         },
@@ -85,12 +94,19 @@ export function FurnaceDisplayView(props: {
         onDeleteSlotDocument: (key) => {
           void clearFurnaceSlotDocument(state, itemId, key as FurnacePhotoSlotKey).then(onSave);
         },
+        onLabelSlot: (key, notes) => {
+          const photoId = details[key as FurnacePhotoSlotKey];
+          if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
+        },
+        onToggleFavorite: (photoId, favorite) => {
+          onSave(setItemPhotoFavorite(state, photoId, favorite));
+        },
         extraPhotos,
         onDeleteExtra: (photoId) => {
           void removeFurnaceExtraPhoto(state, itemId, photoId).then(onSave);
         },
-        onLabelExtra: (photoId, label) => {
-          onSave(setFurnaceExtraPhotoCaption(state, photoId, label));
+        onLabelExtra: (photoId, label, notes) => {
+          onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
     [details, extraPhotos, itemId, onSave, slots, state]

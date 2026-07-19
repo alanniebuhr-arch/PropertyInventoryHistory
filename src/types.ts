@@ -271,6 +271,10 @@ export type PropertyPhoto = {
   propertyId: string;
   localUri: string;
   caption?: string;
+  /** Free-form notes shown with the hero when this photo is active. */
+  notes?: string;
+  /** When true, included in the property Slideshow of favorite heroes. */
+  favorite?: boolean;
   createdAtISO: string;
 };
 
@@ -279,6 +283,10 @@ export type RoomPhoto = {
   roomId: string;
   localUri: string;
   caption?: string;
+  /** Free-form notes shown with the hero when this photo is active. */
+  notes?: string;
+  /** When true, included in the property Slideshow of favorite heroes. */
+  favorite?: boolean;
   createdAtISO: string;
 };
 
@@ -333,6 +341,10 @@ export type ItemPhoto = {
   eventId?: string;
   localUri: string;
   caption?: string;
+  /** Free-form notes shown with the hero when this photo is active. */
+  notes?: string;
+  /** When true, included in the property Slideshow of favorite heroes. */
+  favorite?: boolean;
   createdAtISO: string;
 };
 
@@ -369,6 +381,8 @@ export type ItemEvent = {
   title: string;
   occurredAtISO: string;
   notes?: string;
+  /** Company that performed the service. */
+  serviceCompany?: string;
   cost?: number;
   recurrence?: ItemEventRecurrence;
   photoIds: string[];

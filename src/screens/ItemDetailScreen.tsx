@@ -185,7 +185,7 @@ export function ItemDetailScreen(props: {
   const runItemExport = useCallback(async () => {
     const snapshot = buildItemExportSnapshot(state, itemId);
     if (!snapshot) {
-      Alert.alert('Export failed', 'Could not build item summary.');
+      Alert.alert('Export failed', 'Could not build asset summary.');
       return;
     }
     setExportSnapshot(snapshot);
@@ -258,7 +258,7 @@ export function ItemDetailScreen(props: {
   if (!item || !details) {
     return (
       <View style={[sharedStyles.screen, { paddingTop: insets.top, padding: 16 }]}>
-        <Text style={sharedStyles.emptyText}>Item not found.</Text>
+        <Text style={sharedStyles.emptyText}>Asset not found.</Text>
         <Pressable onPress={onBack} style={sharedStyles.secondaryBtn}>
           <Text style={sharedStyles.secondaryBtnText}>Back</Text>
         </Pressable>
@@ -298,7 +298,7 @@ export function ItemDetailScreen(props: {
       <RoomNavigationDots
         count={roomItems.length}
         activeIndex={itemIndex}
-        unitLabel="Item"
+        unitLabel="Asset"
         onSelect={(index) => {
           const target = roomItems[index];
           if (target) onNavigateItem(target.id);
@@ -484,11 +484,26 @@ export function ItemDetailScreen(props: {
     });
   }
 
-  function handlePhotoCaptionChange(photoId: string, caption: string) {
+  function handlePhotoCaptionChange(photoId: string, caption: string, notes: string) {
     onSave({
       ...state,
       photos: state.photos.map((p) =>
-        p.id === photoId ? { ...p, caption: caption.trim() || undefined } : p
+        p.id === photoId
+          ? {
+              ...p,
+              caption: caption.trim() || undefined,
+              notes: notes.trim() || undefined,
+            }
+          : p
+      ),
+    });
+  }
+
+  function handlePhotoFavoriteChange(photoId: string, favorite: boolean) {
+    onSave({
+      ...state,
+      photos: state.photos.map((p) =>
+        p.id === photoId ? { ...p, favorite: favorite || undefined } : p
       ),
     });
   }
@@ -505,7 +520,7 @@ export function ItemDetailScreen(props: {
 
   function confirmDeleteItem() {
     Alert.alert(
-      'Delete item?',
+      'Delete asset?',
       `Remove "${itemDisplayLabel(inv)}" and all photos and events?`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -599,7 +614,7 @@ export function ItemDetailScreen(props: {
       </View>
 
       <View style={sharedStyles.sectionFrame}>
-        <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>Log a new event</Text>
+        <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>New event</Text>
         <View
           style={{
             flexDirection: 'row',
@@ -622,11 +637,11 @@ export function ItemDetailScreen(props: {
             ]}
           >
             <Text style={[sharedStyles.primaryBtnText, { fontSize: 14, textAlign: 'center' }]}>
-              {'Log a\nnew event'}
+              {'New\nevent'}
             </Text>
           </Pressable>
           <Text style={[sharedStyles.cardMeta, { flex: 1, marginBottom: 0, marginTop: 0 }]}>
-            Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
+            Log or Schedule maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
           </Text>
         </View>
       </View>
@@ -658,7 +673,7 @@ export function ItemDetailScreen(props: {
       </View>
 
       <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
-        <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
+        <Text style={sharedStyles.dangerBtnText}>Delete asset</Text>
       </Pressable>
     </View>
   );
@@ -675,8 +690,8 @@ export function ItemDetailScreen(props: {
             onPress={() => void runItemExport()}
             disabled={exporting}
             accessibilityRole="button"
-            accessibilityLabel="Share item"
-            accessibilityHint="Creates an image of this item and opens the share sheet."
+            accessibilityLabel="Share asset"
+            accessibilityHint="Creates an image of this asset and opens the share sheet."
             hitSlop={8}
             style={({ pressed }) => [
               {
@@ -801,6 +816,7 @@ export function ItemDetailScreen(props: {
             extraDocumentRows={extraDocumentRows}
             onDeletePhoto={removePhoto}
             onPhotoCaptionChange={handlePhotoCaptionChange}
+            onPhotoFavoriteChange={handlePhotoFavoriteChange}
             onDetailsChange={handleDetailsChange}
             onDisplayNameChange={
               inv.itemTypeId === 'other' ? handleDisplayNameChange : undefined

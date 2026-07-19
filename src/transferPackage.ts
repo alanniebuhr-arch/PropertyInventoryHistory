@@ -94,7 +94,7 @@ export async function exportBackupToZip(
     formatVersion: ZIP_TRANSFER_FORMAT_VERSION,
     kind: 'property-inventory' as const,
     exportedAtISO: new Date().toISOString(),
-    sourceLabel: options?.sourceLabel ?? 'Property Inventory History',
+    sourceLabel: options?.sourceLabel ?? 'Property Asset Manager',
     state,
   };
   await FileSystem.writeAsStringAsync(`${stageRoot}/state.json`, JSON.stringify(manifest));
@@ -317,7 +317,7 @@ export async function importBackupFromUri(
       }
       const obj = parsed as Record<string, unknown>;
       if (obj.kind !== 'property-inventory') {
-        return { ok: false, error: 'Not a Property Inventory History export.' };
+        return { ok: false, error: 'Not a Property Asset Manager export.' };
       }
       if (obj.formatVersion !== ZIP_TRANSFER_FORMAT_VERSION && obj.formatVersion !== TRANSFER_FORMAT_VERSION) {
         return { ok: false, error: 'Unsupported transfer format version.' };

@@ -40,6 +40,7 @@ import {
 import { itemListSummaryFields } from '../itemListSummaryFields';
 import {
   isItemOverdue,
+  nextDueLabelForItem,
 } from '../itemMaintenance';
 import {
   filterUpcomingByHorizon,
@@ -214,7 +215,7 @@ export function RoomDetailScreen(props: {
     if (!pendingItemType) return;
     const trimmed = newItemName.trim();
     if (pendingItemType === 'other' && !trimmed) {
-      Alert.alert('Name required', 'Enter a name for this item.');
+      Alert.alert('Name required', 'Enter a name for this asset.');
       return;
     }
     const item: InventoryItem = createInventoryItem(roomId, pendingItemType, trimmed);
@@ -261,7 +262,7 @@ export function RoomDetailScreen(props: {
     const roomName = rm.name;
     Alert.alert(
       'Delete room?',
-      `Remove "${roomName}" and all items inside?`,
+      `Remove "${roomName}" and all assets inside?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -348,7 +349,7 @@ export function RoomDetailScreen(props: {
         }}
       >
         <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-          Items
+          Assets
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Pressable
@@ -394,7 +395,7 @@ export function RoomDetailScreen(props: {
         </View>
       </View>
       {items.length === 0 ? (
-        <Text style={sharedStyles.emptyText}>Add items like water heater, heating, or electric panel.</Text>
+        <Text style={sharedStyles.emptyText}>Add assets like water heater, heating, or electric panel.</Text>
       ) : itemViewMode === 'gallery' ? (
         <View style={sharedStyles.galleryRow}>
           {items.map((item) => {
@@ -405,6 +406,7 @@ export function RoomDetailScreen(props: {
                 label={label}
                 nameLabel={nameLabel}
                 thumbnailUri={firstPhotoUriForItem(state, item)}
+                nextDueLabel={nextDueLabelForItem(state, item.id)}
                 overdue={isItemOverdue(state, item.id)}
                 onPress={() => onOpenItem(item.id)}
               />
@@ -428,6 +430,8 @@ export function RoomDetailScreen(props: {
                 lastServiceDate={lastEvent ? formatDate(lastEvent.occurredAtISO) : undefined}
                 lastServiceTitle={lastEvent?.title}
                 lastServiceNotes={lastEvent?.notes}
+                nextDueLabel={nextDueLabelForItem(state, item.id)}
+                overdue={isItemOverdue(state, item.id)}
                 onPress={() => onOpenItem(item.id)}
               />
             );
@@ -458,7 +462,7 @@ export function RoomDetailScreen(props: {
           marginBottom: 8,
         })}
       >
-        <Text style={sharedStyles.textLink}>Add item</Text>
+        <Text style={sharedStyles.textLink}>Add asset</Text>
       </Pressable>
 
       <Pressable onPress={confirmDeleteRoom} style={sharedStyles.dangerBtn}>
@@ -534,12 +538,12 @@ export function RoomDetailScreen(props: {
 
       <RenameModal
         visible={addItemNameOpen}
-        title={pendingItemType ? `New ${catalogLabel(pendingItemType)}` : 'New item'}
+        title={pendingItemType ? `New ${catalogLabel(pendingItemType)}` : 'New asset'}
         value={newItemName}
         onChangeText={setNewItemName}
         onSave={saveNewItem}
         onClose={cancelAddItemName}
-        placeholder={pendingItemType ? namePlaceholderForItemType(pendingItemType) : 'Item name'}
+        placeholder={pendingItemType ? namePlaceholderForItemType(pendingItemType) : 'Asset name'}
         saveLabel="Create"
       />
 

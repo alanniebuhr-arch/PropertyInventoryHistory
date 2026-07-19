@@ -16,13 +16,13 @@ import {
   clearWaterTreatmentSlotDocument,
   clearWaterTreatmentSlotPhoto,
   removeWaterTreatmentExtraPhoto,
-  setWaterTreatmentExtraPhotoCaption,
   setWaterTreatmentSlotDocument,
   setWaterTreatmentSlotPhoto,
   waterTreatmentExtraPhotos,
   waterTreatmentSlotDocumentInfo,
   waterTreatmentSlotPhotoUri,
 } from '../waterTreatmentPhotos';
+import { setItemPhotoCaptionAndNotes, setItemPhotoFavorite, setItemPhotoNotes } from '../photoMeta';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
@@ -52,6 +52,15 @@ export function WaterTreatmentDisplayView(props: {
           waterTreatmentSlotPhotoUri(state, details, key as WaterTreatmentPhotoSlotKey),
         getSlotDocument: (key) =>
           waterTreatmentSlotDocumentInfo(state, details, key as WaterTreatmentPhotoSlotKey),
+        getSlotNotes: (key) => {
+          const photoId = details[key as WaterTreatmentPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.notes : undefined;
+        },
+        getSlotPhotoId: (key) => details[key as WaterTreatmentPhotoSlotKey],
+        getSlotFavorite: (key) => {
+          const photoId = details[key as WaterTreatmentPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.favorite : undefined;
+        },
         onAddSlot: (key, uri) => {
           void setWaterTreatmentSlotPhoto(
             state,
@@ -82,12 +91,19 @@ export function WaterTreatmentDisplayView(props: {
             key as WaterTreatmentPhotoSlotKey
           ).then(onSave);
         },
+        onLabelSlot: (key, notes) => {
+          const photoId = details[key as WaterTreatmentPhotoSlotKey];
+          if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
+        },
+        onToggleFavorite: (photoId, favorite) => {
+          onSave(setItemPhotoFavorite(state, photoId, favorite));
+        },
         extraPhotos,
         onDeleteExtra: (photoId) => {
           void removeWaterTreatmentExtraPhoto(state, itemId, photoId).then(onSave);
         },
-        onLabelExtra: (photoId, label) => {
-          onSave(setWaterTreatmentExtraPhotoCaption(state, photoId, label));
+        onLabelExtra: (photoId, label, notes) => {
+          onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
     [details, extraPhotos, itemId, onSave, state]

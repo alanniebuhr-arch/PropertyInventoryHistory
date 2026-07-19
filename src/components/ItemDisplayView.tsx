@@ -17,7 +17,7 @@ import {
 import { OtherItemNotesFields } from '../screens/itemDetails/OtherItemForm';
 import { FormField } from '../screens/itemDetails/FormField';
 
-type GalleryPhoto = Pick<ItemPhoto, 'id' | 'localUri' | 'caption'>;
+type GalleryPhoto = Pick<ItemPhoto, 'id' | 'localUri' | 'caption' | 'notes' | 'favorite'>;
 
 export function ItemDisplayView(props: {
   itemTypeId: ItemTypeId;
@@ -31,7 +31,8 @@ export function ItemDisplayView(props: {
   ) => void | Promise<void>;
   extraDocumentRows?: DocumentListRow[];
   onDeletePhoto: (photoId: string) => void;
-  onPhotoCaptionChange?: (photoId: string, caption: string) => void;
+  onPhotoCaptionChange?: (photoId: string, caption: string, notes: string) => void;
+  onPhotoFavoriteChange?: (photoId: string, favorite: boolean) => void;
   onDetailsChange: (details: ItemDetails) => void;
   onDisplayNameChange?: (displayName: string) => void;
   photoHeader?: ReactNode;
@@ -48,6 +49,7 @@ export function ItemDisplayView(props: {
     extraDocumentRows,
     onDeletePhoto,
     onPhotoCaptionChange,
+    onPhotoFavoriteChange,
     onDetailsChange,
     onDisplayNameChange,
     photoHeader,
@@ -62,8 +64,9 @@ export function ItemDisplayView(props: {
         photos,
         onDeletePhoto,
         onLabelPhoto: onPhotoCaptionChange,
+        onToggleFavorite: onPhotoFavoriteChange,
       }),
-    [onDeletePhoto, onPhotoCaptionChange, photos]
+    [onDeletePhoto, onPhotoCaptionChange, onPhotoFavoriteChange, photos]
   );
 
   function updateDetails(next: ItemDetails) {
@@ -193,7 +196,7 @@ export function ItemDisplayView(props: {
         const other = details.kind === 'other' ? details : { kind: 'other' as const };
         return (
           <EditableDetailSection
-            title="Item"
+            title="Asset"
             isEditing={editingSection === 'item'}
             onPress={() => openSection('item')}
             onDone={closeSection}
@@ -205,7 +208,7 @@ export function ItemDisplayView(props: {
                     label="Name"
                     value={displayName ?? ''}
                     onChangeText={onDisplayNameChange}
-                    placeholder="Describe this item"
+                    placeholder="Describe this asset"
                   />
                 ) : null}
                 <OtherItemNotesFields details={other} onChange={updateDetails} />

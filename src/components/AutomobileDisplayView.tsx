@@ -23,10 +23,10 @@ import {
   clearAutomobileSlotDocument,
   clearAutomobileSlotPhoto,
   removeAutomobileExtraPhoto,
-  setAutomobileExtraPhotoCaption,
   setAutomobileSlotDocument,
   setAutomobileSlotPhoto,
 } from '../automobilePhotos';
+import { setItemPhotoCaptionAndNotes, setItemPhotoFavorite, setItemPhotoNotes } from '../photoMeta';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
@@ -64,6 +64,15 @@ export function AutomobileDisplayView(props: {
           automobileSlotPhotoUri(state, details, key as AutomobilePhotoSlotKey),
         getSlotDocument: (key) =>
           automobileSlotDocumentInfo(state, details, key as AutomobilePhotoSlotKey),
+        getSlotNotes: (key) => {
+          const photoId = details[key as AutomobilePhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.notes : undefined;
+        },
+        getSlotPhotoId: (key) => details[key as AutomobilePhotoSlotKey],
+        getSlotFavorite: (key) => {
+          const photoId = details[key as AutomobilePhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.favorite : undefined;
+        },
         onAddSlot: (key, uri) => {
           void setAutomobileSlotPhoto(state, itemId, key as AutomobilePhotoSlotKey, uri).then(
             onSave
@@ -87,12 +96,19 @@ export function AutomobileDisplayView(props: {
             onSave
           );
         },
+        onLabelSlot: (key, notes) => {
+          const photoId = details[key as AutomobilePhotoSlotKey];
+          if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
+        },
+        onToggleFavorite: (photoId, favorite) => {
+          onSave(setItemPhotoFavorite(state, photoId, favorite));
+        },
         extraPhotos,
         onDeleteExtra: (photoId) => {
           void removeAutomobileExtraPhoto(state, itemId, photoId).then(onSave);
         },
-        onLabelExtra: (photoId, label) => {
-          onSave(setAutomobileExtraPhotoCaption(state, photoId, label));
+        onLabelExtra: (photoId, label, notes) => {
+          onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
     [details, extraPhotos, itemId, onSave, state]

@@ -137,7 +137,7 @@ export function TransferScreen(props: {
           await Sharing.shareAsync(path, {
             mimeType: 'application/zip',
             UTI: 'public.zip-archive',
-            dialogTitle: 'Export Property Inventory History',
+            dialogTitle: 'Export Property Asset Manager',
           });
         } else {
           Alert.alert('Exported', `Backup saved to ${path}`);
@@ -147,7 +147,7 @@ export function TransferScreen(props: {
 
       const bundle = buildTransferBundle({
         state,
-        sourceLabel: 'Property Inventory History',
+        sourceLabel: 'Property Asset Manager',
       });
       const json = transferBundleToJson(bundle);
       const fileName = `property-inventory-${new Date().toISOString().slice(0, 10)}.json`;
@@ -157,7 +157,7 @@ export function TransferScreen(props: {
       if (canShare) {
         await Sharing.shareAsync(path, {
           mimeType: 'application/json',
-          dialogTitle: 'Export Property Inventory History',
+          dialogTitle: 'Export Property Asset Manager',
         });
       } else {
         Alert.alert('Exported', `Backup saved to ${path}`);
@@ -263,7 +263,7 @@ export function TransferScreen(props: {
       >
         <Text style={sharedStyles.title}>Backup</Text>
         <Text style={sharedStyles.subtitle}>
-          Export or import your properties, rooms, items, events, and optionally photos and PDFs.
+          Export or import your properties, rooms, assets, events, and optionally photos and PDFs.
         </Text>
 
         <View

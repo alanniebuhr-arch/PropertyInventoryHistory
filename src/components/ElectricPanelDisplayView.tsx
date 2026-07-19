@@ -20,10 +20,10 @@ import {
   electricPanelSlotDocumentInfo,
   electricPanelSlotPhotoUri,
   removeElectricPanelExtraPhoto,
-  setElectricPanelExtraPhotoCaption,
   setElectricPanelSlotDocument,
   setElectricPanelSlotPhoto,
 } from '../electricPanelPhotos';
+import { setItemPhotoCaptionAndNotes, setItemPhotoFavorite, setItemPhotoNotes } from '../photoMeta';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
@@ -52,6 +52,15 @@ export function ElectricPanelDisplayView(props: {
         getSlotUri: (key) => electricPanelSlotPhotoUri(state, details, key as ElectricPanelPhotoSlotKey),
         getSlotDocument: (key) =>
           electricPanelSlotDocumentInfo(state, details, key as ElectricPanelPhotoSlotKey),
+        getSlotNotes: (key) => {
+          const photoId = details[key as ElectricPanelPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.notes : undefined;
+        },
+        getSlotPhotoId: (key) => details[key as ElectricPanelPhotoSlotKey],
+        getSlotFavorite: (key) => {
+          const photoId = details[key as ElectricPanelPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.favorite : undefined;
+        },
         onAddSlot: (key, uri) => {
           void setElectricPanelSlotPhoto(state, itemId, key as ElectricPanelPhotoSlotKey, uri).then(onSave);
         },
@@ -73,12 +82,19 @@ export function ElectricPanelDisplayView(props: {
             onSave
           );
         },
+        onLabelSlot: (key, notes) => {
+          const photoId = details[key as ElectricPanelPhotoSlotKey];
+          if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
+        },
+        onToggleFavorite: (photoId, favorite) => {
+          onSave(setItemPhotoFavorite(state, photoId, favorite));
+        },
         extraPhotos,
         onDeleteExtra: (photoId) => {
           void removeElectricPanelExtraPhoto(state, itemId, photoId).then(onSave);
         },
-        onLabelExtra: (photoId, label) => {
-          onSave(setElectricPanelExtraPhotoCaption(state, photoId, label));
+        onLabelExtra: (photoId, label, notes) => {
+          onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
     [details, extraPhotos, itemId, onSave, state]

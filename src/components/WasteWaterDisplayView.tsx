@@ -17,13 +17,13 @@ import {
   clearWasteWaterSlotDocument,
   clearWasteWaterSlotPhoto,
   removeWasteWaterExtraPhoto,
-  setWasteWaterExtraPhotoCaption,
   setWasteWaterSlotDocument,
   setWasteWaterSlotPhoto,
   wasteWaterExtraPhotos,
   wasteWaterSlotDocumentInfo,
   wasteWaterSlotPhotoUri,
 } from '../wasteWaterPhotos';
+import { setItemPhotoCaptionAndNotes, setItemPhotoFavorite, setItemPhotoNotes } from '../photoMeta';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
@@ -56,6 +56,15 @@ export function WasteWaterDisplayView(props: {
         getSlotUri: (key) => wasteWaterSlotPhotoUri(state, details, key as WasteWaterPhotoSlotKey),
         getSlotDocument: (key) =>
           wasteWaterSlotDocumentInfo(state, details, key as WasteWaterPhotoSlotKey),
+        getSlotNotes: (key) => {
+          const photoId = details[key as WasteWaterPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.notes : undefined;
+        },
+        getSlotPhotoId: (key) => details[key as WasteWaterPhotoSlotKey],
+        getSlotFavorite: (key) => {
+          const photoId = details[key as WasteWaterPhotoSlotKey];
+          return photoId ? state.photos.find((photo) => photo.id === photoId)?.favorite : undefined;
+        },
         onAddSlot: (key, uri) => {
           void setWasteWaterSlotPhoto(state, itemId, key as WasteWaterPhotoSlotKey, uri).then(onSave);
         },
@@ -77,12 +86,19 @@ export function WasteWaterDisplayView(props: {
             onSave
           );
         },
+        onLabelSlot: (key, notes) => {
+          const photoId = details[key as WasteWaterPhotoSlotKey];
+          if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
+        },
+        onToggleFavorite: (photoId, favorite) => {
+          onSave(setItemPhotoFavorite(state, photoId, favorite));
+        },
         extraPhotos,
         onDeleteExtra: (photoId) => {
           void removeWasteWaterExtraPhoto(state, itemId, photoId).then(onSave);
         },
-        onLabelExtra: (photoId, label) => {
-          onSave(setWasteWaterExtraPhotoCaption(state, photoId, label));
+        onLabelExtra: (photoId, label, notes) => {
+          onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
     [details, extraPhotos, itemId, onSave, slots, state]

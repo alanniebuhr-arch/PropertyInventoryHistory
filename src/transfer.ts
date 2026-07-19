@@ -119,7 +119,7 @@ export function parseTransferBundle(raw: string):
     return { ok: false, error: 'Unsupported transfer format version.' };
   }
   if (obj.kind !== 'property-inventory') {
-    return { ok: false, error: 'Not a Property Inventory History export.' };
+    return { ok: false, error: 'Not a Property Asset Manager export.' };
   }
   if (!obj.state || typeof obj.state !== 'object') {
     return { ok: false, error: 'Transfer file is missing data.' };

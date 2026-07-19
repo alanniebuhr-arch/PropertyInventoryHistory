@@ -20,8 +20,10 @@ export const colors = {
   upcomingCardBg: '#e9e2d6',
   photoPlaceholder: '#d4cfc6',
   hairline: '#cfc8bc',
-  /** Last-service accents on Room item list rows. */
-  lastService: '#1f5fbf',
+  /** Last-service accents on Room asset list rows. */
+  lastService: '#2f6b3a',
+  /** All-caps section titles (Service schedule, Assets, Rooms, etc.). */
+  sectionTitle: '#1f5fbf',
 };
 
 export const sharedStyles = StyleSheet.create({
@@ -93,13 +95,13 @@ export const sharedStyles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: colors.sectionTitle,
     marginTop: 16,
     marginBottom: 12,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
-  /** Quiet panel for distinct screen subsections (e.g. Item service areas). */
+  /** Quiet panel for distinct screen subsections (e.g. Asset service areas). */
   sectionFrame: {
     backgroundColor: colors.card,
     borderRadius: 4,

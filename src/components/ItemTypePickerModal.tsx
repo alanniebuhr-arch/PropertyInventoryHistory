@@ -35,7 +35,7 @@ export function ItemTypePickerModal(props: {
           }}
           onPress={() => {}}
         >
-          <Text style={sharedStyles.sectionTitle}>Item type</Text>
+          <Text style={sharedStyles.sectionTitle}>Asset type</Text>
           <ScrollView>
             {sortedCatalog.map((entry) => (
               <Pressable

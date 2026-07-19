@@ -143,6 +143,26 @@ export function upcomingServiceCountForProperty(
   ).length;
 }
 
+/** Count of scheduled service events for a room overdue or due within the given horizon. */
+export function upcomingServiceCountForRoom(
+  state: AppState,
+  roomId: string,
+  horizon: UpcomingHorizon = '1m'
+): number {
+  return filterUpcomingByHorizon(upcomingServiceEventsForRoom(state, roomId), horizon).length;
+}
+
+/** Upcoming (not yet overdue) service events for a room within the horizon. */
+export function upcomingNotOverdueCountForRoom(
+  state: AppState,
+  roomId: string,
+  horizon: UpcomingHorizon = '1m'
+): number {
+  return filterUpcomingByHorizon(upcomingServiceEventsForRoom(state, roomId), horizon).filter(
+    (event) => !isOverdue(upcomingDueAtISO(event))
+  ).length;
+}
+
 /** Clear the reminder on a source event after it was logged as a new history entry. */
 export function clearEventNextDue(event: ItemEvent): ItemEvent {
   if (!event.recurrence?.nextDueAtISO) return event;
@@ -155,6 +175,25 @@ export function clearEventNextDue(event: ItemEvent): ItemEvent {
       ...event.recurrence,
       nextDueAtISO: undefined,
     },
+  };
+}
+
+/**
+ * Future-dated service logs must keep a nextDue so they stay on Schedule after
+ * the service date ages past today (until the user marks them completed).
+ * Does not overwrite an explicit next due from “Schedule next service”.
+ */
+export function ensureFutureDatedEventScheduled(
+  occurredAtISO: string,
+  recurrence: ItemEventRecurrence | undefined,
+  scheduleNotes?: string
+): ItemEventRecurrence | undefined {
+  if (recurrence?.nextDueAtISO) return recurrence;
+  if (!isAfterToday(occurredAtISO)) return recurrence;
+  return {
+    interval: 'once',
+    nextDueAtISO: occurredAtISO,
+    notes: scheduleNotes?.trim() || recurrence?.notes,
   };
 }
 

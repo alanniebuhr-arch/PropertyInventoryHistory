@@ -24,6 +24,7 @@ import {
   roomsForProperty,
 } from '../storage';
 import { propertyCoverPhotoUri } from '../propertyPhotos';
+import { overdueCountForProperty } from '../itemMaintenance';
 import {
   upcomingHorizonLabel,
   upcomingServiceCountForProperty,
@@ -177,8 +178,8 @@ export function HomeScreen(props: {
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScrollView contentContainerStyle={sharedStyles.content}>
-        <Text style={[sharedStyles.title, { flex: 0 }]}>Property Inventory History</Text>
-        <Text style={sharedStyles.subtitle}>Rooms, items, maintenance, and photos.</Text>
+        <Text style={[sharedStyles.title, { flex: 0 }]}>Property Asset Manager</Text>
+        <Text style={sharedStyles.subtitle}>Rooms, assets, maintenance, and photos.</Text>
 
         <View
           style={{
@@ -229,6 +230,7 @@ export function HomeScreen(props: {
                 thumbnailUri={propertyCoverPhotoUri(state, p)}
                 roomCount={rooms.length}
                 itemCount={items.length}
+                overdueCount={overdueCountForProperty(state, p.id)}
                 dueSoonCount={upcomingServiceCountForProperty(
                   state,
                   p.id,
@@ -332,7 +334,7 @@ export function HomeScreen(props: {
                   <View style={{ flex: 1 }}>
                     <Text style={[sharedStyles.fieldLabel, { marginTop: 0 }]}>Use default layout</Text>
                     <Text style={sharedStyles.cardMeta}>
-                      Adds standard rooms and inventory items (from 24 Cedar Road layout).
+                      Adds standard rooms and inventory assets (from 24 Cedar Road layout).
                     </Text>
                   </View>
                   <Switch value={useDefaultLayout} onValueChange={setUseDefaultLayout} />

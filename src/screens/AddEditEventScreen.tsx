@@ -26,9 +26,12 @@ import { uid, nowISO, dateInputValue, parseDateInputToISO, parseDateInputValue, 
 import { deleteEventCascade, firstPhotoUriForItem, itemById, photosForEvent, serviceHistoryEventsForItem } from '../storage';
 import { itemDisplayLabel } from '../itemCatalog';
 import {
+  addMonths,
   clearEventNextDue,
   daysOverdue,
+  ensureFutureDatedEventScheduled,
   EVENT_TYPE_LABELS,
+  isAfterToday,
   isOverdue,
   sameCalendarDay,
   upcomingDueAtISO,
@@ -54,32 +57,19 @@ const EVENT_TYPES: ItemEventType[] = [
 function prefillsFromSource(source: ItemEvent | undefined): {
   title: string;
   eventType: ItemEventType;
-  recurring: boolean;
   scheduleNotes: string;
 } {
   if (!source) {
     return {
       title: '',
       eventType: 'maintenance',
-      recurring: false,
       scheduleNotes: '',
-    };
-  }
-  const sourceInterval = source.recurrence?.interval;
-  const scheduleNotes = source.recurrence?.notes ?? '';
-  if (sourceInterval) {
-    return {
-      title: source.title,
-      eventType: source.eventType,
-      recurring: true,
-      scheduleNotes,
     };
   }
   return {
     title: source.title,
     eventType: source.eventType,
-    recurring: false,
-    scheduleNotes,
+    scheduleNotes: source.recurrence?.notes ?? '',
   };
 }
 
@@ -156,10 +146,12 @@ export function AddEditEventScreen(props: {
     return dateInputValue(nowISO());
   });
   const [notes, setNotes] = useState(existing?.notes ?? '');
+  const [serviceCompany, setServiceCompany] = useState(existing?.serviceCompany ?? '');
   const [costStr, setCostStr] = useState(existing?.cost != null ? String(existing.cost) : '');
   const [recurring, setRecurring] = useState(() => {
-    if (existing && !existing.recurrence?.nextDueAtISO) return false;
-    return existing ? Boolean(existing.recurrence) : fromReminder.recurring;
+    // Create always starts with Schedule next service off.
+    if (!existing) return false;
+    return Boolean(existing.recurrence?.nextDueAtISO || existing.recurrence);
   });
   const [nextDueStr, setNextDueStr] = useState(() => {
     if (existing?.recurrence?.nextDueAtISO) {
@@ -228,10 +220,23 @@ export function AddEditEventScreen(props: {
     if (existing || titleTouched || completeFrom) return;
     const suggested = defaultTitleForType(eventType, item?.itemTypeId);
     if (suggested) setTitle(suggested);
-    if (eventType === 'maintenance' && (item?.itemTypeId === 'furnace' || item?.itemTypeId === 'air_conditioner' || item?.itemTypeId === 'automobile' || item?.itemTypeId === 'waste_water' || item?.itemTypeId === 'water_treatment')) {
-      setRecurring(true);
-    }
   }, [completeFrom, existing, eventType, item?.itemTypeId, titleTouched]);
+
+  useEffect(() => {
+    // Editing an open reminder whose last service was already past: date field is next due.
+    if (showServiceCompletedToggle && !serviceCompleted) {
+      if (existing && isAfterToday(existing.occurredAtISO) && recurring) {
+        setRecurring(false);
+        setNextDueStr('');
+      }
+      return;
+    }
+    const dateISO = parseDateInputToISO(dateStr);
+    if (dateISO && isAfterToday(dateISO) && recurring) {
+      setRecurring(false);
+      setNextDueStr('');
+    }
+  }, [dateStr, recurring, serviceCompleted, showServiceCompletedToggle, existing]);
 
   useEffect(() => {
     const showSub = Keyboard.addListener(
@@ -269,11 +274,20 @@ export function AddEditEventScreen(props: {
   }, [allPastEvents, title]);
   const historyEvents = historyMode === 'all' ? allPastEvents : relatedPastEvents;
   const titleKey = title.trim().toLowerCase();
+  const parsedEventDate = parseDateInputToISO(dateStr);
+  const eventDateIsFuture = Boolean(parsedEventDate && isAfterToday(parsedEventDate));
+  const editingOpenReminder = showServiceCompletedToggle && !serviceCompleted;
+  const occurrenceIsFuture = Boolean(existing && isAfterToday(existing.occurredAtISO));
+  /** Future-dated events (or future service date on create/complete) cannot schedule a follow-up. */
+  const showScheduleNextControls =
+    showScheduleControls &&
+    !occurrenceIsFuture &&
+    (editingOpenReminder || !eventDateIsFuture);
 
   if (!item) {
     return (
       <View style={[sharedStyles.screen, { paddingTop: insets.top, padding: 16 }]}>
-        <Text style={sharedStyles.emptyText}>Item not found.</Text>
+        <Text style={sharedStyles.emptyText}>Asset not found.</Text>
         <Pressable onPress={onBack} style={sharedStyles.secondaryBtn}>
           <Text style={sharedStyles.secondaryBtnText}>Back</Text>
         </Pressable>
@@ -324,12 +338,28 @@ export function AddEditEventScreen(props: {
     return newPhotos.map((photo) => photo.id);
   }
 
-  function handleEventPhotoLabel(photoId: string, label: string) {
+  function handleEventPhotoLabel(photoId: string, label: string, notes: string) {
     markDirty();
     const trimmed = label.trim();
+    const trimmedNotes = notes.trim();
     setEventPhotos((prev) =>
       prev.map((photo) =>
-        photo.id === photoId ? { ...photo, caption: trimmed || undefined } : photo
+        photo.id === photoId
+          ? {
+              ...photo,
+              caption: trimmed || undefined,
+              notes: trimmedNotes || undefined,
+            }
+          : photo
+      )
+    );
+  }
+
+  function handleEventPhotoFavorite(photoId: string, favorite: boolean) {
+    markDirty();
+    setEventPhotos((prev) =>
+      prev.map((photo) =>
+        photo.id === photoId ? { ...photo, favorite: favorite || undefined } : photo
       )
     );
   }
@@ -349,15 +379,22 @@ export function AddEditEventScreen(props: {
     return { interval: 'once', nextDueAtISO, notes };
   }
 
+  function setNextDueFromServiceDate(months: number) {
+    const serviceISO = parseDateInputToISO(dateStr);
+    if (!serviceISO) {
+      Alert.alert('Invalid date', 'Enter a valid service date first (MM/DD/YYYY).');
+      return;
+    }
+    markDirty();
+    setNextDueStr(dateInputValue(addMonths(serviceISO, months)));
+  }
+
   function selectEventType(t: ItemEventType) {
     markDirty();
     setEventType(t);
     if (!titleTouched) {
       const suggested = defaultTitleForType(t, it.itemTypeId);
       if (suggested) setTitle(suggested);
-    }
-    if (t === 'maintenance' && !existing) {
-      setRecurring(true);
     }
   }
 
@@ -418,13 +455,19 @@ export function AddEditEventScreen(props: {
     }
 
     const cost = costStr.trim() ? parseFloat(costStr) : undefined;
-    const recurrence = isPastHistoryEdit
+    const scheduleNoteText = scheduleNotes.trim() || undefined;
+    const baseRecurrence = isPastHistoryEdit
       ? existing?.recurrence
       : updatingReminder
         ? recurring
           ? buildRecurrenceForNextDue(occurredAtISO)
           : undefined
         : buildRecurrence();
+    // Future-dated logs keep a nextDue so they stay on Schedule after the date ages.
+    const recurrence =
+      isPastHistoryEdit || updatingReminder
+        ? baseRecurrence
+        : ensureFutureDatedEventScheduled(occurredAtISO, baseRecurrence, scheduleNoteText);
     if (!isPastHistoryEdit && recurring && !recurrence) {
       Alert.alert('Schedule incomplete', 'Enter a next due date for the scheduled service.');
       return;
@@ -451,12 +494,9 @@ export function AddEditEventScreen(props: {
         eventType,
         occurredAtISO,
         notes: notes.trim() || undefined,
+        serviceCompany: serviceCompany.trim() || undefined,
         cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
-        recurrence: isPastHistoryEdit
-          ? existing?.recurrence
-          : recurring
-            ? recurrence
-            : undefined,
+        recurrence: isPastHistoryEdit ? existing?.recurrence : recurrence,
         photoIds: carriedPhotoIds,
       };
       onSave({
@@ -487,6 +527,20 @@ export function AddEditEventScreen(props: {
       );
       const newPhotos = updatedPhotos.filter((p) => !state.photos.some((x) => x.id === p.id));
 
+      const updatedRecurrence = isPastHistoryEdit
+        ? target.recurrence
+        : updatingReminder
+          ? recurring
+            ? recurrence
+            : isAfterToday(target.occurredAtISO)
+              ? ensureFutureDatedEventScheduled(
+                  target.occurredAtISO,
+                  target.recurrence,
+                  scheduleNoteText
+                )
+              : undefined
+          : recurrence;
+
       const updated: ItemEvent = {
         ...target,
         title: trimmed,
@@ -494,12 +548,9 @@ export function AddEditEventScreen(props: {
         // Updating a schedule reminder: keep the last service date; date field is next due.
         occurredAtISO: updatingReminder ? target.occurredAtISO : occurredAtISO,
         notes: notes.trim() || undefined,
+        serviceCompany: serviceCompany.trim() || undefined,
         cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
-        recurrence: isPastHistoryEdit
-          ? target.recurrence
-          : recurring
-            ? recurrence
-            : undefined,
+        recurrence: updatedRecurrence,
         photoIds,
       };
       onSave({
@@ -520,6 +571,7 @@ export function AddEditEventScreen(props: {
         eventType,
         occurredAtISO,
         notes: notes.trim() || undefined,
+        serviceCompany: serviceCompany.trim() || undefined,
         cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
         recurrence,
         photoIds,
@@ -755,7 +807,7 @@ export function AddEditEventScreen(props: {
           </View>
           {allPastEvents.length === 0 ? (
             <Text style={sharedStyles.cardMeta}>
-              No other service events for this item yet. Past logs will show here.
+              No other service events for this asset yet. Past logs will show here.
             </Text>
           ) : historyEvents.length === 0 ? (
             <Text style={sharedStyles.cardMeta}>
@@ -826,7 +878,19 @@ export function AddEditEventScreen(props: {
           placeholder="What was done, who performed the work…"
         />
 
-        <Text style={sharedStyles.fieldLabel}>Cost (optional)</Text>
+        <Text style={sharedStyles.fieldLabel}>Service company</Text>
+        <TextInput
+          value={serviceCompany}
+          onChangeText={(v) => {
+            markDirty();
+            setServiceCompany(v);
+          }}
+          style={sharedStyles.input}
+          placeholder="Company that performed the service"
+          autoCapitalize="words"
+        />
+
+        <Text style={sharedStyles.fieldLabel}>Cost</Text>
         <TextInput
           value={costStr}
           onChangeText={(v) => {
@@ -844,9 +908,10 @@ export function AddEditEventScreen(props: {
           onAddPhotos={addEventPhotos}
           onDeletePhoto={removeEventPhoto}
           onLabelPhoto={handleEventPhotoLabel}
+          onToggleFavorite={handleEventPhotoFavorite}
         />
 
-        {showScheduleControls ? (
+        {showScheduleNextControls ? (
           <>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
               <Text style={sharedStyles.fieldLabel}>Schedule next service</Text>
@@ -862,6 +927,48 @@ export function AddEditEventScreen(props: {
             {recurring ? (
               <>
                 <Text style={sharedStyles.fieldLabel}>Next due date (MM/DD/YYYY)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  {(
+                    [
+                      { months: 1, label: '1 Month' },
+                      { months: 3, label: '3 Month' },
+                      { months: 6, label: '6 Month' },
+                      { months: 12, label: '1 Year' },
+                    ] as const
+                  ).map((opt) => {
+                    const serviceISO = parseDateInputToISO(dateStr);
+                    const presetISO = serviceISO
+                      ? addMonths(serviceISO, opt.months)
+                      : undefined;
+                    const selected = Boolean(
+                      presetISO && sameCalendarDay(presetISO, parseDateInputToISO(nextDueStr))
+                    );
+                    return (
+                      <Pressable
+                        key={opt.months}
+                        onPress={() => setNextDueFromServiceDate(opt.months)}
+                        accessibilityState={{ selected }}
+                        style={[
+                          sharedStyles.secondaryBtn,
+                          { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
+                          selected && {
+                            borderColor: colors.primary,
+                            backgroundColor: colors.upcomingCardBg,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            sharedStyles.secondaryBtnText,
+                            selected && { fontWeight: '700' },
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
                 <TextInput
                   ref={nextDueInputRef}
                   value={nextDueStr}

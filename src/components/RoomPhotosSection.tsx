@@ -13,10 +13,10 @@ import {
   removeRoomPhoto,
   roomSlotDocumentInfo,
   roomSlotPhotoUri,
-  setRoomPhotoCaption,
   setRoomSlotDocument,
   setRoomSlotPhoto,
 } from '../roomPhotos';
+import { setRoomPhotoCaptionAndNotes, setRoomPhotoFavorite, setRoomPhotoNotes } from '../photoMeta';
 
 export function RoomPhotosSection(props: {
   state: AppState;
@@ -38,6 +38,20 @@ export function RoomPhotosSection(props: {
         slots: roomSlots,
         getSlotUri: (key) => roomSlotPhotoUri(state, room, key as RoomSlotKey),
         getSlotDocument: (key) => roomSlotDocumentInfo(state, room, key as RoomSlotKey),
+        getSlotNotes: (key) => {
+          const attachment = room.slotAttachments?.[key as RoomSlotKey];
+          if (!attachment || attachment.kind !== 'photo') return undefined;
+          return state.roomPhotos.find((photo) => photo.id === attachment.id)?.notes;
+        },
+        getSlotPhotoId: (key) => {
+          const attachment = room.slotAttachments?.[key as RoomSlotKey];
+          return attachment?.kind === 'photo' ? attachment.id : undefined;
+        },
+        getSlotFavorite: (key) => {
+          const attachment = room.slotAttachments?.[key as RoomSlotKey];
+          if (!attachment || attachment.kind !== 'photo') return undefined;
+          return state.roomPhotos.find((photo) => photo.id === attachment.id)?.favorite;
+        },
         onAddSlot: (key, uri) => {
           void setRoomSlotPhoto(state, roomId, key as RoomSlotKey, uri).then(onSave);
         },
@@ -57,12 +71,21 @@ export function RoomPhotosSection(props: {
         onDeleteSlotDocument: (key) => {
           void clearRoomSlotDocument(state, roomId, key as RoomSlotKey).then(onSave);
         },
+        onLabelSlot: (key, notes) => {
+          const attachment = room.slotAttachments?.[key as RoomSlotKey];
+          if (attachment?.kind === 'photo') {
+            onSave(setRoomPhotoNotes(state, attachment.id, notes));
+          }
+        },
+        onToggleFavorite: (photoId, favorite) => {
+          onSave(setRoomPhotoFavorite(state, photoId, favorite));
+        },
         extraPhotos,
         onDeleteExtra: (photoId) => {
           void removeRoomPhoto(state, roomId, photoId).then(onSave);
         },
-        onLabelExtra: (photoId, caption) => {
-          onSave(setRoomPhotoCaption(state, photoId, caption));
+        onLabelExtra: (photoId, caption, notes) => {
+          onSave(setRoomPhotoCaptionAndNotes(state, photoId, caption, notes));
         },
       }),
     [extraPhotos, onSave, room, roomId, roomSlots, state]

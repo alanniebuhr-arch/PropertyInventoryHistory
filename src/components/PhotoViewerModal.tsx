@@ -8,9 +8,14 @@ export type ViewerPhoto = {
   id: string;
   uri: string;
   label: string;
+  notes?: string;
+  favorite?: boolean;
   editableLabel?: boolean;
+  /** Named slots keep a fixed label; only notes are editable. */
+  labelLocked?: boolean;
   onDelete: () => void;
-  onLabelChange?: (label: string) => void;
+  onLabelChange?: (label: string, notes: string) => void;
+  onToggleFavorite?: (favorite: boolean) => void;
 };
 
 export function PhotoViewerModal(props: {
@@ -18,14 +23,85 @@ export function PhotoViewerModal(props: {
   index: number | null;
   onIndexChange: (index: number | null) => void;
   onEditLabel?: (photo: ViewerPhoto) => void;
+  /** When true, hide Delete and label editing (Slideshow browse mode). */
+  browseOnly?: boolean;
 }) {
-  const { photos, index, onIndexChange, onEditLabel } = props;
+  const { photos, index, onIndexChange, onEditLabel, browseOnly = false } = props;
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
 
   const currentPhoto = index != null ? photos[index] : null;
-  const imageMaxH = height - insets.top - insets.bottom - 120;
+  const currentNotes = currentPhoto?.notes?.trim() || undefined;
+  const imageMaxH = height - insets.top - insets.bottom - (currentNotes ? 168 : 120);
   const hasMultiple = photos.length > 1;
+
+  function renderCaption(center: boolean) {
+    if (!currentPhoto) return null;
+    const canEdit = !browseOnly && currentPhoto.editableLabel && onEditLabel;
+    const labelText = currentPhoto.labelLocked
+      ? currentPhoto.label
+      : currentPhoto.label?.trim() && currentPhoto.label !== 'Photo'
+        ? currentPhoto.label
+        : canEdit
+          ? 'Add label'
+          : currentPhoto.label;
+    const editHint = canEdit
+      ? currentPhoto.labelLocked
+        ? currentNotes
+          ? 'Tap to edit notes'
+          : 'Tap to add notes'
+        : 'Tap to edit'
+      : null;
+    const caption = (
+      <View style={{ alignItems: 'center', maxWidth: width - 120, paddingHorizontal: 8 }}>
+        <Text
+          style={{
+            color: canEdit ? '#ccc' : '#888',
+            fontSize: 13,
+            textAlign: 'center',
+            fontWeight: currentNotes ? '600' : '400',
+          }}
+          numberOfLines={2}
+        >
+          {labelText}
+          {editHint && !currentNotes ? ` · ${editHint}` : ''}
+        </Text>
+        {currentNotes ? (
+          <Text
+            style={{
+              color: '#bbb',
+              fontSize: 13,
+              textAlign: 'center',
+              marginTop: 6,
+              lineHeight: 18,
+            }}
+            numberOfLines={4}
+          >
+            {currentNotes}
+          </Text>
+        ) : null}
+        {editHint && currentNotes ? (
+          <Text style={{ color: '#888', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+            {editHint}
+          </Text>
+        ) : null}
+      </View>
+    );
+
+    if (canEdit) {
+      return (
+        <Pressable
+          onPress={() => onEditLabel!(currentPhoto)}
+          hitSlop={8}
+          style={center ? { alignSelf: 'center' } : { alignSelf: 'center', flex: 1 }}
+        >
+          {caption}
+        </Pressable>
+      );
+    }
+
+    return caption;
+  }
 
   const closeViewer = useCallback(() => onIndexChange(null), [onIndexChange]);
 
@@ -90,7 +166,7 @@ export function PhotoViewerModal(props: {
             ) : (
               <View style={{ width: 48 }} />
             )}
-            {currentPhoto ? (
+            {currentPhoto && !browseOnly ? (
               <Pressable onPress={confirmDelete} hitSlop={12}>
                 <Text style={{ color: '#ff8a80', fontSize: 17, fontWeight: '600' }}>Delete</Text>
               </Pressable>
@@ -116,42 +192,29 @@ export function PhotoViewerModal(props: {
             <View
               style={{
                 flexDirection: 'row',
+                alignItems: 'center',
                 justifyContent: 'space-between',
                 paddingHorizontal: 24,
                 paddingBottom: 16,
+                gap: 8,
               }}
             >
               <Pressable onPress={showPrev} hitSlop={8}>
                 <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Previous</Text>
               </Pressable>
-              {currentPhoto?.editableLabel && onEditLabel ? (
-                <Pressable onPress={() => onEditLabel(currentPhoto)} hitSlop={8}>
-                  <Text style={{ color: '#ccc', fontSize: 13, alignSelf: 'center', textAlign: 'center' }}>
-                    {currentPhoto.label || 'Add label'}
-                  </Text>
-                </Pressable>
-              ) : (
-                <Text style={{ color: '#888', fontSize: 13, alignSelf: 'center' }}>
-                  {currentPhoto?.label}
-                </Text>
-              )}
+              {renderCaption(false)}
               <Pressable onPress={showNext} hitSlop={8}>
                 <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Next</Text>
               </Pressable>
             </View>
           ) : (
-            <View style={{ paddingBottom: 16, alignItems: 'center' }}>
-              {currentPhoto?.editableLabel && onEditLabel ? (
-                <Pressable onPress={() => onEditLabel(currentPhoto)} hitSlop={8}>
-                  <Text style={{ color: '#ccc', fontSize: 13, textAlign: 'center' }}>
-                    {currentPhoto.label || 'Add label'} · Tap to edit
-                  </Text>
-                </Pressable>
-              ) : (
-                <Text style={{ color: '#888', fontSize: 13, textAlign: 'center' }}>
-                  {currentPhoto?.label} · Pinch to zoom
+            <View style={{ paddingBottom: 16, alignItems: 'center', paddingHorizontal: 24 }}>
+              {renderCaption(true)}
+              {!browseOnly && !currentPhoto?.editableLabel ? (
+                <Text style={{ color: '#888', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+                  Pinch to zoom
                 </Text>
-              )}
+              ) : null}
             </View>
           )}
         </View>

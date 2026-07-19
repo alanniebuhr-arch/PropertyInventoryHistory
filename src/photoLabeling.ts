@@ -14,7 +14,7 @@ export function showLabeledPhotoThumbActions(options: {
   const { onRename, onDelete } = options;
   if (onRename) {
     Alert.alert('Photo', undefined, [
-      { text: 'Rename label', onPress: onRename },
+      { text: 'Edit label & notes', onPress: onRename },
       { text: 'Delete', style: 'destructive', onPress: () => confirmDeletePhoto(onDelete) },
       { text: 'Cancel', style: 'cancel' },
     ]);

@@ -15,8 +15,10 @@ export function PhotoHeroCarousel(props: {
   activeId: string | null;
   onActiveIdChange: (id: string) => void;
   onOpenViewer: () => void;
+  /** Where to show page indicator dots. Default: below the image. */
+  dotsPosition?: 'above' | 'below';
 }) {
-  const { photos, activeId, onActiveIdChange, onOpenViewer } = props;
+  const { photos, activeId, onActiveIdChange, onOpenViewer, dotsPosition = 'below' } = props;
   const { width: windowWidth } = useWindowDimensions();
   const heroScrollRef = useRef<ScrollView>(null);
   const skipNextHeroScroll = useRef(false);
@@ -106,11 +108,41 @@ export function PhotoHeroCarousel(props: {
 
   if (photos.length === 0) return null;
 
+  const dots =
+    photos.length > 1 ? (
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 6,
+          marginTop: dotsPosition === 'below' ? 8 : 0,
+          marginBottom: dotsPosition === 'above' ? 8 : 0,
+        }}
+        accessibilityRole="text"
+        accessibilityLabel={`Photo ${activeIndex + 1} of ${photos.length}`}
+      >
+        {photos.map((photo, index) => (
+          <View
+            key={photo.id}
+            style={{
+              width: index === activeIndex ? 8 : 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: index === activeIndex ? colors.primary : colors.border,
+            }}
+          />
+        ))}
+      </View>
+    ) : null;
+
   return (
     <View
       style={{ marginBottom: 12 }}
       onLayout={(e) => setHeroPageWidth(e.nativeEvent.layout.width)}
     >
+      {dotsPosition === 'above' ? dots : null}
+
       <ScrollView
         ref={heroScrollRef}
         horizontal
@@ -149,31 +181,7 @@ export function PhotoHeroCarousel(props: {
         ))}
       </ScrollView>
 
-      {photos.length > 1 ? (
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: 6,
-            marginTop: 8,
-          }}
-          accessibilityRole="text"
-          accessibilityLabel={`Photo ${activeIndex + 1} of ${photos.length}`}
-        >
-          {photos.map((photo, index) => (
-            <View
-              key={photo.id}
-              style={{
-                width: index === activeIndex ? 8 : 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: index === activeIndex ? colors.primary : colors.border,
-              }}
-            />
-          ))}
-        </View>
-      ) : null}
+      {dotsPosition === 'below' ? dots : null}
     </View>
   );
 }

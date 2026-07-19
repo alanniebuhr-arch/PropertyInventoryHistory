@@ -33,22 +33,39 @@ export type PhotoTile =
       shortLabel: string;
       uri?: string;
       document?: SlotDocumentTileInfo;
+      notes?: string;
+      /** Underlying stored photo id (for favorites). */
+      photoId?: string;
+      favorite?: boolean;
       onAdd: () => void;
       onDelete?: () => void;
       onDeleteDocument?: () => void;
+      /** Named slots: label stays fixed; handler persists notes only. */
+      onLabelChange?: (label: string, notes: string) => void;
+      onToggleFavorite?: (favorite: boolean) => void;
     }
   | {
       kind: 'extra';
       id: string;
       shortLabel?: string;
       uri: string;
+      notes?: string;
+      favorite?: boolean;
       onDelete: () => void;
-      onLabelChange?: (label: string) => void;
+      onLabelChange?: (label: string, notes: string) => void;
+      onToggleFavorite?: (favorite: boolean) => void;
     }
   | {
       kind: 'add';
       onAdd: () => void;
     };
+
+type LabelHandler = {
+  apply: (label: string, notes: string) => void;
+  labelLocked: boolean;
+  currentLabel: string;
+  currentNotes: string;
+};
 
 export function PhotoSection(props: {
   tiles: PhotoTile[];
@@ -66,6 +83,14 @@ export function PhotoSection(props: {
   extraDocumentRows?: DocumentListRow[];
   /** Called when the hero photo changes; undefined when there is no named label. */
   onActiveHeroLabelChange?: (label: string | undefined) => void;
+  /**
+   * Where name/notes sit relative to the hero image.
+   * Use with PhotoHeroCarousel dotsPosition to swap caption and dots.
+   * Default: below.
+   */
+  heroCaptionPlacement?: 'above' | 'below';
+  /** Where hero page dots sit. Default: above. */
+  heroDotsPosition?: 'above' | 'below';
   children?: ReactNode;
   /** Optional pan gesture for the heading area (title, etc.). */
   childrenGesture?: ReturnType<typeof Gesture.Pan>;
@@ -80,6 +105,8 @@ export function PhotoSection(props: {
     onAddDocuments,
     extraDocumentRows,
     onActiveHeroLabelChange,
+    heroCaptionPlacement = 'below',
+    heroDotsPosition = 'above',
     children,
     childrenGesture,
   } = props;
@@ -89,14 +116,30 @@ export function PhotoSection(props: {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [labelingPhotoId, setLabelingPhotoId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
+  const [notesDraft, setNotesDraft] = useState('');
   const [labelQueue, setLabelQueue] = useState<string[]>([]);
   const [renaming, setRenaming] = useState(false);
+  /** Index to restore after labeling opened from the fullscreen viewer (nested Modals). */
+  const [viewerReturnIndex, setViewerReturnIndex] = useState<number | null>(null);
 
   const labelHandlerForId = useCallback(
-    (photoId: string): ((label: string) => void) | undefined => {
+    (photoId: string): LabelHandler | undefined => {
       for (const tile of tiles) {
-        if (tile.kind === 'extra' && tile.id === photoId) {
-          return tile.onLabelChange;
+        if (tile.kind === 'extra' && tile.id === photoId && tile.onLabelChange) {
+          return {
+            apply: tile.onLabelChange,
+            labelLocked: false,
+            currentLabel: tile.shortLabel?.trim() || '',
+            currentNotes: tile.notes?.trim() || '',
+          };
+        }
+        if (tile.kind === 'reserved' && tile.key === photoId && tile.onLabelChange) {
+          return {
+            apply: tile.onLabelChange,
+            labelLocked: true,
+            currentLabel: tile.shortLabel,
+            currentNotes: tile.notes?.trim() || '',
+          };
         }
       }
       return undefined;
@@ -111,6 +154,7 @@ export function PhotoSection(props: {
     setLabelQueue(labelable);
     setLabelingPhotoId(labelable[0] ?? null);
     setLabelDraft('');
+    setNotesDraft('');
   }, [labelHandlerForId]);
 
   const advanceLabelQueue = useCallback(() => {
@@ -118,6 +162,7 @@ export function PhotoSection(props: {
       const next = queue.slice(1);
       setLabelingPhotoId(next[0] ?? null);
       setLabelDraft('');
+      setNotesDraft('');
       if (next.length === 0) setRenaming(false);
       return next;
     });
@@ -194,17 +239,25 @@ export function PhotoSection(props: {
           id: tile.key,
           uri: tile.uri,
           label: tile.shortLabel,
-          editableLabel: false,
+          notes: tile.notes,
+          favorite: tile.favorite,
+          editableLabel: tile.onLabelChange != null,
+          labelLocked: true,
           onDelete: () => tile.onDelete?.(),
+          onLabelChange: tile.onLabelChange,
+          onToggleFavorite: tile.onToggleFavorite,
         });
       } else if (tile.kind === 'extra') {
         photos.push({
           id: tile.id,
           uri: tile.uri,
           label: tile.shortLabel?.trim() || 'Photo',
+          notes: tile.notes,
+          favorite: tile.favorite,
           editableLabel: tile.onLabelChange != null,
           onDelete: tile.onDelete,
           onLabelChange: tile.onLabelChange,
+          onToggleFavorite: tile.onToggleFavorite,
         });
       }
     }
@@ -238,6 +291,16 @@ export function PhotoSection(props: {
     return label;
   }, [heroIndex, viewerPhotos]);
 
+  const activeHeroNotes = useMemo((): string | undefined => {
+    const notes = viewerPhotos[heroIndex]?.notes?.trim();
+    return notes || undefined;
+  }, [heroIndex, viewerPhotos]);
+
+  const activeHeroFavorite = viewerPhotos[heroIndex]?.favorite === true;
+  const activeHeroCanFavorite = viewerPhotos[heroIndex]?.onToggleFavorite != null;
+
+  const labelingHandler = labelingPhotoId ? labelHandlerForId(labelingPhotoId) : undefined;
+
   useEffect(() => {
     onActiveHeroLabelChange?.(activeHeroLabel);
   }, [activeHeroLabel, onActiveHeroLabelChange]);
@@ -247,14 +310,44 @@ export function PhotoSection(props: {
     setViewerIndex(heroIndex);
   }
 
-  function openRenameEditor(photoId: string, currentLabel?: string) {
+  function openRenameEditor(photoId: string, currentLabel?: string, currentNotes?: string) {
+    const handler = labelHandlerForId(photoId);
     setRenaming(true);
     setLabelingPhotoId(photoId);
-    setLabelDraft(currentLabel?.trim() && currentLabel !== 'Photo' ? currentLabel : '');
+    setLabelDraft(
+      (currentLabel?.trim() && currentLabel !== 'Photo'
+        ? currentLabel
+        : handler?.currentLabel) ?? ''
+    );
+    setNotesDraft(currentNotes?.trim() || handler?.currentNotes || '');
   }
 
   function openLabelEditor(photo: ViewerPhoto) {
-    openRenameEditor(photo.id, photo.label);
+    // React Native cannot reliably stack PhotoLabelModal on top of PhotoViewerModal.
+    // Close the viewer first, then open the editor; restore the viewer when done.
+    if (viewerIndex != null) {
+      const returnIndex = viewerIndex;
+      setViewerReturnIndex(returnIndex);
+      setViewerIndex(null);
+      setTimeout(() => {
+        openRenameEditor(photo.id, photo.label, photo.notes);
+      }, 300);
+      return;
+    }
+    openRenameEditor(photo.id, photo.label, photo.notes);
+  }
+
+  function finishLabelEditor() {
+    setLabelingPhotoId(null);
+    setLabelDraft('');
+    setNotesDraft('');
+    setRenaming(false);
+    if (viewerReturnIndex == null) return;
+    const reopenAt = viewerReturnIndex;
+    setViewerReturnIndex(null);
+    setTimeout(() => {
+      setViewerIndex(reopenAt);
+    }, 300);
   }
 
   function closeLabelEditor() {
@@ -262,21 +355,17 @@ export function PhotoSection(props: {
       advanceLabelQueue();
       return;
     }
-    setLabelingPhotoId(null);
-    setLabelDraft('');
-    setRenaming(false);
+    finishLabelEditor();
   }
 
   function savePhotoLabel() {
     const handler = labelingPhotoId ? labelHandlerForId(labelingPhotoId) : undefined;
-    if (handler) handler(labelDraft);
+    if (handler) handler.apply(labelDraft, notesDraft);
     if (labelQueue.length > 0) {
       advanceLabelQueue();
       return;
     }
-    setLabelingPhotoId(null);
-    setLabelDraft('');
-    setRenaming(false);
+    finishLabelEditor();
   }
 
   function thumbImageStyle(isHero: boolean) {
@@ -297,7 +386,15 @@ export function PhotoSection(props: {
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => setHeroPhotoId(tile.key)}
-          onLongPress={() => tile.onDelete && showLabeledPhotoThumbActions({ onDelete: tile.onDelete })}
+          onLongPress={() =>
+            tile.onDelete &&
+            showLabeledPhotoThumbActions({
+              onRename: tile.onLabelChange
+                ? () => openRenameEditor(tile.key, tile.shortLabel, tile.notes)
+                : undefined,
+              onDelete: tile.onDelete,
+            })
+          }
           accessibilityRole="button"
           accessibilityLabel={`Show ${tile.shortLabel}`}
           accessibilityHint="Displays this photo in the large view."
@@ -338,7 +435,7 @@ export function PhotoSection(props: {
           onLongPress={() =>
             showLabeledPhotoThumbActions({
               onRename: tile.onLabelChange
-                ? () => openRenameEditor(tile.id, label)
+                ? () => openRenameEditor(tile.id, label, tile.notes)
                 : undefined,
               onDelete: tile.onDelete,
             })
@@ -393,23 +490,82 @@ export function PhotoSection(props: {
     )
   ) : null;
 
+  const heroHasCaption = Boolean(activeHeroLabel || activeHeroNotes || activeHeroCanFavorite);
+  const heroCaption = heroHasCaption ? (
+    <View
+      style={{
+        marginBottom: heroCaptionPlacement === 'above' ? 8 : 12,
+        alignItems: 'center',
+        paddingHorizontal: 8,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          gap: 8,
+          maxWidth: '100%',
+        }}
+      >
+        <View style={{ flexShrink: 1, alignItems: 'center' }}>
+          {activeHeroLabel ? (
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: '700',
+                color: colors.text,
+                textAlign: 'center',
+              }}
+            >
+              {activeHeroLabel}
+            </Text>
+          ) : null}
+          {activeHeroNotes ? (
+            <Text
+              style={[
+                sharedStyles.cardMeta,
+                {
+                  marginTop: activeHeroLabel ? 4 : 0,
+                  textAlign: 'center',
+                },
+              ]}
+            >
+              {activeHeroNotes}
+            </Text>
+          ) : null}
+          {!activeHeroLabel && !activeHeroNotes && activeHeroCanFavorite ? (
+            <Text style={[sharedStyles.cardMeta, { textAlign: 'center' }]}>Favorite</Text>
+          ) : null}
+        </View>
+        {activeHeroCanFavorite ? (
+          <Pressable
+            onPress={() => viewerPhotos[heroIndex]?.onToggleFavorite?.(!activeHeroFavorite)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={activeHeroFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            style={{ paddingTop: 1 }}
+          >
+            <Text
+              style={{
+                fontSize: 22,
+                lineHeight: 24,
+                color: activeHeroFavorite ? colors.primary : colors.border,
+              }}
+            >
+              {activeHeroFavorite ? '★' : '☆'}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  ) : null;
+
   return (
     <View style={{ marginBottom: 4 }}>
       {heading}
 
-      {activeHeroLabel ? (
-        <Text
-          style={{
-            fontSize: 15,
-            fontWeight: '700',
-            color: colors.text,
-            marginBottom: 8,
-            textAlign: 'center',
-          }}
-        >
-          {activeHeroLabel}
-        </Text>
-      ) : null}
+      {heroCaptionPlacement === 'above' ? heroCaption : null}
 
       <PhotoHeroCarousel
         photos={viewerPhotos.map((photo) => ({
@@ -420,7 +576,10 @@ export function PhotoSection(props: {
         activeId={effectiveHeroId}
         onActiveIdChange={setHeroPhotoId}
         onOpenViewer={openHeroViewer}
+        dotsPosition={heroDotsPosition}
       />
+
+      {heroCaptionPlacement === 'below' ? heroCaption : null}
 
       <Text style={sharedStyles.sectionTitle}>{title}</Text>
       {hint ? <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>{hint}</Text> : null}
@@ -468,10 +627,19 @@ export function PhotoSection(props: {
         visible={labelingPhotoId != null}
         draft={labelDraft}
         onChangeDraft={setLabelDraft}
+        notesDraft={notesDraft}
+        onChangeNotesDraft={setNotesDraft}
         onSave={savePhotoLabel}
         onClose={closeLabelEditor}
-        title={renaming ? 'Rename label' : 'Label photo'}
+        title={
+          labelingHandler?.labelLocked
+            ? 'Photo notes'
+            : renaming
+              ? 'Rename label'
+              : 'Label photo'
+        }
         saveLabel={renaming ? 'Save' : labelQueue.length > 1 ? 'Save & next' : 'Save'}
+        labelLocked={labelingHandler?.labelLocked}
       />
     </View>
   );

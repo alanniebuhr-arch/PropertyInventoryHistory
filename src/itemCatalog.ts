@@ -16,7 +16,7 @@ export type CatalogEntry = {
 
 
 
-/** Selectable item types when adding a new item. */
+/** Selectable asset types when adding a new asset. */
 
 export const ITEM_CATALOG: CatalogEntry[] = [
 
@@ -73,7 +73,7 @@ export function catalogLabel(itemTypeId: ItemTypeId): string {
 export function namePlaceholderForItemType(itemTypeId: ItemTypeId): string {
   switch (itemTypeId) {
     case 'other':
-      return 'Describe this item';
+      return 'Describe this asset';
     case 'appliance':
       return 'e.g. Refrigerator';
     case 'electric_panel':
@@ -192,7 +192,7 @@ export function itemDisplayLabel(item: {
 
   if (item.itemTypeId === 'other') {
 
-    return item.displayName?.trim() || 'Other item';
+    return item.displayName?.trim() || 'Other asset';
 
   }
 

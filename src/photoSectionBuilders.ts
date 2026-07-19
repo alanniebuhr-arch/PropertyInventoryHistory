@@ -14,43 +14,49 @@ type SlotDefinition = {
   shortLabel: string;
 };
 
-export function buildPropertyPhotoTiles(options: {
+type ExtraPhoto = Pick<ItemPhoto, 'id' | 'localUri' | 'caption' | 'notes' | 'favorite'>;
+
+type SlotAndExtraOptions = {
+  slots: SlotDefinition[];
   getSlotUri: (key: string) => string | undefined;
   getSlotDocument?: (key: string) => SlotDocumentTileInfo | undefined;
+  getSlotNotes?: (key: string) => string | undefined;
+  getSlotPhotoId?: (key: string) => string | undefined;
+  getSlotFavorite?: (key: string) => boolean | undefined;
   onAddSlot: (key: string, uri: string) => void | Promise<void>;
   onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string; mimeType?: string }) => void | Promise<void>;
   onDeleteSlot: (key: string) => void | Promise<void>;
   onDeleteSlotDocument?: (key: string) => void | Promise<void>;
-  extraPhotos: { id: string; localUri: string; caption?: string }[];
+  onLabelSlot?: (key: string, notes: string) => void | Promise<void>;
+  onToggleFavorite?: (photoId: string, favorite: boolean) => void | Promise<void>;
+  extraPhotos: ExtraPhoto[];
   onDeleteExtra: (photoId: string) => void | Promise<void>;
-  onLabelExtra?: (photoId: string, label: string) => void | Promise<void>;
-}): PhotoTile[] {
+  onLabelExtra?: (photoId: string, label: string, notes: string) => void | Promise<void>;
+};
+
+export function buildPropertyPhotoTiles(
+  options: Omit<SlotAndExtraOptions, 'slots'>
+): PhotoTile[] {
   return buildSlotAndExtraPhotoTiles({
     slots: PROPERTY_PHOTO_SLOTS,
     ...options,
   });
 }
 
-export function buildSlotAndExtraPhotoTiles(options: {
-  slots: SlotDefinition[];
-  getSlotUri: (key: string) => string | undefined;
-  getSlotDocument?: (key: string) => SlotDocumentTileInfo | undefined;
-  onAddSlot: (key: string, uri: string) => void | Promise<void>;
-  onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string; mimeType?: string }) => void | Promise<void>;
-  onDeleteSlot: (key: string) => void | Promise<void>;
-  onDeleteSlotDocument?: (key: string) => void | Promise<void>;
-  extraPhotos: Pick<ItemPhoto, 'id' | 'localUri' | 'caption'>[];
-  onDeleteExtra: (photoId: string) => void | Promise<void>;
-  onLabelExtra?: (photoId: string, label: string) => void | Promise<void>;
-}): PhotoTile[] {
+export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): PhotoTile[] {
   const {
     slots,
     getSlotUri,
     getSlotDocument,
+    getSlotNotes,
+    getSlotPhotoId,
+    getSlotFavorite,
     onAddSlot,
     onAddSlotDocument,
     onDeleteSlot,
     onDeleteSlotDocument,
+    onLabelSlot,
+    onToggleFavorite,
     extraPhotos,
     onDeleteExtra,
     onLabelExtra,
@@ -60,12 +66,16 @@ export function buildSlotAndExtraPhotoTiles(options: {
     const uri = getSlotUri(slot.key);
     const document = getSlotDocument?.(slot.key);
     const supportsDocuments = onAddSlotDocument != null;
+    const photoId = getSlotPhotoId?.(slot.key);
     return {
       kind: 'reserved' as const,
       key: slot.key,
       shortLabel: slot.shortLabel,
       uri,
       document,
+      notes: getSlotNotes?.(slot.key),
+      photoId,
+      favorite: getSlotFavorite?.(slot.key) === true,
       onAdd: () => {
         if (supportsDocuments) {
           promptSlotAttachment({
@@ -86,6 +96,17 @@ export function buildSlotAndExtraPhotoTiles(options: {
             void onDeleteSlotDocument?.(slot.key);
           }
         : undefined,
+      onLabelChange: uri && onLabelSlot
+        ? (_label, notes) => {
+            void onLabelSlot(slot.key, notes);
+          }
+        : undefined,
+      onToggleFavorite:
+        photoId && onToggleFavorite
+          ? (favorite) => {
+              void onToggleFavorite(photoId, favorite);
+            }
+          : undefined,
     };
   });
 
@@ -96,12 +117,19 @@ export function buildSlotAndExtraPhotoTiles(options: {
       id: photo.id,
       shortLabel: caption || undefined,
       uri: photo.localUri,
+      notes: photo.notes,
+      favorite: photo.favorite === true,
       onDelete: () => {
         void onDeleteExtra(photo.id);
       },
       onLabelChange: onLabelExtra
-        ? (label) => {
-            void onLabelExtra(photo.id, label);
+        ? (label, notes) => {
+            void onLabelExtra(photo.id, label, notes);
+          }
+        : undefined,
+      onToggleFavorite: onToggleFavorite
+        ? (favorite) => {
+            void onToggleFavorite(photo.id, favorite);
           }
         : undefined,
     });
@@ -111,11 +139,12 @@ export function buildSlotAndExtraPhotoTiles(options: {
 }
 
 export function buildExtraOnlyPhotoTiles(options: {
-  photos: Pick<ItemPhoto, 'id' | 'localUri' | 'caption'>[];
+  photos: ExtraPhoto[];
   onDeletePhoto: (photoId: string) => void | Promise<void>;
-  onLabelPhoto?: (photoId: string, label: string) => void | Promise<void>;
+  onLabelPhoto?: (photoId: string, label: string, notes: string) => void | Promise<void>;
+  onToggleFavorite?: (photoId: string, favorite: boolean) => void | Promise<void>;
 }): PhotoTile[] {
-  const { photos, onDeletePhoto, onLabelPhoto } = options;
+  const { photos, onDeletePhoto, onLabelPhoto, onToggleFavorite } = options;
 
   const tiles: PhotoTile[] = photos.map((photo) => {
     const caption = photo.caption?.trim();
@@ -124,12 +153,19 @@ export function buildExtraOnlyPhotoTiles(options: {
       id: photo.id,
       shortLabel: caption || undefined,
       uri: photo.localUri,
+      notes: photo.notes,
+      favorite: photo.favorite === true,
       onDelete: () => {
         void onDeletePhoto(photo.id);
       },
       onLabelChange: onLabelPhoto
-        ? (label) => {
-            void onLabelPhoto(photo.id, label);
+        ? (label, notes) => {
+            void onLabelPhoto(photo.id, label, notes);
+          }
+        : undefined,
+      onToggleFavorite: onToggleFavorite
+        ? (favorite) => {
+            void onToggleFavorite(photo.id, favorite);
           }
         : undefined,
     };
@@ -139,15 +175,25 @@ export function buildExtraOnlyPhotoTiles(options: {
 }
 
 export function buildEventPhotoTiles(options: {
-  receiptPhoto?: Pick<ItemPhoto, 'id' | 'localUri' | 'caption'>;
-  otherPhotos: Pick<ItemPhoto, 'id' | 'localUri' | 'caption'>[];
+  receiptPhoto?: ExtraPhoto;
+  otherPhotos: ExtraPhoto[];
   onAddReceipt: (uri: string) => void | Promise<void>;
   onDeleteReceipt: () => void;
   onDeletePhoto: (photoId: string) => void;
-  onLabelPhoto?: (photoId: string, label: string) => void | Promise<void>;
+  onLabelReceipt?: (notes: string) => void | Promise<void>;
+  onLabelPhoto?: (photoId: string, label: string, notes: string) => void | Promise<void>;
+  onToggleFavorite?: (photoId: string, favorite: boolean) => void | Promise<void>;
 }): PhotoTile[] {
-  const { receiptPhoto, otherPhotos, onAddReceipt, onDeleteReceipt, onDeletePhoto, onLabelPhoto } =
-    options;
+  const {
+    receiptPhoto,
+    otherPhotos,
+    onAddReceipt,
+    onDeleteReceipt,
+    onDeletePhoto,
+    onLabelReceipt,
+    onLabelPhoto,
+    onToggleFavorite,
+  } = options;
 
   const tiles: PhotoTile[] = [
     {
@@ -155,6 +201,9 @@ export function buildEventPhotoTiles(options: {
       key: 'receipt',
       shortLabel: 'Receipt',
       uri: receiptPhoto?.localUri,
+      notes: receiptPhoto?.notes,
+      photoId: receiptPhoto?.id,
+      favorite: receiptPhoto?.favorite === true,
       onAdd: () => {
         promptPickOrTakeSingle(onAddReceipt);
       },
@@ -163,6 +212,17 @@ export function buildEventPhotoTiles(options: {
             onDeleteReceipt();
           }
         : undefined,
+      onLabelChange: receiptPhoto && onLabelReceipt
+        ? (_label, notes) => {
+            void onLabelReceipt(notes);
+          }
+        : undefined,
+      onToggleFavorite:
+        receiptPhoto && onToggleFavorite
+          ? (favorite) => {
+              void onToggleFavorite(receiptPhoto.id, favorite);
+            }
+          : undefined,
     },
   ];
 
@@ -173,12 +233,19 @@ export function buildEventPhotoTiles(options: {
       id: photo.id,
       shortLabel: caption || undefined,
       uri: photo.localUri,
+      notes: photo.notes,
+      favorite: photo.favorite === true,
       onDelete: () => {
         onDeletePhoto(photo.id);
       },
       onLabelChange: onLabelPhoto
-        ? (label) => {
-            void onLabelPhoto(photo.id, label);
+        ? (label, notes) => {
+            void onLabelPhoto(photo.id, label, notes);
+          }
+        : undefined,
+      onToggleFavorite: onToggleFavorite
+        ? (favorite) => {
+            void onToggleFavorite(photo.id, favorite);
           }
         : undefined,
     });
