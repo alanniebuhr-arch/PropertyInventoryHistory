@@ -51,7 +51,9 @@ export function ApplianceDisplayView(props: {
 }) {
   const { state, details, itemId, onSave, onDetailsChange, initialEditingSection, photoHeader, onActiveHeroLabelChange } = props;
   const [editingSection, setEditingSection] = useState<ApplianceEditingSection | null>(
-    initialEditingSection ?? null
+    () =>
+      initialEditingSection ??
+      (applianceHasIdentityInfo(details) ? null : 'appliance')
   );
 
   const extraPhotos = applianceExtraPhotos(state, itemId, details);

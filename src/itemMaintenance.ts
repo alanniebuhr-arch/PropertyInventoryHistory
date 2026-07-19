@@ -1,6 +1,6 @@
 import type { AppState } from './types';
 import { formatDate } from './utils';
-import { eventsForItem, itemsForProperty, itemsForRoom } from './storage';
+import { eventsForItem, itemsForProperty, itemsForRoom, serviceHistoryEventsForItem } from './storage';
 import { getNextDueForItem, isOverdue } from './eventRecurrence';
 
 export function overdueCountForItem(state: AppState, itemId: string): number {
@@ -13,6 +13,18 @@ export function nextDueLabelForItem(state: AppState, itemId: string): string | n
   const nextDue = getNextDueForItem(eventsForItem(state, itemId));
   if (!nextDue) return null;
   return formatDate(nextDue);
+}
+
+/** Last / next service dates for the item header; null if neither exists. */
+export function serviceLastNextForItem(
+  state: AppState,
+  itemId: string
+): { last: string | null; next: string | null } | null {
+  const lastEvent = serviceHistoryEventsForItem(state, itemId)[0];
+  const last = lastEvent ? formatDate(lastEvent.occurredAtISO) : null;
+  const next = nextDueLabelForItem(state, itemId);
+  if (!last && !next) return null;
+  return { last, next };
 }
 
 export function overdueCountForRoom(state: AppState, roomId: string): number {

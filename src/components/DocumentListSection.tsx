@@ -126,8 +126,8 @@ export function DocumentListSection(props: { rows: DocumentListRow[] }) {
             style={{
               width: 40,
               height: 40,
-              borderRadius: 8,
-              backgroundColor: colors.border,
+              borderRadius: 2,
+              backgroundColor: colors.photoPlaceholder,
               alignItems: 'center',
               justifyContent: 'center',
             }}

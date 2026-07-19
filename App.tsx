@@ -173,6 +173,7 @@ export default function App() {
       case 'event':
         screen = (
           <AddEditEventScreen
+            key={`${route.itemId}:${route.eventId ?? ''}:${route.completeFromEventId ?? ''}`}
             state={state}
             itemId={route.itemId}
             eventId={route.eventId}

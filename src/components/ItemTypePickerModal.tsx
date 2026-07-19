@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ItemTypeId } from '../types';
 import { ITEM_CATALOG } from '../itemCatalog';
-import { sharedStyles } from '../theme';
+import { sharedStyles, colors } from '../theme';
 
 export function ItemTypePickerModal(props: {
   visible: boolean;
@@ -26,9 +26,9 @@ export function ItemTypePickerModal(props: {
       >
         <Pressable
           style={{
-            backgroundColor: '#fff',
-            borderTopLeftRadius: 16,
-            borderTopRightRadius: 16,
+            backgroundColor: colors.card,
+            borderTopLeftRadius: 8,
+            borderTopRightRadius: 8,
             padding: 20,
             paddingBottom: insets.bottom + 20,
             maxHeight: '80%',

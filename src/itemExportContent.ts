@@ -53,7 +53,7 @@ import { automobileDescription } from './automobileSlots';
 import { catalogLabel, itemDisplayLabel } from './itemCatalog';
 import { formatStoredDate } from './itemDetailDisplayHelpers';
 import { EVENT_TYPE_LABELS, recurrenceLabel } from './eventRecurrence';
-import { eventsForItem, itemById, photosForEvent, photosForItem, propertyById, roomById } from './storage';
+import { itemById, photosForEvent, photosForItem, propertyById, roomById, serviceHistoryEventsForItem } from './storage';
 import { formatCurrency, formatDate, nowISO } from './utils';
 import { nextDueLabelForItem } from './itemMaintenance';
 
@@ -406,7 +406,7 @@ function buildDetailSections(item: InventoryItem): ItemExportSection[] {
 }
 
 function buildEventExports(state: AppState, itemId: string): ItemExportEvent[] {
-  return eventsForItem(state, itemId).map((event: ItemEvent) => {
+  return serviceHistoryEventsForItem(state, itemId).map((event: ItemEvent) => {
     const lines = [
       EVENT_TYPE_LABELS[event.eventType],
       formatDate(event.occurredAtISO),

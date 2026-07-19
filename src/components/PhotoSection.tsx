@@ -283,9 +283,9 @@ export function PhotoSection(props: {
     return {
       width: thumbSize,
       height: thumbSize,
-      borderRadius: 8,
-      backgroundColor: colors.border,
-      borderWidth: isHero ? 2 : 0,
+      borderRadius: 2,
+      backgroundColor: colors.photoPlaceholder,
+      borderWidth: isHero ? 1.5 : 0,
       borderColor: colors.primary,
     };
   }
@@ -317,8 +317,8 @@ export function PhotoSection(props: {
           style={{
             width: thumbSize,
             height: thumbSize,
-            borderRadius: 8,
-            backgroundColor: colors.border,
+            borderRadius: 2,
+            backgroundColor: colors.photoPlaceholder,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -360,8 +360,8 @@ export function PhotoSection(props: {
         style={{
           width: thumbSize,
           height: thumbSize,
-          borderRadius: 8,
-          backgroundColor: colors.border,
+          borderRadius: 2,
+          backgroundColor: colors.photoPlaceholder,
           alignItems: 'center',
           justifyContent: 'center',
         }}

@@ -11,7 +11,7 @@ import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, InventoryItem, ItemTypeId } from '../types';
-import { ItemListRow } from '../components/ListRows';
+import { ItemGalleryTile, ItemListRow } from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { RoomPhotosSection } from '../components/RoomPhotosSection';
@@ -21,13 +21,14 @@ import { ItemTypePickerModal } from '../components/ItemTypePickerModal';
 import { sharedStyles, colors } from '../theme';
 import {
   deleteRoomCascade,
-  eventsForItem,
   firstPhotoUriForItem,
   itemById,
   itemsForRoom,
+  photosForEvent,
   propertyById,
   roomById,
   roomsForProperty,
+  serviceHistoryEventsForItem,
 } from '../storage';
 import {
   catalogLabel,
@@ -39,21 +40,26 @@ import {
 import { itemListSummaryFields } from '../itemListSummaryFields';
 import {
   isItemOverdue,
-  nextDueLabelForItem,
 } from '../itemMaintenance';
 import {
   filterUpcomingByHorizon,
-  formatServiceEventSummary,
   upcomingHorizonLabel,
   upcomingServiceEventsForRoom,
   UPCOMING_HORIZON_OPTIONS,
   type UpcomingHorizon,
 } from '../eventRecurrence';
+import { formatDate } from '../utils';
 import {
   getPropertyUpcomingHorizon,
   loadPropertyUpcomingHorizon,
   setPropertyUpcomingHorizon,
 } from '../upcomingHorizonPrefs';
+import {
+  getRoomItemViewMode,
+  loadRoomItemViewMode,
+  setRoomItemViewMode,
+  type RoomItemViewMode,
+} from '../roomItemViewPrefs';
 import { photosForRoom } from '../roomPhotos';
 import { deletePhotoFile } from '../photoStorage';
 import { authenticateForRoom, markRoomUnlocked } from '../roomAuth';
@@ -90,11 +96,15 @@ export function RoomDetailScreen(props: {
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
+  const [itemViewMode, setItemViewMode] = useState<RoomItemViewMode>(getRoomItemViewMode);
 
   useEffect(() => {
     let cancelled = false;
     void loadPropertyUpcomingHorizon().then((horizon) => {
       if (!cancelled) setUpcomingHorizon(horizon);
+    });
+    void loadRoomItemViewMode().then((mode) => {
+      if (!cancelled) setItemViewMode(mode);
     });
     return () => {
       cancelled = true;
@@ -282,7 +292,7 @@ export function RoomDetailScreen(props: {
         }}
       >
         <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-          Service upcoming
+          Service schedule
         </Text>
         <Pressable
           onPress={openUpcomingHorizonPicker}
@@ -312,11 +322,13 @@ export function RoomDetailScreen(props: {
         <View style={{ marginBottom: 16 }}>
           {upcomingEvents.map((e) => {
             const item = itemById(state, e.itemId);
+            const eventPhotos = photosForEvent(state, e.id);
             return (
               <UpcomingServiceCard
                 key={e.id}
                 event={e}
                 leadingLabel={item ? itemDisplayLabel(item) : undefined}
+                thumbnailUri={eventPhotos[0]?.localUri}
                 onPressDetails={() => onEditEvent(e.itemId, e.id)}
                 onLogService={() => onLogUpcomingService(e.itemId, e.id)}
               />
@@ -325,36 +337,128 @@ export function RoomDetailScreen(props: {
         </View>
       )}
 
-      <Text style={sharedStyles.sectionTitle}>Items</Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginTop: 8,
+          marginBottom: 8,
+        }}
+      >
+        <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+          Items
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Pressable
+            onPress={() => {
+              setItemViewMode('gallery');
+              void setRoomItemViewMode('gallery');
+            }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: itemViewMode === 'gallery' }}
+            accessibilityLabel="Compact gallery view"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 6,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons
+              name="grid-view"
+              size={22}
+              color={itemViewMode === 'gallery' ? colors.primary : colors.textMuted}
+            />
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setItemViewMode('list');
+              void setRoomItemViewMode('list');
+            }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: itemViewMode === 'list' }}
+            accessibilityLabel="Detailed list view"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 6,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons
+              name="view-list"
+              size={22}
+              color={itemViewMode === 'list' ? colors.primary : colors.textMuted}
+            />
+          </Pressable>
+        </View>
+      </View>
       {items.length === 0 ? (
         <Text style={sharedStyles.emptyText}>Add items like water heater, heating, or electric panel.</Text>
+      ) : itemViewMode === 'gallery' ? (
+        <View style={sharedStyles.galleryRow}>
+          {items.map((item) => {
+            const { label, nameLabel } = itemListRowLabels(item);
+            return (
+              <ItemGalleryTile
+                key={item.id}
+                label={label}
+                nameLabel={nameLabel}
+                thumbnailUri={firstPhotoUriForItem(state, item)}
+                overdue={isItemOverdue(state, item.id)}
+                onPress={() => onOpenItem(item.id)}
+              />
+            );
+          })}
+        </View>
       ) : (
-        items.map((item) => {
-          const lastEvent = eventsForItem(state, item.id)[0];
-          const { label, nameLabel } = itemListRowLabels(item);
-          return (
-            <ItemListRow
-              key={item.id}
-              label={label}
-              nameLabel={nameLabel}
-              thumbnailUri={firstPhotoUriForItem(state, item)}
-              detailFields={itemListSummaryFields(item)}
-              lastServiceSummary={
-                lastEvent ? formatServiceEventSummary(lastEvent) : undefined
-              }
-              nextDueLabel={nextDueLabelForItem(state, item.id)}
-              overdue={isItemOverdue(state, item.id)}
-              onPress={() => onOpenItem(item.id)}
-            />
-          );
-        })
+        <>
+          {items.map((item) => {
+            const lastEvent = serviceHistoryEventsForItem(state, item.id)[0];
+            const { label, nameLabel } = itemListRowLabels(item);
+            return (
+              <ItemListRow
+                key={item.id}
+                label={label}
+                nameLabel={nameLabel}
+                thumbnailUri={firstPhotoUriForItem(state, item)}
+                detailFields={
+                  item.itemTypeId === 'automobile' ? undefined : itemListSummaryFields(item)
+                }
+                lastServiceDate={lastEvent ? formatDate(lastEvent.occurredAtISO) : undefined}
+                lastServiceTitle={lastEvent?.title}
+                lastServiceNotes={lastEvent?.notes}
+                onPress={() => onOpenItem(item.id)}
+              />
+            );
+          })}
+          <Text
+            style={[
+              sharedStyles.cardMeta,
+              {
+                color: colors.lastService,
+                textAlign: 'right',
+                marginTop: 4,
+                marginBottom: 4,
+              },
+            ]}
+          >
+            Last service
+          </Text>
+        </>
       )}
 
       <Pressable
         onPress={startAddItem}
-        style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
+        style={({ pressed }) => ({
+          alignSelf: 'flex-start',
+          paddingVertical: 10,
+          opacity: pressed ? 0.7 : 1,
+          marginTop: 4,
+          marginBottom: 8,
+        })}
       >
-        <Text style={sharedStyles.primaryBtnText}>Add item</Text>
+        <Text style={sharedStyles.textLink}>Add item</Text>
       </Pressable>
 
       <Pressable onPress={confirmDeleteRoom} style={sharedStyles.dangerBtn}>
@@ -363,7 +467,7 @@ export function RoomDetailScreen(props: {
 
       <View
         style={[
-          sharedStyles.card,
+          sharedStyles.catalogSection,
           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
         ]}
       >

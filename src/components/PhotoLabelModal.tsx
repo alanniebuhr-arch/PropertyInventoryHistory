@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { sharedStyles, colors } from '../theme';
 
 export function PhotoLabelModal(props: {
@@ -38,8 +38,8 @@ export function PhotoLabelModal(props: {
           onPress={(e) => e.stopPropagation()}
           style={{
             backgroundColor: colors.card,
-            borderRadius: 12,
-            borderWidth: 1,
+            borderRadius: 4,
+            borderWidth: StyleSheet.hairlineWidth,
             borderColor: colors.border,
             padding: 16,
           }}

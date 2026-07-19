@@ -25,6 +25,7 @@ import {
   deletePropertyCascade,
   itemById,
   nextRoomSortOrder,
+  photosForEvent,
   propertyById,
   roomsForProperty,
 } from '../storage';
@@ -269,7 +270,7 @@ export function PropertyDetailScreen(props: {
           }}
         >
           <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-            Services upcoming
+            Service schedule
           </Text>
           <Pressable
             onPress={openUpcomingHorizonPicker}
@@ -299,11 +300,13 @@ export function PropertyDetailScreen(props: {
           <View style={{ marginBottom: 16 }}>
             {upcomingEvents.map((e) => {
               const item = itemById(state, e.itemId);
+              const eventPhotos = photosForEvent(state, e.id);
               return (
                 <UpcomingServiceCard
                   key={e.id}
                   event={e}
                   leadingLabel={item ? itemDisplayLabel(item) : undefined}
+                  thumbnailUri={eventPhotos[0]?.localUri}
                   onPressDetails={() => onEditEvent(e.itemId, e.id)}
                   onLogService={() => onLogUpcomingService(e.itemId, e.id)}
                 />
@@ -334,19 +337,25 @@ export function PropertyDetailScreen(props: {
             setRoomName('');
             setModalOpen(true);
           }}
-          style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            paddingVertical: 12,
+            opacity: pressed ? 0.7 : 1,
+            marginTop: 8,
+          })}
         >
-          <Text style={sharedStyles.primaryBtnText}>Add room</Text>
+          <Text style={sharedStyles.textLink}>Add room</Text>
         </Pressable>
 
         <Pressable
           onPress={promptExportProperty}
           disabled={exporting}
-          style={({ pressed }) => [
-            sharedStyles.secondaryBtn,
-            pressed && !exporting && { opacity: 0.85 },
-            exporting && { opacity: 0.6 },
-          ]}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            paddingVertical: 8,
+            opacity: exporting ? 0.5 : pressed ? 0.7 : 1,
+            marginTop: 4,
+          })}
           accessibilityRole="button"
           accessibilityLabel="Export property"
           accessibilityHint="Shares this property so another user can import it."
@@ -354,7 +363,7 @@ export function PropertyDetailScreen(props: {
           {exporting ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <Text style={sharedStyles.secondaryBtnText}>Export property</Text>
+            <Text style={[sharedStyles.textLink, { color: colors.textMuted }]}>Export property</Text>
           )}
         </Pressable>
 

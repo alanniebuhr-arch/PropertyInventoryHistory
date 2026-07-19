@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { colors } from '../theme';
 
-const HERO_ASPECT = 0.6875;
+const HERO_ASPECT = 0.78;
 
 export type HeroPhoto = {
   id: string;
@@ -140,8 +140,8 @@ export function PhotoHeroCarousel(props: {
               style={{
                 width: heroPageWidth,
                 height: heroHeight,
-                borderRadius: 12,
-                backgroundColor: colors.border,
+                borderRadius: 2,
+                backgroundColor: colors.photoPlaceholder,
               }}
               resizeMode="cover"
             />

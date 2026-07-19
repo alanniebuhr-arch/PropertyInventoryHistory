@@ -22,6 +22,7 @@ import { APPLIANCE_PHOTO_SLOTS } from './applianceSlots';
 import { ELECTRIC_PANEL_PHOTO_SLOTS } from './electricPanelSlots';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
+import { isAfterToday } from './eventRecurrence';
 
 const STORAGE_KEY = 'property_inventory_state_v1';
 
@@ -596,6 +597,11 @@ export function eventsForItem(state: AppState, itemId: string): ItemEvent[] {
   return state.events
     .filter((e) => e.itemId === itemId)
     .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
+}
+
+/** Past/today service logs for history lists (excludes future-dated events). */
+export function serviceHistoryEventsForItem(state: AppState, itemId: string): ItemEvent[] {
+  return eventsForItem(state, itemId).filter((e) => !isAfterToday(e.occurredAtISO));
 }
 
 export function itemsForProperty(state: AppState, propertyId: string): InventoryItem[] {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, sharedStyles } from '../../theme';
 
 export function FormPicker<T extends string>(props: {
@@ -47,8 +47,8 @@ export function FormPicker<T extends string>(props: {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottomLeftRadius: open ? 0 : 8,
-            borderBottomRightRadius: open ? 0 : 8,
+            borderBottomLeftRadius: open ? 0 : 4,
+            borderBottomRightRadius: open ? 0 : 4,
           },
           pressed && { opacity: 0.85 },
         ]}
@@ -71,11 +71,11 @@ export function FormPicker<T extends string>(props: {
       {open ? (
         <View
           style={{
-            borderWidth: 1,
+            borderWidth: StyleSheet.hairlineWidth,
             borderTopWidth: 0,
             borderColor: colors.border,
-            borderBottomLeftRadius: 8,
-            borderBottomRightRadius: 8,
+            borderBottomLeftRadius: 4,
+            borderBottomRightRadius: 4,
             backgroundColor: colors.card,
             overflow: 'hidden',
           }}

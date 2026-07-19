@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Switch,
   Text,
   TextInput,
@@ -68,7 +69,7 @@ function DwellingPicker(props: {
             <Text
               style={[
                 sharedStyles.secondaryBtnText,
-                { color: selected ? '#fff' : colors.text, textAlign: 'center' },
+                { color: selected ? '#f7f5f1' : colors.text, textAlign: 'center' },
               ]}
             >
               {option.label}
@@ -176,8 +177,8 @@ export function HomeScreen(props: {
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScrollView contentContainerStyle={sharedStyles.content}>
-        <Text style={sharedStyles.title}>Property Inventory History</Text>
-        <Text style={sharedStyles.subtitle}>Track rooms, items, maintenance, and photos.</Text>
+        <Text style={[sharedStyles.title, { flex: 0 }]}>Property Inventory History</Text>
+        <Text style={sharedStyles.subtitle}>Rooms, items, maintenance, and photos.</Text>
 
         <View
           style={{
@@ -242,13 +243,28 @@ export function HomeScreen(props: {
 
         <Pressable
           onPress={openAdd}
-          style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            paddingVertical: 12,
+            opacity: pressed ? 0.7 : 1,
+            marginTop: 8,
+          })}
         >
-          <Text style={sharedStyles.primaryBtnText}>Add property</Text>
+          <Text style={sharedStyles.textLink}>Add property</Text>
         </Pressable>
 
-        <Pressable onPress={onOpenTransfer} style={sharedStyles.secondaryBtn}>
-          <Text style={sharedStyles.secondaryBtnText}>Export / import backup</Text>
+        <Pressable
+          onPress={onOpenTransfer}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            paddingVertical: 8,
+            opacity: pressed ? 0.7 : 1,
+            marginTop: 4,
+          })}
+        >
+          <Text style={[sharedStyles.textLink, { color: colors.textMuted }]}>
+            Export / import backup
+          </Text>
         </Pressable>
       </ScrollView>
 
@@ -269,9 +285,9 @@ export function HomeScreen(props: {
             <Pressable
               style={{
                 backgroundColor: colors.card,
-                borderTopLeftRadius: 16,
-                borderTopRightRadius: 16,
-                borderWidth: 1,
+                borderTopLeftRadius: 8,
+                borderTopRightRadius: 8,
+                borderWidth: StyleSheet.hairlineWidth,
                 borderBottomWidth: 0,
                 borderColor: colors.border,
                 maxHeight: windowHeight * 0.92,

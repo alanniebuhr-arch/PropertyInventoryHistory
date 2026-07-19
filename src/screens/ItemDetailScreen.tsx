@@ -8,6 +8,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -29,15 +30,18 @@ import { formatDate, uid, nowISO } from '../utils';
 import {
   deleteItemCascade,
   eventsForItem,
+  firstPhotoUriForItem,
   itemById,
   photosForEvent,
   photosForItem,
   propertyById,
   roomById,
+  roomsForProperty,
   itemsForRoom,
+  serviceHistoryEventsForItem,
 } from '../storage';
 import { catalogLabel, itemDisplayLabel } from '../itemCatalog';
-import { isItemOverdue, nextDueLabelForItem } from '../itemMaintenance';
+import { isItemOverdue, serviceLastNextForItem } from '../itemMaintenance';
 import {
   EVENT_TYPE_LABELS,
   filterUpcomingByHorizon,
@@ -281,11 +285,12 @@ export function ItemDetailScreen(props: {
   const waterTreatmentDetails = details.kind === 'water_treatment' ? details : null;
   const photos = photosForItem(state, itemId);
   const events = eventsForItem(state, itemId);
+  const historyEvents = serviceHistoryEventsForItem(state, itemId);
   const upcomingEvents = filterUpcomingByHorizon(
     upcomingServiceEvents(events),
     upcomingHorizon
   );
-  const nextDue = nextDueLabelForItem(state, itemId);
+  const serviceLastNext = serviceLastNextForItem(state, itemId);
   const overdue = isItemOverdue(state, itemId);
 
   const itemPhotoHeaderContent = (
@@ -303,10 +308,33 @@ export function ItemDetailScreen(props: {
       <Text style={sharedStyles.subtitle}>
         {[property?.name, room?.name, catalogLabel(inv.itemTypeId)].filter(Boolean).join(' · ')}
       </Text>
-      {nextDue ? (
-        <Text style={[sharedStyles.cardMeta, overdue && { color: '#c62828', fontWeight: '700' }]}>
-          Next service due: {nextDue}
-        </Text>
+      {serviceLastNext ? (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginTop: 4,
+          }}
+        >
+          {serviceLastNext.last ? (
+            <Text style={sharedStyles.cardMeta}>Last service: {serviceLastNext.last}</Text>
+          ) : (
+            <View />
+          )}
+          {serviceLastNext.next ? (
+            <Text
+              style={[
+                sharedStyles.cardMeta,
+                { textAlign: 'right' },
+                overdue && { color: colors.overdue, fontWeight: '600' },
+              ]}
+            >
+              Next service: {serviceLastNext.next}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
     </>
   );
@@ -502,103 +530,132 @@ export function ItemDetailScreen(props: {
 
   const serviceSections = (
     <View>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          marginTop: 8,
-          marginBottom: 8,
-        }}
-      >
-        <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-          Service upcoming
-        </Text>
-        <Pressable
-          onPress={() => {
-            Alert.alert(
-              'Show upcoming through',
-              undefined,
-              [
-                ...UPCOMING_HORIZON_OPTIONS.map((opt) => ({
-                  text: opt.label,
-                  onPress: () => {
-                    setUpcomingHorizon(opt.id);
-                    void setPropertyUpcomingHorizon(opt.id);
-                  },
-                })),
-                { text: 'Cancel', style: 'cancel' as const },
-              ]
-            );
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
-          accessibilityHint="Opens a list of time ranges for upcoming service."
-          style={({ pressed }) => ({
+      <View style={sharedStyles.sectionFrame}>
+        <View
+          style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 2,
-            opacity: pressed ? 0.7 : 1,
-            paddingVertical: 4,
-            paddingLeft: 8,
-          })}
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 8,
+          }}
         >
-          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
-            {upcomingHorizonLabel(upcomingHorizon)}
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+            Service schedule
           </Text>
-          <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
-        </Pressable>
+          <Pressable
+            onPress={() => {
+              Alert.alert(
+                'Show upcoming through',
+                undefined,
+                [
+                  ...UPCOMING_HORIZON_OPTIONS.map((opt) => ({
+                    text: opt.label,
+                    onPress: () => {
+                      setUpcomingHorizon(opt.id);
+                      void setPropertyUpcomingHorizon(opt.id);
+                    },
+                  })),
+                  { text: 'Cancel', style: 'cancel' as const },
+                ]
+              );
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
+            accessibilityHint="Opens a list of time ranges for upcoming service."
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 2,
+              opacity: pressed ? 0.7 : 1,
+              paddingVertical: 4,
+              paddingLeft: 8,
+            })}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+              {upcomingHorizonLabel(upcomingHorizon)}
+            </Text>
+            <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
+          </Pressable>
+        </View>
+        {upcomingEvents.length === 0 ? (
+          <Text style={sharedStyles.cardMeta}>No upcoming service scheduled.</Text>
+        ) : (
+          <View>
+            {upcomingEvents.map((e) => {
+              const eventPhotos = photosForEvent(state, e.id);
+              return (
+                <UpcomingServiceCard
+                  key={e.id}
+                  event={e}
+                  thumbnailUri={eventPhotos[0]?.localUri}
+                  onPressDetails={() => onEditEvent(e.id)}
+                  onLogService={() => onLogUpcomingService(e.id)}
+                />
+              );
+            })}
+          </View>
+        )}
       </View>
-      {upcomingEvents.length === 0 ? (
-        <Text style={[sharedStyles.cardMeta, { marginBottom: 16 }]}>
-          No upcoming service scheduled.
-        </Text>
-      ) : (
-        <View style={{ marginBottom: 16 }}>
-          {upcomingEvents.map((e) => (
-            <UpcomingServiceCard
-              key={e.id}
-              event={e}
-              onPressDetails={() => onEditEvent(e.id)}
-              onLogService={() => onLogUpcomingService(e.id)}
-            />
-          ))}
-        </View>
-      )}
 
-      <Text style={sharedStyles.sectionTitle}>Service history</Text>
-      <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
-        Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
-      </Text>
-      <Pressable
-        onPress={onAddEvent}
-        style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
-      >
-        <Text style={sharedStyles.primaryBtnText}>Log service event</Text>
-      </Pressable>
-      {events.length === 0 ? (
-        <Text style={[sharedStyles.cardMeta, { marginTop: 12 }]}>
-          No service events yet — e.g. annual maintenance or a repair.
-        </Text>
-      ) : (
-        <View style={{ marginTop: 12 }}>
-          {events.map((e) => {
-            const eventPhotos = photosForEvent(state, e.id);
-            return (
-              <EventListRow
-                key={e.id}
-                title={e.title}
-                eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
-                dateLabel={formatDate(e.occurredAtISO)}
-                notes={e.notes}
-                thumbnailUri={eventPhotos[0]?.localUri}
-                onPress={() => onEditEvent(e.id)}
-              />
-            );
-          })}
+      <View style={sharedStyles.sectionFrame}>
+        <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>Log a new event</Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <Pressable
+            onPress={onAddEvent}
+            style={({ pressed }) => [
+              sharedStyles.primaryBtn,
+              {
+                marginTop: 0,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                maxWidth: 120,
+                flexShrink: 0,
+              },
+              pressed && sharedStyles.primaryBtnPressed,
+            ]}
+          >
+            <Text style={[sharedStyles.primaryBtnText, { fontSize: 14, textAlign: 'center' }]}>
+              {'Log a\nnew event'}
+            </Text>
+          </Pressable>
+          <Text style={[sharedStyles.cardMeta, { flex: 1, marginBottom: 0, marginTop: 0 }]}>
+            Log maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
+          </Text>
         </View>
-      )}
+      </View>
+
+      <View style={sharedStyles.sectionFrame}>
+        <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>Service history</Text>
+        {historyEvents.length === 0 ? (
+          <Text style={[sharedStyles.cardMeta, { marginTop: 0 }]}>
+            No service events yet — e.g. annual maintenance or a repair.
+          </Text>
+        ) : (
+          <View>
+            {historyEvents.map((e) => {
+              const eventPhotos = photosForEvent(state, e.id);
+              return (
+                <EventListRow
+                  key={e.id}
+                  title={e.title}
+                  eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
+                  dateLabel={formatDate(e.occurredAtISO)}
+                  notes={e.notes}
+                  thumbnailUri={eventPhotos[0]?.localUri}
+                  onPress={() => onEditEvent(e.id)}
+                />
+              );
+            })}
+          </View>
+        )}
+      </View>
 
       <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
         <Text style={sharedStyles.dangerBtnText}>Delete item</Text>
@@ -626,12 +683,12 @@ export function ItemDetailScreen(props: {
                 marginLeft: 'auto',
                 width: 42,
                 height: 36,
-                borderWidth: 1,
+                borderWidth: StyleSheet.hairlineWidth,
                 borderColor: colors.border,
-                borderRadius: 8,
+                borderRadius: 4,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: colors.card,
+                backgroundColor: 'transparent',
                 opacity: exporting ? 0.6 : 1,
               },
               pressed && !exporting && { opacity: 0.8 },

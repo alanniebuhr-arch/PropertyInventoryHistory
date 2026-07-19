@@ -9,11 +9,11 @@ const EXPORT_CONTENT_WIDTH = ITEM_EXPORT_WIDTH - 48;
 const EXPORT_TAG_PHOTO_HEIGHT = Math.round(EXPORT_CONTENT_WIDTH * 1.35);
 
 const exportColors = {
-  bg: '#ffffff',
-  text: '#1a2332',
-  muted: '#5a6b7d',
-  border: '#d8e0ea',
-  section: '#1f5fbf',
+  bg: '#f7f5f1',
+  text: '#1a1814',
+  muted: '#6b6560',
+  border: '#d4cfc6',
+  section: '#2c2824',
 };
 
 function ExportRow(props: { label: string; value: string }) {

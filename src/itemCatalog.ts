@@ -273,6 +273,15 @@ export function itemListRowLabels(item: {
     }
     return { label: catalogLabel('other') };
   }
+  if (item.itemTypeId === 'automobile' && item.details?.kind === 'automobile') {
+    const nickname = item.details.nickname?.trim();
+    const description = automobileDescription(item.details);
+    const primary = nickname || description;
+    if (primary) {
+      return { label: primary, nameLabel: catalogLabel('automobile') };
+    }
+    return { label: catalogLabel('automobile') };
+  }
   return {
     label: catalogLabel(item.itemTypeId),
     nameLabel: itemCustomName(item),
