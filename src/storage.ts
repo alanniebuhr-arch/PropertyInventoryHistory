@@ -9,7 +9,10 @@ import type {
   ItemPhoto,
   ItemTypeId,
   Property,
+  Project,
+  ProjectVendor,
   Room,
+  VendorInteraction,
   WaterMainDetails,
   WaterTreatmentDetails,
 } from './types';
@@ -372,6 +375,11 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
   const roomPhotos = Array.isArray(raw.roomPhotos) ? raw.roomPhotos : [];
   const documents = Array.isArray(raw.documents) ? raw.documents : [];
   const events = (Array.isArray(raw.events) ? raw.events : []).map(normalizeEvent);
+  const projects = Array.isArray(raw.projects) ? raw.projects : [];
+  const projectVendors = Array.isArray(raw.projectVendors) ? raw.projectVendors : [];
+  const projectPhotos = Array.isArray(raw.projectPhotos) ? raw.projectPhotos : [];
+  const vendorPhotos = Array.isArray(raw.vendorPhotos) ? raw.vendorPhotos : [];
+  const vendorInteractions = Array.isArray(raw.vendorInteractions) ? raw.vendorInteractions : [];
 
   const validDocumentIds = new Set(
     documents
@@ -467,6 +475,43 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     (p) => itemIds.has(p.itemId) && (!p.eventId || eventIds.has(p.eventId))
   );
 
+  const cleanProjects = projects
+    .filter((p) => propertyIds.has(p.propertyId))
+    .map((p) => ({
+      ...p,
+      photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter((id) =>
+        projectPhotos.some((photo) => photo.id === id)
+      ),
+    }));
+  const projectIds = new Set(cleanProjects.map((p) => p.id));
+  const cleanProjectPhotos = projectPhotos.filter((p) => projectIds.has(p.projectId));
+  const validProjectPhotoIds = new Set(cleanProjectPhotos.map((p) => p.id));
+  const cleanProjectsWithPhotos = cleanProjects.map((p) => ({
+    ...p,
+    photoIds: p.photoIds.filter((id) => validProjectPhotoIds.has(id)),
+  }));
+
+  const cleanProjectVendors = projectVendors
+    .filter((v) => projectIds.has(v.projectId))
+    .map((v) => ({
+      ...v,
+      status: v.status ?? 'initial_contact',
+      photoIds: (Array.isArray(v.photoIds) ? v.photoIds : []).filter((id) =>
+        vendorPhotos.some((photo) => photo.id === id)
+      ),
+      documentIds: (Array.isArray(v.documentIds) ? v.documentIds : []).filter((id) =>
+        validDocumentIds.has(id)
+      ),
+    }));
+  const vendorIds = new Set(cleanProjectVendors.map((v) => v.id));
+  const cleanVendorPhotos = vendorPhotos.filter((p) => vendorIds.has(p.vendorId));
+  const validVendorPhotoIds = new Set(cleanVendorPhotos.map((p) => p.id));
+  const cleanProjectVendorsFinal = cleanProjectVendors.map((v) => ({
+    ...v,
+    photoIds: v.photoIds.filter((id) => validVendorPhotoIds.has(id)),
+  }));
+  const cleanVendorInteractions = vendorInteractions.filter((i) => vendorIds.has(i.vendorId));
+
   return {
     version: 1,
     properties: cleanProperties,
@@ -486,6 +531,11 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       ...e,
       photoIds: e.photoIds.filter((pid) => cleanPhotos.some((p) => p.id === pid)),
     })),
+    projects: cleanProjectsWithPhotos,
+    projectVendors: cleanProjectVendorsFinal,
+    projectPhotos: cleanProjectPhotos,
+    vendorPhotos: cleanVendorPhotos,
+    vendorInteractions: cleanVendorInteractions,
   };
 }
 
@@ -620,9 +670,60 @@ export function nextRoomSortOrder(state: AppState, propertyId: string): number {
   return Math.max(...rooms.map((r) => r.sortOrder)) + 1;
 }
 
+export function projectsForProperty(state: AppState, propertyId: string): Project[] {
+  return state.projects
+    .filter((p) => p.propertyId === propertyId)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+}
+
+export function projectById(state: AppState, id: string): Project | undefined {
+  return state.projects.find((p) => p.id === id);
+}
+
+export function vendorsForProject(state: AppState, projectId: string): ProjectVendor[] {
+  return state.projectVendors
+    .filter((v) => v.projectId === projectId)
+    .sort((a, b) => a.name.localeCompare(b.name) || a.createdAtISO.localeCompare(b.createdAtISO));
+}
+
+export function vendorById(state: AppState, id: string): ProjectVendor | undefined {
+  return state.projectVendors.find((v) => v.id === id);
+}
+
+export function interactionsForVendor(state: AppState, vendorId: string): VendorInteraction[] {
+  return state.vendorInteractions
+    .filter((i) => i.vendorId === vendorId)
+    .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
+}
+
+export function vendorInteractionById(
+  state: AppState,
+  id: string
+): VendorInteraction | undefined {
+  return state.vendorInteractions.find((i) => i.id === id);
+}
+
+export function nextProjectSortOrder(state: AppState, propertyId: string): number {
+  const projects = projectsForProperty(state, propertyId);
+  if (projects.length === 0) return 0;
+  return Math.max(...projects.map((p) => p.sortOrder)) + 1;
+}
+
 export function deletePropertyCascade(state: AppState, propertyId: string): AppState {
   const roomIds = new Set(state.rooms.filter((r) => r.propertyId === propertyId).map((r) => r.id));
   const itemIds = new Set(state.items.filter((i) => roomIds.has(i.roomId)).map((i) => i.id));
+  const projectIds = new Set(
+    state.projects.filter((p) => p.propertyId === propertyId).map((p) => p.id)
+  );
+  const vendorIds = new Set(
+    state.projectVendors.filter((v) => projectIds.has(v.projectId)).map((v) => v.id)
+  );
+  const dropDocumentIds = new Set<string>();
+  for (const vendor of state.projectVendors) {
+    if (vendorIds.has(vendor.id)) {
+      for (const docId of vendor.documentIds ?? []) dropDocumentIds.add(docId);
+    }
+  }
   return {
     ...state,
     properties: state.properties.filter((p) => p.id !== propertyId),
@@ -632,6 +733,12 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
     propertyPhotos: state.propertyPhotos.filter((p) => p.propertyId !== propertyId),
     roomPhotos: state.roomPhotos.filter((p) => !roomIds.has(p.roomId)),
     events: state.events.filter((e) => !itemIds.has(e.itemId)),
+    projects: state.projects.filter((p) => p.propertyId !== propertyId),
+    projectVendors: state.projectVendors.filter((v) => !projectIds.has(v.projectId)),
+    projectPhotos: state.projectPhotos.filter((p) => !projectIds.has(p.projectId)),
+    vendorPhotos: state.vendorPhotos.filter((p) => !vendorIds.has(p.vendorId)),
+    vendorInteractions: state.vendorInteractions.filter((i) => !vendorIds.has(i.vendorId)),
+    documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
   };
 }
 
@@ -664,5 +771,45 @@ export function deleteEventCascade(state: AppState, eventId: string): AppState {
     ...state,
     events: state.events.filter((e) => e.id !== eventId),
     photos: state.photos.filter((p) => p.eventId !== eventId),
+  };
+}
+
+export function deleteVendorCascade(state: AppState, vendorId: string): AppState {
+  const vendor = state.projectVendors.find((v) => v.id === vendorId);
+  const dropDocumentIds = new Set(vendor?.documentIds ?? []);
+  return {
+    ...state,
+    projectVendors: state.projectVendors.filter((v) => v.id !== vendorId),
+    vendorPhotos: state.vendorPhotos.filter((p) => p.vendorId !== vendorId),
+    vendorInteractions: state.vendorInteractions.filter((i) => i.vendorId !== vendorId),
+    documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
+  };
+}
+
+export function deleteVendorInteractionCascade(state: AppState, interactionId: string): AppState {
+  return {
+    ...state,
+    vendorInteractions: state.vendorInteractions.filter((i) => i.id !== interactionId),
+  };
+}
+
+export function deleteProjectCascade(state: AppState, projectId: string): AppState {
+  const vendorIds = new Set(
+    state.projectVendors.filter((v) => v.projectId === projectId).map((v) => v.id)
+  );
+  const dropDocumentIds = new Set<string>();
+  for (const vendor of state.projectVendors) {
+    if (vendorIds.has(vendor.id)) {
+      for (const docId of vendor.documentIds ?? []) dropDocumentIds.add(docId);
+    }
+  }
+  return {
+    ...state,
+    projects: state.projects.filter((p) => p.id !== projectId),
+    projectVendors: state.projectVendors.filter((v) => v.projectId !== projectId),
+    projectPhotos: state.projectPhotos.filter((p) => p.projectId !== projectId),
+    vendorPhotos: state.vendorPhotos.filter((p) => !vendorIds.has(p.vendorId)),
+    vendorInteractions: state.vendorInteractions.filter((i) => !vendorIds.has(i.vendorId)),
+    documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
   };
 }

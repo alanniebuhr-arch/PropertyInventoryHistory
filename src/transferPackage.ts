@@ -57,6 +57,18 @@ function collectMediaToStage(state: AppState): StagedMedia[] {
       sourceUri: photo.localUri,
     });
   }
+  for (const photo of state.projectPhotos) {
+    staged.push({
+      zipPath: `photos/${photo.id}`,
+      sourceUri: photo.localUri,
+    });
+  }
+  for (const photo of state.vendorPhotos) {
+    staged.push({
+      zipPath: `photos/${photo.id}`,
+      sourceUri: photo.localUri,
+    });
+  }
   for (const document of state.documents) {
     staged.push({
       zipPath: `documents/${document.id}`,
@@ -336,6 +348,13 @@ export async function importBackupFromUri(
         roomPhotos: Array.isArray(stateRaw.roomPhotos) ? stateRaw.roomPhotos : [],
         documents: Array.isArray(stateRaw.documents) ? stateRaw.documents : [],
         events: Array.isArray(stateRaw.events) ? stateRaw.events : [],
+        projects: Array.isArray(stateRaw.projects) ? stateRaw.projects : [],
+        projectVendors: Array.isArray(stateRaw.projectVendors) ? stateRaw.projectVendors : [],
+        projectPhotos: Array.isArray(stateRaw.projectPhotos) ? stateRaw.projectPhotos : [],
+        vendorPhotos: Array.isArray(stateRaw.vendorPhotos) ? stateRaw.vendorPhotos : [],
+        vendorInteractions: Array.isArray(stateRaw.vendorInteractions)
+          ? stateRaw.vendorInteractions
+          : [],
       };
 
       const mediaFiles: Record<string, string> = {};
@@ -402,6 +421,8 @@ export async function materializeZipMedia(
     photos: await patchPhotoUri(next.photos),
     propertyPhotos: await patchPhotoUri(next.propertyPhotos),
     roomPhotos: await patchPhotoUri(next.roomPhotos),
+    projectPhotos: await patchPhotoUri(next.projectPhotos),
+    vendorPhotos: await patchPhotoUri(next.vendorPhotos),
   };
 
   const docs = [];

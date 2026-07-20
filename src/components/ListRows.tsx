@@ -448,6 +448,61 @@ export function EventListRow(props: {
   );
 }
 
+export function VendorInteractionListRow(props: {
+  methodLabel: string;
+  dateLabel: string;
+  contactName?: string;
+  notes?: string;
+  onPress?: () => void;
+}) {
+  const { methodLabel, dateLabel, contactName, notes, onPress } = props;
+  const notesText = notes?.trim();
+  const contactText = contactName?.trim();
+  const body = (
+    <View>
+      <Text
+        style={{
+          fontSize: 14,
+          fontWeight: '500',
+          color: colors.text,
+          marginBottom: contactText || notesText ? 8 : 0,
+          letterSpacing: -0.1,
+        }}
+      >
+        {dateLabel} · {methodLabel}
+      </Text>
+      {contactText ? (
+        <Text style={[sharedStyles.cardMeta, { marginTop: 0 }]} numberOfLines={1}>
+          {contactText}
+        </Text>
+      ) : null}
+      {notesText ? (
+        <Text style={[sharedStyles.cardMeta, contactText ? { marginTop: 4 } : { marginTop: 0 }]} numberOfLines={6}>
+          {notesText}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  if (!onPress) {
+    return <View style={[sharedStyles.card, { backgroundColor: colors.historyCardBg }]}>{body}</View>;
+  }
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        sharedStyles.card,
+        { backgroundColor: colors.historyCardBg },
+        pressed && sharedStyles.cardPressed,
+      ]}
+      accessibilityRole="button"
+    >
+      {body}
+    </Pressable>
+  );
+}
+
 export function OverdueBadge(props: { count: number }) {
   if (props.count <= 0) return null;
   return (
@@ -465,5 +520,255 @@ export function OverdueBadge(props: { count: number }) {
         {props.count} overdue maintenance
       </Text>
     </View>
+  );
+}
+
+export function ProjectGalleryTile(props: {
+  name: string;
+  thumbnailUri?: string;
+  vendorCount: number;
+  waitingForQuoteCount?: number;
+  onPress: () => void;
+}) {
+  const { name, thumbnailUri, vendorCount, waitingForQuoteCount = 0, onPress } = props;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [sharedStyles.galleryTile, pressed && sharedStyles.cardPressed]}
+      accessibilityRole="button"
+    >
+      {thumbnailUri ? (
+        <Image source={{ uri: thumbnailUri }} style={sharedStyles.galleryImage} />
+      ) : (
+        <View style={sharedStyles.galleryImage} />
+      )}
+      <Text style={sharedStyles.galleryCaption} numberOfLines={1}>
+        {name}
+      </Text>
+      <Text style={sharedStyles.galleryMeta} numberOfLines={2}>
+        {vendorCount} vendor{vendorCount === 1 ? '' : 's'}
+        {waitingForQuoteCount > 0 ? (
+          <Text style={{ color: colors.dueSoon, fontWeight: '600' }}>
+            {` · ${waitingForQuoteCount} waiting for quote`}
+          </Text>
+        ) : null}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function ProjectListRow(props: {
+  name: string;
+  thumbnailUri?: string;
+  vendorCount: number;
+  waitingForQuoteCount?: number;
+  onPress: () => void;
+}) {
+  const { name, thumbnailUri, vendorCount, waitingForQuoteCount = 0, onPress } = props;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 14,
+          paddingVertical: 14,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: colors.hairline,
+        },
+        pressed && sharedStyles.cardPressed,
+      ]}
+      accessibilityRole="button"
+    >
+      {thumbnailUri ? (
+        <Image
+          source={{ uri: thumbnailUri }}
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 2,
+            backgroundColor: colors.photoPlaceholder,
+          }}
+        />
+      ) : (
+        <View
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 2,
+            backgroundColor: colors.photoPlaceholder,
+          }}
+        />
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={sharedStyles.cardTitle}>{name}</Text>
+        <Text style={sharedStyles.cardMeta}>
+          {vendorCount} vendor{vendorCount === 1 ? '' : 's'}
+          {waitingForQuoteCount > 0 ? (
+            <Text style={{ color: colors.dueSoon, fontWeight: '600' }}>
+              {` · ${waitingForQuoteCount} waiting for quote`}
+            </Text>
+          ) : null}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+export function VendorGalleryTile(props: {
+  name: string;
+  contactName?: string;
+  statusLabel: string;
+  statusColor: string;
+  notesPreview?: string;
+  thumbnailUri?: string;
+  onPress: () => void;
+}) {
+  const { name, contactName, statusLabel, statusColor, notesPreview, thumbnailUri, onPress } = props;
+  const notesText = notesPreview?.trim();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [sharedStyles.galleryTile, pressed && sharedStyles.cardPressed]}
+      accessibilityRole="button"
+    >
+      {thumbnailUri ? (
+        <Image source={{ uri: thumbnailUri }} style={sharedStyles.galleryImage} />
+      ) : (
+        <View style={sharedStyles.galleryImage} />
+      )}
+      <Text style={sharedStyles.galleryCaption} numberOfLines={1}>
+        {name}
+      </Text>
+      {contactName ? (
+        <Text style={sharedStyles.galleryMeta} numberOfLines={1}>
+          {contactName}
+        </Text>
+      ) : null}
+      <Text style={[sharedStyles.galleryMeta, { color: statusColor, fontWeight: '600' }]} numberOfLines={1}>
+        {statusLabel}
+      </Text>
+      {notesText ? (
+        <Text style={sharedStyles.galleryMeta} numberOfLines={3}>
+          {notesText}
+        </Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+export function VendorListRow(props: {
+  name: string;
+  contactName?: string;
+  phone?: string;
+  statusLabel: string;
+  statusColor: string;
+  notesPreview?: string;
+  thumbnailUri?: string;
+  lastInteractionDate?: string;
+  lastInteractionTitle?: string;
+  lastInteractionNotes?: string;
+  onPress: () => void;
+}) {
+  const {
+    name,
+    contactName,
+    phone,
+    statusLabel,
+    statusColor,
+    notesPreview,
+    thumbnailUri,
+    lastInteractionDate,
+    lastInteractionTitle,
+    lastInteractionNotes,
+    onPress,
+  } = props;
+  const detailParts = [contactName, phone].filter(Boolean);
+  const notesText = notesPreview?.trim();
+  const interactionTitle = lastInteractionTitle?.trim();
+  const interactionNotes = lastInteractionNotes?.trim();
+  const lastInteractionLine = [interactionTitle, interactionNotes].filter(Boolean).join(' · ');
+  const showLastInteractionRow = Boolean(lastInteractionDate || lastInteractionLine);
+  const showPhotoColumn = Boolean(thumbnailUri);
+  const leftColWidth = ITEM_LIST_THUMB_SIZE;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [sharedStyles.card, pressed && sharedStyles.cardPressed]}
+      accessibilityRole="button"
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        {showPhotoColumn ? (
+          <Image
+            source={{ uri: thumbnailUri }}
+            style={{
+              width: leftColWidth,
+              height: ITEM_LIST_THUMB_SIZE,
+              borderRadius: 2,
+              backgroundColor: colors.photoPlaceholder,
+            }}
+          />
+        ) : null}
+        <View style={{ flex: 1 }}>
+          <Text style={sharedStyles.cardTitle}>{name}</Text>
+          {detailParts.length > 0 ? (
+            <Text style={sharedStyles.cardMeta} numberOfLines={2}>
+              {detailParts.join(' · ')}
+            </Text>
+          ) : null}
+          <Text style={[sharedStyles.cardMeta, { color: statusColor, fontWeight: '600', marginTop: 4 }]}>
+            {statusLabel}
+          </Text>
+          {notesText ? (
+            <Text style={[sharedStyles.cardMeta, { marginTop: 4 }]} numberOfLines={4}>
+              {notesText}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      {showLastInteractionRow ? (
+        <View style={{ marginTop: 6 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: 12,
+            }}
+          >
+            <Text
+              style={[
+                sharedStyles.cardMeta,
+                {
+                  marginTop: 0,
+                  width: showPhotoColumn || lastInteractionDate ? leftColWidth : undefined,
+                  textAlign: showPhotoColumn || lastInteractionDate ? 'center' : 'left',
+                  flexShrink: 0,
+                  color: colors.lastService,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {lastInteractionDate ?? ''}
+            </Text>
+            {lastInteractionLine ? (
+              <Text
+                style={[
+                  sharedStyles.cardMeta,
+                  { marginTop: 0, flex: 1, color: colors.lastService },
+                ]}
+                numberOfLines={3}
+              >
+                {lastInteractionLine}
+              </Text>
+            ) : (
+              <View style={{ flex: 1 }} />
+            )}
+          </View>
+        </View>
+      ) : null}
+    </Pressable>
   );
 }

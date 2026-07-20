@@ -52,6 +52,13 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
   );
   const propertyPhotos = state.propertyPhotos.filter((p) => p.propertyId === propertyId);
   const roomPhotos = state.roomPhotos.filter((p) => roomIds.has(p.roomId));
+  const projects = state.projects.filter((p) => p.propertyId === propertyId);
+  const projectIds = new Set(projects.map((p) => p.id));
+  const projectVendors = state.projectVendors.filter((v) => projectIds.has(v.projectId));
+  const projectPhotos = state.projectPhotos.filter((p) => projectIds.has(p.projectId));
+  const vendorIds = new Set(projectVendors.map((v) => v.id));
+  const vendorPhotos = state.vendorPhotos.filter((p) => vendorIds.has(p.vendorId));
+  const vendorInteractions = state.vendorInteractions.filter((i) => vendorIds.has(i.vendorId));
 
   const documentIds = new Set<string>();
   for (const slot of PROPERTY_PHOTO_SLOTS) {
@@ -60,6 +67,7 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
   }
   collectDocumentIdsFromValue(rooms, documentIds);
   collectDocumentIdsFromValue(items, documentIds);
+  collectDocumentIdsFromValue(projectVendors, documentIds);
 
   const documents = state.documents.filter((d) => documentIds.has(d.id));
 
@@ -73,6 +81,11 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
     roomPhotos,
     documents,
     events,
+    projects,
+    projectVendors,
+    projectPhotos,
+    vendorPhotos,
+    vendorInteractions,
   };
 }
 
@@ -142,6 +155,11 @@ export function parseTransferBundle(raw: string):
         roomPhotos: Array.isArray(state.roomPhotos) ? state.roomPhotos : [],
         documents: Array.isArray(state.documents) ? state.documents : [],
         events: Array.isArray(state.events) ? state.events : [],
+        projects: Array.isArray(state.projects) ? state.projects : [],
+        projectVendors: Array.isArray(state.projectVendors) ? state.projectVendors : [],
+        projectPhotos: Array.isArray(state.projectPhotos) ? state.projectPhotos : [],
+        vendorPhotos: Array.isArray(state.vendorPhotos) ? state.vendorPhotos : [],
+        vendorInteractions: Array.isArray(state.vendorInteractions) ? state.vendorInteractions : [],
       },
       photoData:
         obj.photoData && typeof obj.photoData === 'object'
@@ -160,6 +178,11 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
   const roomPhotoIds = new Set(local.roomPhotos.map((p) => p.id));
   const documentIds = new Set(local.documents.map((d) => d.id));
   const eventIds = new Set(local.events.map((e) => e.id));
+  const projectIds = new Set(local.projects.map((p) => p.id));
+  const projectVendorIds = new Set(local.projectVendors.map((v) => v.id));
+  const projectPhotoIds = new Set(local.projectPhotos.map((p) => p.id));
+  const vendorPhotoIds = new Set(local.vendorPhotos.map((p) => p.id));
+  const vendorInteractionIds = new Set(local.vendorInteractions.map((i) => i.id));
 
   return {
     version: 1,
@@ -183,6 +206,26 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
       ...((incoming.documents ?? []).filter((d) => !documentIds.has(d.id))),
     ],
     events: [...local.events, ...incoming.events.filter((e) => !eventIds.has(e.id))],
+    projects: [
+      ...local.projects,
+      ...((incoming.projects ?? []).filter((p) => !projectIds.has(p.id))),
+    ],
+    projectVendors: [
+      ...local.projectVendors,
+      ...((incoming.projectVendors ?? []).filter((v) => !projectVendorIds.has(v.id))),
+    ],
+    projectPhotos: [
+      ...local.projectPhotos,
+      ...((incoming.projectPhotos ?? []).filter((p) => !projectPhotoIds.has(p.id))),
+    ],
+    vendorPhotos: [
+      ...local.vendorPhotos,
+      ...((incoming.vendorPhotos ?? []).filter((p) => !vendorPhotoIds.has(p.id))),
+    ],
+    vendorInteractions: [
+      ...local.vendorInteractions,
+      ...((incoming.vendorInteractions ?? []).filter((i) => !vendorInteractionIds.has(i.id))),
+    ],
   };
 }
 

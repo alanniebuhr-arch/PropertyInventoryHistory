@@ -13,25 +13,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import type { AppState, Room } from '../types';
-import { RoomGalleryTile, RoomListRow } from '../components/ListRows';
+import type { AppState, Project, Room } from '../types';
+import { ProjectGalleryTile, ProjectListRow, RoomGalleryTile, RoomListRow } from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
 import { RenameModal } from '../components/RenameModal';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { sharedStyles, colors } from '../theme';
-import { uid } from '../utils';
+import { nowISO, uid } from '../utils';
 import {
   deletePropertyCascade,
   itemById,
+  nextProjectSortOrder,
   nextRoomSortOrder,
   photosForEvent,
+  projectsForProperty,
   propertyById,
   roomsForProperty,
+  vendorsForProject,
 } from '../storage';
 import { overdueCountForRoom } from '../itemMaintenance';
 import { itemDisplayLabel } from '../itemCatalog';
 import { firstPhotoUriForRoom } from '../roomPhotos';
+import { firstPhotoUriForProject } from '../projectPhotos';
 import { favoriteHeroPhotosForProperty } from '../propertyFavoritePhotos';
 import { PhotoViewerModal, type ViewerPhoto } from '../components/PhotoViewerModal';
 import {
@@ -53,6 +57,12 @@ import {
   setPropertyRoomViewMode,
   type PropertyRoomViewMode,
 } from '../propertyRoomViewPrefs';
+import {
+  getPropertyProjectViewMode,
+  loadPropertyProjectViewMode,
+  setPropertyProjectViewMode,
+  type PropertyProjectViewMode,
+} from '../propertyProjectViewPrefs';
 import { buildTransferBundle, sliceAppStateForProperty, transferBundleToJson } from '../transfer';
 import { exportBackupToZip } from '../transferPackage';
 
@@ -61,6 +71,7 @@ export function PropertyDetailScreen(props: {
   propertyId: string;
   onBack: () => void;
   onOpenRoom: (roomId: string) => void;
+  onOpenProject: (projectId: string) => void;
   onEditEvent: (itemId: string, eventId: string) => void;
   onLogUpcomingService: (itemId: string, completeFromEventId: string) => void;
   onSave: (state: AppState) => void;
@@ -70,6 +81,7 @@ export function PropertyDetailScreen(props: {
     propertyId,
     onBack,
     onOpenRoom,
+    onOpenProject,
     onEditEvent,
     onLogUpcomingService,
     onSave,
@@ -77,8 +89,12 @@ export function PropertyDetailScreen(props: {
   const insets = useSafeAreaInsets();
   const property = propertyById(state, propertyId);
   const rooms = roomsForProperty(state, propertyId);
+  const projects = projectsForProperty(state, propertyId);
   const [modalOpen, setModalOpen] = useState(false);
   const [roomName, setRoomName] = useState('');
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -87,6 +103,9 @@ export function PropertyDetailScreen(props: {
     getPropertyUpcomingHorizon
   );
   const [roomViewMode, setRoomViewMode] = useState<PropertyRoomViewMode>(getPropertyRoomViewMode);
+  const [projectViewMode, setProjectViewMode] = useState<PropertyProjectViewMode>(
+    getPropertyProjectViewMode
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +114,9 @@ export function PropertyDetailScreen(props: {
     });
     void loadPropertyRoomViewMode().then((mode) => {
       if (!cancelled) setRoomViewMode(mode);
+    });
+    void loadPropertyProjectViewMode().then((mode) => {
+      if (!cancelled) setProjectViewMode(mode);
     });
     return () => {
       cancelled = true;
@@ -174,6 +196,29 @@ export function PropertyDetailScreen(props: {
     setRoomName('');
   }
 
+  function addProject() {
+    const trimmed = projectName.trim();
+    if (!trimmed) {
+      Alert.alert('Name required', 'Enter a project name (e.g. Pool renovation).');
+      return;
+    }
+    const description = projectDescription.trim();
+    const project: Project = {
+      id: uid('project'),
+      propertyId,
+      name: trimmed,
+      description: description || undefined,
+      photoIds: [],
+      sortOrder: nextProjectSortOrder(state, propertyId),
+      createdAtISO: nowISO(),
+    };
+    onSave({ ...state, projects: [...state.projects, project] });
+    setProjectModalOpen(false);
+    setProjectName('');
+    setProjectDescription('');
+    onOpenProject(project.id);
+  }
+
   function openRenameProperty() {
     setRenameDraft(prop.name);
     setRenameOpen(true);
@@ -198,7 +243,7 @@ export function PropertyDetailScreen(props: {
     const propName = prop.name;
     Alert.alert(
       'Delete property?',
-      `Remove "${propName}" and all its rooms, assets, photos, and events?`,
+      `Remove "${propName}" and all its rooms, projects, assets, photos, and events?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -451,6 +496,120 @@ export function PropertyDetailScreen(props: {
           <Text style={sharedStyles.textLink}>Add room</Text>
         </Pressable>
 
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+            Projects
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Pressable
+              onPress={() => {
+                setProjectViewMode('gallery');
+                void setPropertyProjectViewMode('gallery');
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: projectViewMode === 'gallery' }}
+              accessibilityLabel="Compact gallery view"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 6,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name="grid-view"
+                size={22}
+                color={projectViewMode === 'gallery' ? colors.primary : colors.textMuted}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setProjectViewMode('list');
+                void setPropertyProjectViewMode('list');
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: projectViewMode === 'list' }}
+              accessibilityLabel="Detailed list view"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 6,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name="view-list"
+                size={22}
+                color={projectViewMode === 'list' ? colors.primary : colors.textMuted}
+              />
+            </Pressable>
+          </View>
+        </View>
+        {projects.length === 0 ? (
+          <Text style={sharedStyles.emptyText}>
+            Add a project to track contractor bids, like a pool renovation.
+          </Text>
+        ) : projectViewMode === 'gallery' ? (
+          <View style={sharedStyles.galleryRow}>
+            {projects.map((p) => {
+              const vendors = vendorsForProject(state, p.id);
+              const waitingForQuoteCount = vendors.filter(
+                (v) => v.status === 'waiting_for_quote'
+              ).length;
+              return (
+                <ProjectGalleryTile
+                  key={p.id}
+                  name={p.name}
+                  thumbnailUri={firstPhotoUriForProject(state, p)}
+                  vendorCount={vendors.length}
+                  waitingForQuoteCount={waitingForQuoteCount}
+                  onPress={() => onOpenProject(p.id)}
+                />
+              );
+            })}
+          </View>
+        ) : (
+          projects.map((p) => {
+            const vendors = vendorsForProject(state, p.id);
+            const waitingForQuoteCount = vendors.filter(
+              (v) => v.status === 'waiting_for_quote'
+            ).length;
+            return (
+              <ProjectListRow
+                key={p.id}
+                name={p.name}
+                thumbnailUri={firstPhotoUriForProject(state, p)}
+                vendorCount={vendors.length}
+                waitingForQuoteCount={waitingForQuoteCount}
+                onPress={() => onOpenProject(p.id)}
+              />
+            );
+          })
+        )}
+
+        <Pressable
+          onPress={() => {
+            setProjectName('');
+            setProjectDescription('');
+            setProjectModalOpen(true);
+          }}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            paddingVertical: 12,
+            opacity: pressed ? 0.7 : 1,
+            marginTop: 8,
+          })}
+        >
+          <Text style={sharedStyles.textLink}>Add project</Text>
+        </Pressable>
+
         <Pressable
           onPress={openFavoriteSlideshow}
           style={({ pressed }) => ({
@@ -504,6 +663,42 @@ export function PropertyDetailScreen(props: {
             />
             <Pressable
               onPress={addRoom}
+              style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
+            >
+              <Text style={sharedStyles.primaryBtnText}>Save</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={projectModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProjectModalOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setProjectModalOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <Text style={sharedStyles.sectionTitle}>New project</Text>
+            <TextInput
+              value={projectName}
+              onChangeText={setProjectName}
+              placeholder="Pool renovation, kitchen remodel…"
+              style={sharedStyles.input}
+              autoFocus
+            />
+            <TextInput
+              value={projectDescription}
+              onChangeText={setProjectDescription}
+              placeholder="Optional description"
+              style={[sharedStyles.input, sharedStyles.inputMultiline, { marginTop: 8 }]}
+              multiline
+            />
+            <Pressable
+              onPress={addProject}
               style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
             >
               <Text style={sharedStyles.primaryBtnText}>Save</Text>

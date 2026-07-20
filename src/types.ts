@@ -388,6 +388,80 @@ export type ItemEvent = {
   photoIds: string[];
 };
 
+export type VendorStatus =
+  | 'initial_contact'
+  | 'meeting_setup'
+  | 'vendor_onsite'
+  | 'waiting_for_quote'
+  | 'quote_received'
+  | 'rejected';
+
+export type Project = {
+  id: string;
+  propertyId: string;
+  name: string;
+  description?: string;
+  /** Intro note sent to vendors (who you are, scope, timeframe). */
+  vendorIntroNote?: string;
+  photoIds: string[];
+  sortOrder: number;
+  createdAtISO: string;
+};
+
+export type ProjectVendor = {
+  id: string;
+  projectId: string;
+  name: string;
+  contactName?: string;
+  phone?: string;
+  website?: string;
+  status: VendorStatus;
+  notes?: string;
+  /** Summary of this company (quotes, strengths, overall impression). */
+  companySummary?: string;
+  photoIds: string[];
+  documentIds: string[];
+  createdAtISO: string;
+};
+
+export type ProjectPhoto = {
+  id: string;
+  projectId: string;
+  localUri: string;
+  caption?: string;
+  notes?: string;
+  favorite?: boolean;
+  createdAtISO: string;
+};
+
+export type VendorPhoto = {
+  id: string;
+  vendorId: string;
+  localUri: string;
+  caption?: string;
+  notes?: string;
+  createdAtISO: string;
+};
+
+export type VendorContactMethod =
+  | 'website_quote'
+  | 'text_message'
+  | 'email'
+  | 'phone_call'
+  | 'in_person'
+  | 'other';
+
+export type VendorInteraction = {
+  id: string;
+  vendorId: string;
+  contactMethod: VendorContactMethod;
+  /** Vendor-side contact person for this interaction. */
+  contactName?: string;
+  occurredAtISO: string;
+  notes?: string;
+  createdAtISO: string;
+};
+
 export type AppState = {
   version: 1;
   properties: Property[];
@@ -398,6 +472,11 @@ export type AppState = {
   roomPhotos: RoomPhoto[];
   documents: StoredDocument[];
   events: ItemEvent[];
+  projects: Project[];
+  projectVendors: ProjectVendor[];
+  projectPhotos: ProjectPhoto[];
+  vendorPhotos: VendorPhoto[];
+  vendorInteractions: VendorInteraction[];
 };
 
 export const EMPTY_APP_STATE: AppState = {
@@ -410,6 +489,11 @@ export const EMPTY_APP_STATE: AppState = {
   roomPhotos: [],
   documents: [],
   events: [],
+  projects: [],
+  projectVendors: [],
+  projectPhotos: [],
+  vendorPhotos: [],
+  vendorInteractions: [],
 };
 
 export type InventoryTransferBundle = {

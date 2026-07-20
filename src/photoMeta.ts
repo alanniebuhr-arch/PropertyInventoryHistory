@@ -146,3 +146,68 @@ export function setRoomPhotoFavorite(
     ),
   };
 }
+
+export function setProjectPhotoCaptionAndNotes(
+  state: AppState,
+  photoId: string,
+  caption: string,
+  notes: string
+): AppState {
+  const nextCaption = caption.trim() || undefined;
+  const nextNotes = notes.trim() || undefined;
+  return {
+    ...state,
+    projectPhotos: state.projectPhotos.map((photo) =>
+      photo.id === photoId
+        ? { ...photo, caption: nextCaption, notes: nextNotes }
+        : photo
+    ),
+  };
+}
+
+export function setProjectPhotoNotes(
+  state: AppState,
+  photoId: string,
+  notes: string
+): AppState {
+  const nextNotes = notes.trim() || undefined;
+  return {
+    ...state,
+    projectPhotos: state.projectPhotos.map((photo) =>
+      photo.id === photoId ? { ...photo, notes: nextNotes } : photo
+    ),
+  };
+}
+
+export function setProjectPhotoFavorite(
+  state: AppState,
+  photoId: string,
+  favorite: boolean
+): AppState {
+  return {
+    ...state,
+    projectPhotos: state.projectPhotos.map((photo) =>
+      photo.id === photoId
+        ? { ...photo, favorite: favorite || undefined }
+        : photo
+    ),
+  };
+}
+
+export function setVendorPhotoCaptionAndNotes(
+  state: AppState,
+  photoId: string,
+  caption: string,
+  notes: string
+): AppState {
+  const nextCaption = caption.trim() || undefined;
+  const nextNotes = notes.trim() || undefined;
+  return {
+    ...state,
+    vendorPhotos: state.vendorPhotos.map((photo) =>
+      photo.id === photoId
+        ? { ...photo, caption: nextCaption, notes: nextNotes }
+        : photo
+    ),
+  };
+}

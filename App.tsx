@@ -16,6 +16,9 @@ import {
 import { HomeScreen } from './src/screens/HomeScreen';
 import { PropertyDetailScreen } from './src/screens/PropertyDetailScreen';
 import { RoomDetailScreen } from './src/screens/RoomDetailScreen';
+import { ProjectDetailScreen } from './src/screens/ProjectDetailScreen';
+import { VendorDetailScreen } from './src/screens/VendorDetailScreen';
+import { AddEditVendorInteractionScreen } from './src/screens/AddEditVendorInteractionScreen';
 import { ItemDetailScreen } from './src/screens/ItemDetailScreen';
 import { AddEditEventScreen } from './src/screens/AddEditEventScreen';
 import { TransferScreen } from './src/screens/TransferScreen';
@@ -27,6 +30,9 @@ type Route =
   | { name: 'home' }
   | { name: 'property'; propertyId: string }
   | { name: 'room'; roomId: string }
+  | { name: 'project'; projectId: string }
+  | { name: 'vendor'; vendorId: string }
+  | { name: 'vendorInteraction'; vendorId: string; interactionId?: string }
   | { name: 'item'; itemId: string; startEditingSection?: ApplianceEditingSection }
   | { name: 'event'; itemId: string; eventId?: string; completeFromEventId?: string }
   | { name: 'transfer' };
@@ -123,6 +129,7 @@ export default function App() {
             propertyId={route.propertyId}
             onBack={pop}
             onOpenRoom={(roomId) => void openRoom(roomId, (id) => push({ name: 'room', roomId: id }))}
+            onOpenProject={(projectId) => push({ name: 'project', projectId })}
             onEditEvent={(itemId, eventId) => push({ name: 'event', itemId, eventId })}
             onLogUpcomingService={(itemId, completeFromEventId) =>
               push({ name: 'event', itemId, completeFromEventId })
@@ -148,6 +155,50 @@ export default function App() {
             onLogUpcomingService={(itemId, completeFromEventId) =>
               push({ name: 'event', itemId, completeFromEventId })
             }
+            onSave={(next) => void persist(next)}
+          />
+        );
+        break;
+      case 'project':
+        screen = (
+          <ProjectDetailScreen
+            key={route.projectId}
+            state={state}
+            projectId={route.projectId}
+            onBack={pop}
+            onNavigateProject={(nextProjectId) =>
+              replaceTopRoute({ name: 'project', projectId: nextProjectId })
+            }
+            onOpenVendor={(vendorId) => push({ name: 'vendor', vendorId })}
+            onSave={(next) => void persist(next)}
+          />
+        );
+        break;
+      case 'vendor':
+        screen = (
+          <VendorDetailScreen
+            key={route.vendorId}
+            state={state}
+            vendorId={route.vendorId}
+            onBack={pop}
+            onAddInteraction={() =>
+              push({ name: 'vendorInteraction', vendorId: route.vendorId })
+            }
+            onEditInteraction={(interactionId) =>
+              push({ name: 'vendorInteraction', vendorId: route.vendorId, interactionId })
+            }
+            onSave={(next) => void persist(next)}
+          />
+        );
+        break;
+      case 'vendorInteraction':
+        screen = (
+          <AddEditVendorInteractionScreen
+            key={`${route.vendorId}:${route.interactionId ?? ''}`}
+            state={state}
+            vendorId={route.vendorId}
+            interactionId={route.interactionId}
+            onBack={pop}
             onSave={(next) => void persist(next)}
           />
         );

@@ -73,22 +73,6 @@ function prefillsFromSource(source: ItemEvent | undefined): {
   };
 }
 
-function defaultTitleForType(eventType: ItemEventType, itemTypeId?: string): string {
-  if (eventType === 'maintenance') {
-    if (itemTypeId === 'furnace') return 'Annual heating service';
-    if (itemTypeId === 'air_conditioner') return 'Annual AC service';
-    if (itemTypeId === 'automobile') return 'Oil change & inspection';
-    if (itemTypeId === 'waste_water') return 'Waste water service';
-    if (itemTypeId === 'water_treatment') return 'Filter service';
-    return 'Annual maintenance';
-  }
-  if (eventType === 'repair') return 'Repair';
-  if (eventType === 'inspection') return 'Inspection';
-  if (eventType === 'improvement') return 'Improvement';
-  if (eventType === 'fuel_delivery') return 'Fuel delivery';
-  return '';
-}
-
 export function AddEditEventScreen(props: {
   state: AppState;
   itemId: string;
@@ -215,12 +199,6 @@ export function AddEditEventScreen(props: {
     },
     [handleFieldFocus]
   );
-
-  useEffect(() => {
-    if (existing || titleTouched || completeFrom) return;
-    const suggested = defaultTitleForType(eventType, item?.itemTypeId);
-    if (suggested) setTitle(suggested);
-  }, [completeFrom, existing, eventType, item?.itemTypeId, titleTouched]);
 
   useEffect(() => {
     // Editing an open reminder whose last service was already past: date field is next due.
@@ -392,10 +370,6 @@ export function AddEditEventScreen(props: {
   function selectEventType(t: ItemEventType) {
     markDirty();
     setEventType(t);
-    if (!titleTouched) {
-      const suggested = defaultTitleForType(t, it.itemTypeId);
-      if (suggested) setTitle(suggested);
-    }
   }
 
   function handleServiceCompletedChange(on: boolean) {
