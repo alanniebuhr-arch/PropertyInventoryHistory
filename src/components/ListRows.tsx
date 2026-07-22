@@ -44,7 +44,7 @@ export function PropertyListRow(props: {
           style={{
             width: '100%',
             aspectRatio: 16 / 10,
-            borderRadius: 2,
+            borderRadius: 12,
             backgroundColor: colors.photoPlaceholder,
             marginBottom: 12,
           }}
@@ -54,7 +54,7 @@ export function PropertyListRow(props: {
           style={{
             width: '100%',
             aspectRatio: 16 / 10,
-            borderRadius: 2,
+            borderRadius: 12,
             backgroundColor: colors.photoPlaceholder,
             marginBottom: 12,
           }}
@@ -453,9 +453,10 @@ export function VendorInteractionListRow(props: {
   dateLabel: string;
   contactName?: string;
   notes?: string;
+  thumbnailUri?: string;
   onPress?: () => void;
 }) {
-  const { methodLabel, dateLabel, contactName, notes, onPress } = props;
+  const { methodLabel, dateLabel, contactName, notes, thumbnailUri, onPress } = props;
   const notesText = notes?.trim();
   const contactText = contactName?.trim();
   const body = (
@@ -465,21 +466,44 @@ export function VendorInteractionListRow(props: {
           fontSize: 14,
           fontWeight: '500',
           color: colors.text,
-          marginBottom: contactText || notesText ? 8 : 0,
+          marginBottom: thumbnailUri || contactText || notesText ? 8 : 0,
           letterSpacing: -0.1,
         }}
       >
         {dateLabel} · {methodLabel}
       </Text>
-      {contactText ? (
-        <Text style={[sharedStyles.cardMeta, { marginTop: 0 }]} numberOfLines={1}>
-          {contactText}
-        </Text>
-      ) : null}
-      {notesText ? (
-        <Text style={[sharedStyles.cardMeta, contactText ? { marginTop: 4 } : { marginTop: 0 }]} numberOfLines={6}>
-          {notesText}
-        </Text>
+      {thumbnailUri || contactText || notesText ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+          {thumbnailUri ? (
+            <Image
+              source={{ uri: thumbnailUri }}
+              style={{
+                width: EVENT_LIST_THUMB_SIZE,
+                height: EVENT_LIST_THUMB_SIZE,
+                borderRadius: 2,
+                backgroundColor: colors.photoPlaceholder,
+              }}
+            />
+          ) : null}
+          <View style={{ flex: 1 }}>
+            {contactText ? (
+              <Text style={[sharedStyles.cardMeta, { marginTop: 0 }]} numberOfLines={1}>
+                {contactText}
+              </Text>
+            ) : null}
+            {notesText ? (
+              <Text
+                style={[
+                  sharedStyles.cardMeta,
+                  contactText ? { marginTop: 4 } : { marginTop: 0 },
+                ]}
+                numberOfLines={6}
+              >
+                {notesText}
+              </Text>
+            ) : null}
+          </View>
+        </View>
       ) : null}
     </View>
   );
@@ -669,6 +693,7 @@ export function VendorListRow(props: {
   lastInteractionDate?: string;
   lastInteractionTitle?: string;
   lastInteractionNotes?: string;
+  lastInteractionPhotoUri?: string;
   onPress: () => void;
 }) {
   const {
@@ -682,6 +707,7 @@ export function VendorListRow(props: {
     lastInteractionDate,
     lastInteractionTitle,
     lastInteractionNotes,
+    lastInteractionPhotoUri,
     onPress,
   } = props;
   const detailParts = [contactName, phone].filter(Boolean);
@@ -738,28 +764,45 @@ export function VendorListRow(props: {
               gap: 12,
             }}
           >
-            <Text
-              style={[
-                sharedStyles.cardMeta,
-                {
-                  marginTop: 0,
-                  width: showPhotoColumn || lastInteractionDate ? leftColWidth : undefined,
-                  textAlign: showPhotoColumn || lastInteractionDate ? 'center' : 'left',
-                  flexShrink: 0,
-                  color: colors.lastService,
-                },
-              ]}
-              numberOfLines={1}
+            <View
+              style={{
+                width: showPhotoColumn || lastInteractionDate ? leftColWidth : undefined,
+                flexShrink: 0,
+              }}
             >
-              {lastInteractionDate ?? ''}
-            </Text>
+              <Text
+                style={[
+                  sharedStyles.cardMeta,
+                  {
+                    marginTop: 0,
+                    textAlign: showPhotoColumn || lastInteractionDate ? 'center' : 'left',
+                    color: colors.lastService,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {lastInteractionDate ?? ''}
+              </Text>
+              {lastInteractionPhotoUri ? (
+                <Image
+                  source={{ uri: lastInteractionPhotoUri }}
+                  style={{
+                    width: leftColWidth,
+                    height: ITEM_LIST_THUMB_SIZE,
+                    borderRadius: 2,
+                    backgroundColor: colors.photoPlaceholder,
+                    marginTop: 4,
+                  }}
+                />
+              ) : null}
+            </View>
             {lastInteractionLine ? (
               <Text
                 style={[
                   sharedStyles.cardMeta,
                   { marginTop: 0, flex: 1, color: colors.lastService },
                 ]}
-                numberOfLines={3}
+                numberOfLines={lastInteractionPhotoUri ? 6 : 3}
               >
                 {lastInteractionLine}
               </Text>

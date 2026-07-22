@@ -29,6 +29,7 @@ import {
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
+import { hideItemPhotoSlotKey, restoreItemHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import { ElectricPanelForm } from '../screens/itemDetails/ElectricPanelForm';
 
 export function ElectricPanelDisplayView(props: {
@@ -44,11 +45,14 @@ export function ElectricPanelDisplayView(props: {
   const [editingSection, setEditingSection] = useState<'panel' | null>(null);
 
   const extraPhotos = electricPanelExtraPhotos(state, itemId, details);
+  const item = state.items.find((entry) => entry.id === itemId);
+  const hasHiddenSlots = (item?.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots: ELECTRIC_PANEL_PHOTO_SLOTS,
+        hiddenSlotKeys: item?.hiddenPhotoSlotKeys,
         getSlotUri: (key) => electricPanelSlotPhotoUri(state, details, key as ElectricPanelPhotoSlotKey),
         getSlotDocument: (key) =>
           electricPanelSlotDocumentInfo(state, details, key as ElectricPanelPhotoSlotKey),
@@ -82,6 +86,21 @@ export function ElectricPanelDisplayView(props: {
             onSave
           );
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearElectricPanelSlotPhoto(
+              state,
+              itemId,
+              key as ElectricPanelPhotoSlotKey
+            );
+            next = await clearElectricPanelSlotDocument(
+              next,
+              itemId,
+              key as ElectricPanelPhotoSlotKey
+            );
+            onSave(hideItemPhotoSlotKey(next, itemId, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = details[key as ElectricPanelPhotoSlotKey];
           if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
@@ -97,7 +116,7 @@ export function ElectricPanelDisplayView(props: {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [details, extraPhotos, itemId, onSave, state]
+    [details, extraPhotos, item?.hiddenPhotoSlotKeys, itemId, onSave, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
@@ -130,6 +149,8 @@ export function ElectricPanelDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        hasHiddenSlots={hasHiddenSlots}
+        onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
         {photoHeader}
       </PhotoSection>

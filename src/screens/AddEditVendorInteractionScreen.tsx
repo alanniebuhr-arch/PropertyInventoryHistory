@@ -8,9 +8,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { AppState, VendorContactMethod, VendorInteraction } from '../types';
+import type { AppState, VendorContactMethod, VendorInteraction, VendorPhoto } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
-import { MultilineEditModal } from '../components/MultilineEditModal';
+import { InteractionPhotoSection } from '../components/InteractionPhotoSection';
 import { sharedStyles, colors } from '../theme';
 import {
   dateInputValue,
@@ -21,6 +21,7 @@ import {
 } from '../utils';
 import {
   deleteVendorInteractionCascade,
+  photosForVendorInteraction,
   vendorById,
   vendorInteractionById,
 } from '../storage';
@@ -28,6 +29,7 @@ import {
   VENDOR_CONTACT_METHOD_OPTIONS,
   vendorContactMethodLabel,
 } from '../vendorContactMethod';
+import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
 
 export function AddEditVendorInteractionScreen(props: {
   state: AppState;
@@ -51,7 +53,10 @@ export function AddEditVendorInteractionScreen(props: {
     existing?.contactName ?? vendor?.contactName ?? ''
   );
   const [notes, setNotes] = useState(existing?.notes ?? '');
-  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  /** Draft photos while editing — persisted on Save (same pattern as eventPhotos). */
+  const [interactionPhotos, setInteractionPhotos] = useState<VendorPhoto[]>(() =>
+    existing ? photosForVendorInteraction(state, existing.id) : []
+  );
 
   if (!vendor) {
     return (
@@ -78,6 +83,47 @@ export function AddEditVendorInteractionScreen(props: {
     );
   }
 
+  async function addInteractionPhotos(sourceUris: string[]) {
+    if (sourceUris.length === 0) return [];
+    const newPhotos: VendorPhoto[] = await Promise.all(
+      sourceUris.map(async (sourceUri) => {
+        const photoId = uid('photo');
+        const localUri = await persistPhotoFromUri(sourceUri, photoId);
+        return {
+          id: photoId,
+          vendorId,
+          interactionId: existing?.id,
+          localUri,
+          createdAtISO: nowISO(),
+        };
+      })
+    );
+    setInteractionPhotos((prev) => [...prev, ...newPhotos]);
+    return newPhotos.map((photo) => photo.id);
+  }
+
+  function handleInteractionPhotoLabel(photoId: string, label: string, notesValue: string) {
+    const trimmed = label.trim();
+    const trimmedNotes = notesValue.trim();
+    setInteractionPhotos((prev) =>
+      prev.map((photo) =>
+        photo.id === photoId
+          ? {
+              ...photo,
+              caption: trimmed || undefined,
+              notes: trimmedNotes || undefined,
+            }
+          : photo
+      )
+    );
+  }
+
+  async function removeInteractionPhoto(photoId: string) {
+    const photo = interactionPhotos.find((p) => p.id === photoId);
+    if (photo) await deletePhotoFile(photo.localUri);
+    setInteractionPhotos((prev) => prev.filter((p) => p.id !== photoId));
+  }
+
   function saveInteraction() {
     const occurredAtISO = parseDateInputToISO(dateStr);
     if (!occurredAtISO) {
@@ -86,34 +132,65 @@ export function AddEditVendorInteractionScreen(props: {
     }
     const trimmedContact = contactName.trim();
     const trimmedNotes = notes.trim();
+    const photoIds = interactionPhotos.map((p) => p.id);
 
     if (existing) {
+      // Mirror AddEditEventScreen event-photo merge on edit.
+      const removedPhotoIds = new Set(
+        photosForVendorInteraction(state, existing.id)
+          .map((p) => p.id)
+          .filter((id) => !photoIds.includes(id))
+      );
+      const updatedPhotos = interactionPhotos.map((p) => ({
+        ...p,
+        interactionId: existing.id,
+      }));
+      const keptPhotos = state.vendorPhotos.filter(
+        (p) => p.interactionId !== existing.id || !removedPhotoIds.has(p.id)
+      );
+      const newPhotos = updatedPhotos.filter((p) => !state.vendorPhotos.some((x) => x.id === p.id));
+      // Prefer draft captions/notes for photos that already existed (draft is source of truth).
+      const mergedPhotos = keptPhotos.map((p) => {
+        if (p.interactionId !== existing.id) return p;
+        return updatedPhotos.find((d) => d.id === p.id) ?? p;
+      });
+
       const updated: VendorInteraction = {
         ...existing,
         contactMethod,
         contactName: trimmedContact || undefined,
         occurredAtISO,
         notes: trimmedNotes || undefined,
+        photoIds,
       };
       onSave({
         ...state,
         vendorInteractions: state.vendorInteractions.map((i) =>
           i.id === existing.id ? updated : i
         ),
+        vendorPhotos: [...mergedPhotos, ...newPhotos],
       });
     } else {
+      // Mirror AddEditEventScreen create path.
+      const newInteractionId = uid('interaction');
+      const photoRecords = interactionPhotos.map((p) => ({
+        ...p,
+        interactionId: newInteractionId,
+      }));
       const interaction: VendorInteraction = {
-        id: uid('interaction'),
+        id: newInteractionId,
         vendorId,
         contactMethod,
         contactName: trimmedContact || undefined,
         occurredAtISO,
         notes: trimmedNotes || undefined,
+        photoIds,
         createdAtISO: nowISO(),
       };
       onSave({
         ...state,
         vendorInteractions: [...state.vendorInteractions, interaction],
+        vendorPhotos: [...state.vendorPhotos, ...photoRecords],
       });
     }
     onBack();
@@ -127,14 +204,17 @@ export function AddEditVendorInteractionScreen(props: {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          onSave(deleteVendorInteractionCascade(state, existing.id));
-          onBack();
+          void (async () => {
+            for (const photo of interactionPhotos) {
+              await deletePhotoFile(photo.localUri);
+            }
+            onSave(deleteVendorInteractionCascade(state, existing.id));
+            onBack();
+          })();
         },
       },
     ]);
   }
-
-  const notesPreview = notes.trim();
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
@@ -234,39 +314,25 @@ export function AddEditVendorInteractionScreen(props: {
         />
 
         <Text style={sharedStyles.fieldLabel}>Notes</Text>
-        <Pressable
-          onPress={() => setNotesModalOpen(true)}
-          accessibilityRole="button"
-          accessibilityHint="Opens a larger editor for conversation notes"
-          style={({ pressed }) => [
-            sharedStyles.input,
-            sharedStyles.inputMultiline,
-            {
-              minHeight: 120,
-              opacity: pressed ? 0.85 : 1,
-            },
-          ]}
-        >
-          <Text
-            style={{
-              fontSize: 16,
-              lineHeight: 22,
-              color: notesPreview ? colors.text : colors.textMuted,
-            }}
-          >
-            {notesPreview || 'Notes from the conversation'}
-          </Text>
-        </Pressable>
-      </ScrollView>
+        <TextInput
+          style={[sharedStyles.input, sharedStyles.inputMultiline, { minHeight: 120 }]}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Notes from the conversation"
+          placeholderTextColor={colors.textMuted}
+          multiline
+        />
 
-      <MultilineEditModal
-        visible={notesModalOpen}
-        title="Conversation notes"
-        value={notes}
-        placeholder="Notes from the conversation"
-        onSave={(next) => setNotes(next)}
-        onClose={() => setNotesModalOpen(false)}
-      />
+        <InteractionPhotoSection
+          photos={interactionPhotos}
+          onAddPhotos={addInteractionPhotos}
+          onDeletePhoto={(photoId) => {
+            void removeInteractionPhoto(photoId);
+          }}
+          onLabelPhoto={handleInteractionPhotoLabel}
+          hint="Attach screenshots, quotes, or photos from this interaction."
+        />
+      </ScrollView>
     </View>
   );
 }

@@ -28,6 +28,7 @@ import {
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
+import { hideItemPhotoSlotKey, restoreItemHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import { WaterTreatmentForm } from '../screens/itemDetails/WaterTreatmentForm';
 
 export function WaterTreatmentDisplayView(props: {
@@ -43,11 +44,14 @@ export function WaterTreatmentDisplayView(props: {
   const [editingSection, setEditingSection] = useState<'treatment' | null>(null);
 
   const extraPhotos = waterTreatmentExtraPhotos(state, itemId, details);
+  const item = state.items.find((entry) => entry.id === itemId);
+  const hasHiddenSlots = (item?.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots: WATER_TREATMENT_PHOTO_SLOTS,
+        hiddenSlotKeys: item?.hiddenPhotoSlotKeys,
         getSlotUri: (key) =>
           waterTreatmentSlotPhotoUri(state, details, key as WaterTreatmentPhotoSlotKey),
         getSlotDocument: (key) =>
@@ -91,6 +95,21 @@ export function WaterTreatmentDisplayView(props: {
             key as WaterTreatmentPhotoSlotKey
           ).then(onSave);
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearWaterTreatmentSlotPhoto(
+              state,
+              itemId,
+              key as WaterTreatmentPhotoSlotKey
+            );
+            next = await clearWaterTreatmentSlotDocument(
+              next,
+              itemId,
+              key as WaterTreatmentPhotoSlotKey
+            );
+            onSave(hideItemPhotoSlotKey(next, itemId, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = details[key as WaterTreatmentPhotoSlotKey];
           if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
@@ -106,7 +125,7 @@ export function WaterTreatmentDisplayView(props: {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [details, extraPhotos, itemId, onSave, state]
+    [details, extraPhotos, item?.hiddenPhotoSlotKeys, itemId, onSave, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
@@ -142,6 +161,8 @@ export function WaterTreatmentDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        hasHiddenSlots={hasHiddenSlots}
+        onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
         {photoHeader}
       </PhotoSection>

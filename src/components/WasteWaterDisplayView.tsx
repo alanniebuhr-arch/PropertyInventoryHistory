@@ -29,6 +29,7 @@ import {
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
+import { hideItemPhotoSlotKey, restoreItemHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import {
   WasteWaterForm,
   WasteWaterNotesFields,
@@ -48,11 +49,14 @@ export function WasteWaterDisplayView(props: {
 
   const slots = wasteWaterPhotoSlotsForDetails(details);
   const extraPhotos = wasteWaterExtraPhotos(state, itemId, details);
+  const item = state.items.find((entry) => entry.id === itemId);
+  const hasHiddenSlots = (item?.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots,
+        hiddenSlotKeys: item?.hiddenPhotoSlotKeys,
         getSlotUri: (key) => wasteWaterSlotPhotoUri(state, details, key as WasteWaterPhotoSlotKey),
         getSlotDocument: (key) =>
           wasteWaterSlotDocumentInfo(state, details, key as WasteWaterPhotoSlotKey),
@@ -86,6 +90,13 @@ export function WasteWaterDisplayView(props: {
             onSave
           );
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearWasteWaterSlotPhoto(state, itemId, key as WasteWaterPhotoSlotKey);
+            next = await clearWasteWaterSlotDocument(next, itemId, key as WasteWaterPhotoSlotKey);
+            onSave(hideItemPhotoSlotKey(next, itemId, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = details[key as WasteWaterPhotoSlotKey];
           if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
@@ -101,7 +112,7 @@ export function WasteWaterDisplayView(props: {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [details, extraPhotos, itemId, onSave, slots, state]
+    [details, extraPhotos, item?.hiddenPhotoSlotKeys, itemId, onSave, slots, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
@@ -138,6 +149,8 @@ export function WasteWaterDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        hasHiddenSlots={hasHiddenSlots}
+        onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
         {photoHeader}
       </PhotoSection>

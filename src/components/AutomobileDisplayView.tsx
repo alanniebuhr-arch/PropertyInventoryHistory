@@ -32,6 +32,7 @@ import {
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
+import { hideItemPhotoSlotKey, restoreItemHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import {
   AutomobileMaintenanceFields,
   AutomobileNotesFields,
@@ -55,11 +56,14 @@ export function AutomobileDisplayView(props: {
   >(null);
 
   const extraPhotos = automobileExtraPhotos(state, itemId, details);
+  const item = state.items.find((entry) => entry.id === itemId);
+  const hasHiddenSlots = (item?.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots: AUTOMOBILE_PHOTO_SLOTS,
+        hiddenSlotKeys: item?.hiddenPhotoSlotKeys,
         getSlotUri: (key) =>
           automobileSlotPhotoUri(state, details, key as AutomobilePhotoSlotKey),
         getSlotDocument: (key) =>
@@ -96,6 +100,13 @@ export function AutomobileDisplayView(props: {
             onSave
           );
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearAutomobileSlotPhoto(state, itemId, key as AutomobilePhotoSlotKey);
+            next = await clearAutomobileSlotDocument(next, itemId, key as AutomobilePhotoSlotKey);
+            onSave(hideItemPhotoSlotKey(next, itemId, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = details[key as AutomobilePhotoSlotKey];
           if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
@@ -111,7 +122,7 @@ export function AutomobileDisplayView(props: {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [details, extraPhotos, itemId, onSave, state]
+    [details, extraPhotos, item?.hiddenPhotoSlotKeys, itemId, onSave, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
@@ -148,6 +159,8 @@ export function AutomobileDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        hasHiddenSlots={hasHiddenSlots}
+        onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
         {photoHeader}
       </PhotoSection>

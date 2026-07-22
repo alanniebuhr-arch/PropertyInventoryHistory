@@ -17,6 +17,7 @@ import {
   setRoomSlotPhoto,
 } from '../roomPhotos';
 import { setRoomPhotoCaptionAndNotes, setRoomPhotoFavorite, setRoomPhotoNotes } from '../photoMeta';
+import { hideRoomPhotoSlotKey, restoreRoomHiddenPhotoSlots } from '../hiddenPhotoSlots';
 
 export function RoomPhotosSection(props: {
   state: AppState;
@@ -31,11 +32,13 @@ export function RoomPhotosSection(props: {
 
   const extraPhotos = photosForRoom(state, roomId);
   const roomSlots = useMemo(() => roomPhotoSlotsForRoom(room), [room]);
+  const hasHiddenSlots = (room.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots: roomSlots,
+        hiddenSlotKeys: room.hiddenPhotoSlotKeys,
         getSlotUri: (key) => roomSlotPhotoUri(state, room, key as RoomSlotKey),
         getSlotDocument: (key) => roomSlotDocumentInfo(state, room, key as RoomSlotKey),
         getSlotNotes: (key) => {
@@ -70,6 +73,13 @@ export function RoomPhotosSection(props: {
         },
         onDeleteSlotDocument: (key) => {
           void clearRoomSlotDocument(state, roomId, key as RoomSlotKey).then(onSave);
+        },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearRoomSlotPhoto(state, roomId, key as RoomSlotKey);
+            next = await clearRoomSlotDocument(next, roomId, key as RoomSlotKey);
+            onSave(hideRoomPhotoSlotKey(next, roomId, key));
+          })();
         },
         onLabelSlot: (key, notes) => {
           const attachment = room.slotAttachments?.[key as RoomSlotKey];
@@ -107,6 +117,8 @@ export function RoomPhotosSection(props: {
       onAddPhotos={handleAddRoomPhotos}
       onActiveHeroLabelChange={onActiveHeroLabelChange}
       childrenGesture={childrenGesture}
+      hasHiddenSlots={hasHiddenSlots}
+      onRestoreHiddenSlots={() => onSave(restoreRoomHiddenPhotoSlots(state, roomId))}
     >
       {children}
     </PhotoSection>

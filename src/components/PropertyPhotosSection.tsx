@@ -19,6 +19,10 @@ import {
   setPropertyPhotoFavorite,
   setPropertyPhotoNotes,
 } from '../photoMeta';
+import {
+  hidePropertyPhotoSlotKey,
+  restorePropertyHiddenPhotoSlots,
+} from '../hiddenPhotoSlots';
 
 export function PropertyPhotosSection(props: {
   state: AppState;
@@ -29,10 +33,12 @@ export function PropertyPhotosSection(props: {
   const { state, property, onSave, children } = props;
 
   const extraPhotos = propertyExtraPhotos(state, property.id);
+  const hasHiddenSlots = (property.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildPropertyPhotoTiles({
+        hiddenSlotKeys: property.hiddenPhotoSlotKeys,
         getSlotUri: (key) => propertySlotPhotoUri(state, property, key as PropertyPhotoSlotKey),
         getSlotDocument: (key) =>
           propertySlotDocumentInfo(state, property, key as PropertyPhotoSlotKey),
@@ -72,6 +78,21 @@ export function PropertyPhotosSection(props: {
             onSave
           );
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearPropertySlotPhoto(
+              state,
+              property.id,
+              key as PropertyPhotoSlotKey
+            );
+            next = await clearPropertySlotDocument(
+              next,
+              property.id,
+              key as PropertyPhotoSlotKey
+            );
+            onSave(hidePropertyPhotoSlotKey(next, property.id, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = property[key as PropertyPhotoSlotKey];
           if (photoId) onSave(setPropertyPhotoNotes(state, photoId, notes));
@@ -99,7 +120,12 @@ export function PropertyPhotosSection(props: {
   }
 
   return (
-    <PhotoSection tiles={photoTiles} onAddPhotos={handleAddExtraPhotos}>
+    <PhotoSection
+      tiles={photoTiles}
+      onAddPhotos={handleAddExtraPhotos}
+      hasHiddenSlots={hasHiddenSlots}
+      onRestoreHiddenSlots={() => onSave(restorePropertyHiddenPhotoSlots(state, property.id))}
+    >
       {children}
     </PhotoSection>
   );

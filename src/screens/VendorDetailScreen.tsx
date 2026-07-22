@@ -1,17 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Linking,
+  Modal,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, ProjectVendor, VendorStatus } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { VendorPhotosSection } from '../components/VendorPhotosSection';
-import { MultilineEditModal } from '../components/MultilineEditModal';
+import { VendorExportSheet } from '../components/VendorExportSheet';
 import { VendorInteractionListRow } from '../components/ListRows';
 import { DetailDisplayRow } from '../components/DetailDisplayRow';
 import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
@@ -19,6 +24,7 @@ import { sharedStyles, colors } from '../theme';
 import {
   deleteVendorCascade,
   interactionsForVendor,
+  photosForVendorInteraction,
   projectById,
   vendorById,
 } from '../storage';
@@ -27,6 +33,8 @@ import { deletePhotoFile } from '../photoStorage';
 import { VENDOR_STATUS_OPTIONS, vendorStatusLabel } from '../vendorStatus';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { formatDate } from '../utils';
+import { buildVendorExportSnapshot, type VendorExportSnapshot } from '../vendorExportContent';
+import { shareViewAsPng } from '../shareViewImage';
 
 export function VendorDetailScreen(props: {
   state: AppState;
@@ -48,8 +56,10 @@ export function VendorDetailScreen(props: {
   const [websiteDraft, setWebsiteDraft] = useState('');
   const [notesDraft, setNotesDraft] = useState('');
   const [companySummaryDraft, setCompanySummaryDraft] = useState('');
-  const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [exportSnapshot, setExportSnapshot] = useState<VendorExportSnapshot | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<View>(null);
 
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'vendorDetailEditDone',
@@ -74,6 +84,36 @@ export function VendorDetailScreen(props: {
     vendor?.notes,
     vendor?.companySummary,
   ]);
+
+  const runVendorExport = useCallback(async () => {
+    const snapshot = buildVendorExportSnapshot(state, vendorId);
+    if (!snapshot) {
+      Alert.alert('Export failed', 'Could not build vendor summary.');
+      return;
+    }
+    setExportSnapshot(snapshot);
+    setExporting(true);
+  }, [state, vendorId]);
+
+  useEffect(() => {
+    if (!exportSnapshot || !exporting) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        await shareViewAsPng(exportRef, `Share ${exportSnapshot.title}`);
+        if (!cancelled) {
+          setExportSnapshot(null);
+          setExporting(false);
+        }
+      })();
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [exportSnapshot, exporting]);
 
   if (!vendor) {
     return (
@@ -146,14 +186,6 @@ export function VendorDetailScreen(props: {
     );
   }
 
-  function saveNotes(nextNotes: string) {
-    const trimmed = nextNotes.trim();
-    setNotesDraft(trimmed);
-    if (!isEditing) {
-      updateVendor({ notes: trimmed || undefined });
-    }
-  }
-
   function confirmDeleteVendor() {
     Alert.alert(
       'Delete vendor?',
@@ -175,12 +207,48 @@ export function VendorDetailScreen(props: {
     );
   }
 
-  const notesPreview = notesDraft.trim();
-  const summaryPreview = companySummaryDraft.trim();
+  function openVendorWebsite() {
+    const raw = vnd.website?.trim();
+    if (!raw) return;
+    const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    void Linking.openURL(url).catch(() => {
+      Alert.alert('Could not open website', 'Check that the website address is valid.');
+    });
+  }
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScreenBackHeader onPress={onBack} />
+      <ScreenBackHeader onPress={onBack}>
+        <Pressable
+          onPress={() => void runVendorExport()}
+          disabled={exporting}
+          accessibilityRole="button"
+          accessibilityLabel="Share vendor"
+          accessibilityHint="Creates an image of this vendor and opens the share sheet."
+          hitSlop={8}
+          style={({ pressed }) => [
+            {
+              marginLeft: 'auto',
+              width: 42,
+              height: 36,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: colors.border,
+              borderRadius: 4,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'transparent',
+              opacity: exporting ? 0.6 : 1,
+            },
+            pressed && !exporting && { opacity: 0.8 },
+          ]}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <MaterialIcons name="ios-share" size={22} color={colors.primary} />
+          )}
+        </Pressable>
+      </ScreenBackHeader>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[sharedStyles.content, { paddingTop: 0, paddingBottom: 40 }]}
@@ -286,29 +354,15 @@ export function VendorDetailScreen(props: {
             </Pressable>
 
             <Text style={sharedStyles.fieldLabel}>Notes</Text>
-            <Pressable
-              onPress={() => setNotesModalOpen(true)}
-              accessibilityRole="button"
-              accessibilityHint="Opens a larger editor for vendor notes"
-              style={({ pressed }) => [
-                sharedStyles.input,
-                sharedStyles.inputMultiline,
-                {
-                  minHeight: 96,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  lineHeight: 22,
-                  color: notesPreview ? colors.text : colors.textMuted,
-                }}
-              >
-                {notesPreview || 'Internal notes about this vendor'}
-              </Text>
-            </Pressable>
+            <TextInput
+              style={[sharedStyles.input, sharedStyles.inputMultiline, { minHeight: 96 }]}
+              value={notesDraft}
+              onChangeText={setNotesDraft}
+              placeholder="Internal notes about this vendor"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              {...keyboardDone.textInputProps}
+            />
 
             <Text style={sharedStyles.fieldLabel}>Summary of company</Text>
             <TextInput
@@ -326,7 +380,7 @@ export function VendorDetailScreen(props: {
             <DetailDisplayRow label="Company name" value={vnd.name} />
             <DetailDisplayRow label="Contact name" value={vnd.contactName} />
             <DetailDisplayRow label="Phone" value={vnd.phone} />
-            <DetailDisplayRow label="Website" value={vnd.website} />
+            <DetailDisplayRow label="Website" value={vnd.website} onPress={openVendorWebsite} />
             <DetailDisplayRow label="Status" value={vendorStatusLabel(vnd.status)} />
             <DetailDisplayRow label="Notes" value={vnd.notes} stacked />
             <DetailDisplayRow label="Summary of company" value={vnd.companySummary} stacked />
@@ -348,6 +402,7 @@ export function VendorDetailScreen(props: {
                   dateLabel={formatDate(interaction.occurredAtISO)}
                   contactName={interaction.contactName}
                   notes={interaction.notes}
+                  thumbnailUri={photosForVendorInteraction(state, interaction.id)[0]?.localUri}
                   onPress={() => onEditInteraction(interaction.id)}
                 />
               ))}
@@ -375,14 +430,33 @@ export function VendorDetailScreen(props: {
 
       {isEditing ? keyboardDone.accessory : null}
 
-      <MultilineEditModal
-        visible={notesModalOpen}
-        title="Vendor notes"
-        value={notesDraft}
-        placeholder="Internal notes about this vendor"
-        onSave={saveNotes}
-        onClose={() => setNotesModalOpen(false)}
-      />
+      <Modal visible={exportSnapshot != null} transparent animationType="none" onRequestClose={() => {}}>
+        <View
+          style={{ position: 'absolute', left: 0, top: 0, opacity: 0 }}
+          pointerEvents="none"
+        >
+          <View ref={exportRef} collapsable={false}>
+            {exportSnapshot ? <VendorExportSheet snapshot={exportSnapshot} /> : null}
+          </View>
+        </View>
+      </Modal>
+
+      {exporting ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.25)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      ) : null}
     </View>
   );
 }

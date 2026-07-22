@@ -27,6 +27,7 @@ import { uid, nowISO, formatDate } from '../utils';
 import {
   deleteProjectCascade,
   interactionsForVendor,
+  photosForVendorInteraction,
   projectById,
   projectsForProperty,
   propertyById,
@@ -68,6 +69,7 @@ export function ProjectDetailScreen(props: {
   const [newVendorName, setNewVendorName] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [vendorViewMode, setVendorViewMode] = useState<ProjectVendorViewMode>(getProjectVendorViewMode);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [introDraft, setIntroDraft] = useState('');
@@ -281,6 +283,17 @@ export function ProjectDetailScreen(props: {
     );
   }
 
+  function openAddVendor() {
+    setNewVendorName('');
+    setAddVendorOpen(true);
+  }
+
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    // Let the menu dismiss before opening another alert/modal.
+    setTimeout(action, 50);
+  }
+
   const vendorsSection = (
     <>
       <View
@@ -293,9 +306,23 @@ export function ProjectDetailScreen(props: {
           marginBottom: 8,
         }}
       >
-        <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-          Vendors
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+            Vendors
+          </Text>
+          <Pressable
+            onPress={openAddVendor}
+            accessibilityRole="button"
+            accessibilityLabel="Add vendor"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="add" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Pressable
             onPress={() => {
@@ -357,6 +384,9 @@ export function ProjectDetailScreen(props: {
         <>
           {vendors.map((vendor) => {
             const lastInteraction = interactionsForVendor(state, vendor.id)[0];
+            const lastInteractionPhoto = lastInteraction
+              ? photosForVendorInteraction(state, lastInteraction.id)[0]
+              : undefined;
             return (
               <VendorListRow
                 key={vendor.id}
@@ -376,6 +406,7 @@ export function ProjectDetailScreen(props: {
                     : undefined
                 }
                 lastInteractionNotes={lastInteraction?.notes}
+                lastInteractionPhotoUri={lastInteractionPhoto?.localUri}
                 onPress={() => onOpenVendor(vendor.id)}
               />
             );
@@ -395,61 +426,55 @@ export function ProjectDetailScreen(props: {
           </Text>
         </>
       )}
-
-      <Pressable
-        onPress={() => {
-          setNewVendorName('');
-          setAddVendorOpen(true);
-        }}
-        style={({ pressed }) => ({
-          alignSelf: 'flex-start',
-          paddingVertical: 10,
-          opacity: pressed ? 0.7 : 1,
-          marginTop: 4,
-          marginBottom: 8,
-        })}
-      >
-        <Text style={sharedStyles.textLink}>Add vendor</Text>
-      </Pressable>
-
-      <Pressable onPress={confirmDeleteProject} style={sharedStyles.dangerBtn}>
-        <Text style={sharedStyles.dangerBtnText}>Delete project</Text>
-      </Pressable>
     </>
   );
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScreenBackHeader onPress={onBack}>
-        <Pressable
-          onPress={() => void runProjectExport()}
-          disabled={exporting}
-          accessibilityRole="button"
-          accessibilityLabel="Share project"
-          accessibilityHint="Creates an image of this project and opens the share sheet."
-          hitSlop={8}
-          style={({ pressed }) => [
-            {
-              marginLeft: 'auto',
-              width: 42,
-              height: 36,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: colors.border,
-              borderRadius: 4,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: 'transparent',
-              opacity: exporting ? 0.6 : 1,
-            },
-            pressed && !exporting && { opacity: 0.8 },
-          ]}
-        >
-          {exporting ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <MaterialIcons name="ios-share" size={22} color={colors.primary} />
-          )}
-        </Pressable>
+        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={() => void runProjectExport()}
+            disabled={exporting}
+            accessibilityRole="button"
+            accessibilityLabel="Share project"
+            accessibilityHint="Creates an image of this project and opens the share sheet."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                width: 42,
+                height: 36,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'transparent',
+                opacity: exporting ? 0.6 : 1,
+              },
+              pressed && !exporting && { opacity: 0.8 },
+            ]}
+          >
+            {exporting ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <MaterialIcons name="ios-share" size={22} color={colors.primary} />
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Project options"
+            accessibilityHint="Opens actions like new vendor and delete project."
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="settings" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
       </ScreenBackHeader>
       <ScrollView
         style={{ flex: 1 }}
@@ -545,6 +570,81 @@ export function ProjectDetailScreen(props: {
       </ScrollView>
 
       {keyboardDone.accessory}
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.card,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {proj.name}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => runMenuAction(openAddVendor)}
+              accessibilityRole="button"
+              accessibilityLabel="New vendor"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                New vendor
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => runMenuAction(confirmDeleteProject)}
+              accessibilityRole="button"
+              accessibilityLabel="Delete project"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.danger }}>
+                Delete project
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(false)}
+              style={({ pressed }) => [
+                sharedStyles.secondaryBtn,
+                { marginTop: 8 },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <RenameModal
         visible={addVendorOpen}

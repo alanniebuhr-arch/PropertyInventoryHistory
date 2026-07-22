@@ -3,6 +3,7 @@ import { photosForProject } from './projectPhotos';
 import { photosForVendor } from './vendorPhotos';
 import {
   interactionsForVendor,
+  photosForVendorInteraction,
   projectById,
   propertyById,
   vendorsForProject,
@@ -17,6 +18,7 @@ export type ProjectExportPhoto = { uri: string; label: string };
 export type ProjectExportInteraction = {
   date: string;
   detail: string;
+  photos: ProjectExportPhoto[];
 };
 export type ProjectExportVendor = {
   title: string;
@@ -70,6 +72,10 @@ function buildVendorExport(state: AppState, vendor: ProjectVendor): ProjectExpor
   const interactions = interactionsForVendor(state, vendor.id).map((interaction) => ({
     date: formatDate(interaction.occurredAtISO),
     detail: interactionDetail(interaction),
+    photos: photosForVendorInteraction(state, interaction.id).map((photo) => ({
+      uri: photo.localUri,
+      label: photo.caption?.trim() || 'Photo',
+    })),
   }));
 
   const photos = photosForVendor(state, vendor.id).map((photo) => ({

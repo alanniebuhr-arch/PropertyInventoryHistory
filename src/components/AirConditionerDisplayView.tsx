@@ -32,6 +32,7 @@ import {
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
+import { hideItemPhotoSlotKey, restoreItemHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import {
   AirConditionerEquipmentFields,
   AirConditionerInstallFields,
@@ -54,11 +55,14 @@ export function AirConditionerDisplayView(props: {
   >(null);
 
   const extraPhotos = airConditionerExtraPhotos(state, itemId, details);
+  const item = state.items.find((entry) => entry.id === itemId);
+  const hasHiddenSlots = (item?.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots: AIR_CONDITIONER_PHOTO_SLOTS,
+        hiddenSlotKeys: item?.hiddenPhotoSlotKeys,
         getSlotUri: (key) =>
           airConditionerSlotPhotoUri(state, details, key as AirConditionerPhotoSlotKey),
         getSlotDocument: (key) =>
@@ -102,6 +106,21 @@ export function AirConditionerDisplayView(props: {
             key as AirConditionerPhotoSlotKey
           ).then(onSave);
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearAirConditionerSlotPhoto(
+              state,
+              itemId,
+              key as AirConditionerPhotoSlotKey
+            );
+            next = await clearAirConditionerSlotDocument(
+              next,
+              itemId,
+              key as AirConditionerPhotoSlotKey
+            );
+            onSave(hideItemPhotoSlotKey(next, itemId, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = details[key as AirConditionerPhotoSlotKey];
           if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
@@ -117,7 +136,7 @@ export function AirConditionerDisplayView(props: {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [details, extraPhotos, itemId, onSave, state]
+    [details, extraPhotos, item?.hiddenPhotoSlotKeys, itemId, onSave, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
@@ -154,6 +173,8 @@ export function AirConditionerDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        hasHiddenSlots={hasHiddenSlots}
+        onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
         {photoHeader}
       </PhotoSection>

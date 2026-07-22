@@ -31,6 +31,7 @@ import {
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
+import { hideItemPhotoSlotKey, restoreItemHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import {
   ApplianceIdentityFields,
   AppliancePurchaseFields,
@@ -57,11 +58,14 @@ export function ApplianceDisplayView(props: {
   );
 
   const extraPhotos = applianceExtraPhotos(state, itemId, details);
+  const item = state.items.find((entry) => entry.id === itemId);
+  const hasHiddenSlots = (item?.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots: APPLIANCE_PHOTO_SLOTS,
+        hiddenSlotKeys: item?.hiddenPhotoSlotKeys,
         getSlotUri: (key) => applianceSlotPhotoUri(state, details, key as AppliancePhotoSlotKey),
         getSlotDocument: (key) =>
           applianceSlotDocumentInfo(state, details, key as AppliancePhotoSlotKey),
@@ -93,6 +97,13 @@ export function ApplianceDisplayView(props: {
         onDeleteSlotDocument: (key) => {
           void clearApplianceSlotDocument(state, itemId, key as AppliancePhotoSlotKey).then(onSave);
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearApplianceSlotPhoto(state, itemId, key as AppliancePhotoSlotKey);
+            next = await clearApplianceSlotDocument(next, itemId, key as AppliancePhotoSlotKey);
+            onSave(hideItemPhotoSlotKey(next, itemId, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = details[key as AppliancePhotoSlotKey];
           if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
@@ -108,7 +119,7 @@ export function ApplianceDisplayView(props: {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [details, extraPhotos, itemId, onSave, state]
+    [details, extraPhotos, item?.hiddenPhotoSlotKeys, itemId, onSave, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
@@ -152,6 +163,8 @@ export function ApplianceDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        hasHiddenSlots={hasHiddenSlots}
+        onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
         {photoHeader}
       </PhotoSection>

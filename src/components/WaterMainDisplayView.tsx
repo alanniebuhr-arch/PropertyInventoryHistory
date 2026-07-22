@@ -30,6 +30,7 @@ import {
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
+import { hideItemPhotoSlotKey, restoreItemHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import { WaterMainForm } from '../screens/itemDetails/WaterMainForm';
 
 export function WaterMainDisplayView(props: {
@@ -46,11 +47,14 @@ export function WaterMainDisplayView(props: {
 
   const slots = waterMainPhotoSlotsForSource(details);
   const extraPhotos = waterMainExtraPhotos(state, itemId, details);
+  const item = state.items.find((entry) => entry.id === itemId);
+  const hasHiddenSlots = (item?.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots,
+        hiddenSlotKeys: item?.hiddenPhotoSlotKeys,
         getSlotUri: (key) => waterMainSlotPhotoUri(state, details, key as WaterMainPhotoSlotKey),
         getSlotDocument: (key) =>
           waterMainSlotDocumentInfo(state, details, key as WaterMainPhotoSlotKey),
@@ -82,6 +86,13 @@ export function WaterMainDisplayView(props: {
         onDeleteSlotDocument: (key) => {
           void clearWaterMainSlotDocument(state, itemId, key as WaterMainPhotoSlotKey).then(onSave);
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearWaterMainSlotPhoto(state, itemId, key as WaterMainPhotoSlotKey);
+            next = await clearWaterMainSlotDocument(next, itemId, key as WaterMainPhotoSlotKey);
+            onSave(hideItemPhotoSlotKey(next, itemId, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = details[key as WaterMainPhotoSlotKey];
           if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
@@ -97,7 +108,7 @@ export function WaterMainDisplayView(props: {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [details, extraPhotos, itemId, onSave, slots, state]
+    [details, extraPhotos, item?.hiddenPhotoSlotKeys, itemId, onSave, slots, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
@@ -133,6 +144,8 @@ export function WaterMainDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        hasHiddenSlots={hasHiddenSlots}
+        onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
         {photoHeader}
       </PhotoSection>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Modal,
   Pressable,
   Switch,
   Text,
@@ -94,6 +95,7 @@ export function RoomDetailScreen(props: {
   const [newItemName, setNewItemName] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
@@ -348,9 +350,23 @@ export function RoomDetailScreen(props: {
           marginBottom: 8,
         }}
       >
-        <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-          Assets
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+            Assets
+          </Text>
+          <Pressable
+            onPress={startAddItem}
+            accessibilityRole="button"
+            accessibilityLabel="Add asset"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="add" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Pressable
             onPress={() => {
@@ -395,7 +411,7 @@ export function RoomDetailScreen(props: {
         </View>
       </View>
       {items.length === 0 ? (
-        <Text style={sharedStyles.emptyText}>Add assets like water heater, heating, or electric panel.</Text>
+        <Text style={sharedStyles.emptyText}>Add assets like water heater, heating, or electrical panel.</Text>
       ) : itemViewMode === 'gallery' ? (
         <View style={sharedStyles.galleryRow}>
           {items.map((item) => {
@@ -452,44 +468,33 @@ export function RoomDetailScreen(props: {
         </>
       )}
 
-      <Pressable
-        onPress={startAddItem}
-        style={({ pressed }) => ({
-          alignSelf: 'flex-start',
-          paddingVertical: 10,
-          opacity: pressed ? 0.7 : 1,
-          marginTop: 4,
-          marginBottom: 8,
-        })}
-      >
-        <Text style={sharedStyles.textLink}>Add asset</Text>
-      </Pressable>
-
-      <Pressable onPress={confirmDeleteRoom} style={sharedStyles.dangerBtn}>
-        <Text style={sharedStyles.dangerBtnText}>Delete room</Text>
-      </Pressable>
-
-      <View
-        style={[
-          sharedStyles.catalogSection,
-          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-        ]}
-      >
-        <View style={{ flex: 1, marginRight: 12 }}>
-          <Text style={sharedStyles.cardTitle}>Require authentication</Text>
-          <Text style={sharedStyles.cardMeta}>Uses Face ID or device passcode</Text>
-        </View>
-        <Switch
-          value={rm.requiresAuth === true}
-          onValueChange={(value) => void toggleRequiresAuth(value)}
-        />
-      </View>
     </>
   );
 
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    // Let the menu dismiss before opening another alert/modal.
+    setTimeout(action, 50);
+  }
+
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScreenBackHeader onPress={onBack} />
+      <ScreenBackHeader onPress={onBack}>
+        <Pressable
+          onPress={() => setMenuOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Room options"
+          accessibilityHint="Opens actions like new asset, require authentication, and delete."
+          hitSlop={6}
+          style={({ pressed }) => ({
+            marginLeft: 'auto',
+            padding: 4,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <MaterialIcons name="settings" size={24} color={colors.primary} />
+        </Pressable>
+      </ScreenBackHeader>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
@@ -529,6 +534,106 @@ export function RoomDetailScreen(props: {
           itemsSection
         )}
       </ScrollView>
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.card,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {rm.name}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => runMenuAction(startAddItem)}
+              accessibilityRole="button"
+              accessibilityLabel="New asset"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                New asset
+              </Text>
+            </Pressable>
+            <View
+              style={{
+                paddingVertical: 8,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                  Require authentication
+                </Text>
+                <Text style={sharedStyles.cardMeta}>Uses Face ID or device passcode</Text>
+              </View>
+              <Switch
+                value={rm.requiresAuth === true}
+                onValueChange={(value) => {
+                  setMenuOpen(false);
+                  setTimeout(() => void toggleRequiresAuth(value), 50);
+                }}
+              />
+            </View>
+            <Pressable
+              onPress={() => runMenuAction(confirmDeleteRoom)}
+              accessibilityRole="button"
+              accessibilityLabel="Delete room"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.danger }}>
+                Delete room
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(false)}
+              style={({ pressed }) => [
+                sharedStyles.secondaryBtn,
+                { marginTop: 8 },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ItemTypePickerModal
         visible={addItemPickerOpen}

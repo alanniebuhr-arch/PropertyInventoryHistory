@@ -1,6 +1,6 @@
 # Property Asset Manager
 
-Track rental units and properties: rooms, assets (gas main, water main, electric panel, furnace, internet, custom), photos, maintenance events, and backups.
+Track rental units and properties: rooms, assets (gas main, water main, electrical panel, furnace, internet, custom), photos, maintenance events, and backups.
 
 ## Run locally
 

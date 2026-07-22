@@ -111,6 +111,7 @@ export function HomeScreen(props: {
   const [address, setAddress] = useState('');
   const [dwellingType, setDwellingType] = useState<DwellingType>('house');
   const [useDefaultLayout, setUseDefaultLayout] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
@@ -131,6 +132,11 @@ export function HomeScreen(props: {
     setDwellingType('house');
     setUseDefaultLayout(true);
     setModalOpen(true);
+  }
+
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    setTimeout(action, 50);
   }
 
   function saveProperty() {
@@ -177,10 +183,32 @@ export function HomeScreen(props: {
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={sharedStyles.content}>
-        <Text style={[sharedStyles.title, { flex: 0 }]}>Property Asset Manager</Text>
-        <Text style={sharedStyles.subtitle}>Rooms, assets, maintenance, and photos.</Text>
-
+      <View style={sharedStyles.screenHeader}>
+        <View style={[sharedStyles.headerRow, { marginBottom: 0, alignItems: 'flex-start' }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[sharedStyles.title, { flex: 0, fontSize: 22 }]}>
+              Property Asset Manager
+            </Text>
+            <Text style={[sharedStyles.subtitle, { marginBottom: 0 }]}>
+              Manage assets and projects on your properties.
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Home options"
+            accessibilityHint="Opens actions like new property and export or import backup."
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="settings" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
+      </View>
+      <ScrollView contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}>
         <View
           style={{
             flexDirection: 'row',
@@ -242,33 +270,82 @@ export function HomeScreen(props: {
             );
           })
         )}
-
-        <Pressable
-          onPress={openAdd}
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start',
-            paddingVertical: 12,
-            opacity: pressed ? 0.7 : 1,
-            marginTop: 8,
-          })}
-        >
-          <Text style={sharedStyles.textLink}>Add property</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onOpenTransfer}
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start',
-            paddingVertical: 8,
-            opacity: pressed ? 0.7 : 1,
-            marginTop: 4,
-          })}
-        >
-          <Text style={[sharedStyles.textLink, { color: colors.textMuted }]}>
-            Export / import backup
-          </Text>
-        </Pressable>
       </ScrollView>
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.card,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                Property Asset Manager
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => runMenuAction(openAdd)}
+              accessibilityRole="button"
+              accessibilityLabel="New property"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                New property
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => runMenuAction(onOpenTransfer)}
+              accessibilityRole="button"
+              accessibilityLabel="Export or import backup"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Export / import backup
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(false)}
+              style={({ pressed }) => [
+                sharedStyles.secondaryBtn,
+                { marginTop: 8 },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={modalOpen}

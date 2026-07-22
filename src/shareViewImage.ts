@@ -4,6 +4,16 @@ import * as Sharing from 'expo-sharing';
 import type { RefObject } from 'react';
 import type { View } from 'react-native';
 
+function isShareCancellation(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : String(error ?? '');
+  return /cancel|dismiss|sharing.*abort/i.test(message);
+}
+
 export async function shareViewAsPng(
   viewRef: RefObject<View | null>,
   dialogTitle: string
@@ -31,8 +41,15 @@ export async function shareViewAsPng(
       dialogTitle,
     });
     return true;
-  } catch {
-    Alert.alert('Export failed', 'Something went wrong while creating the image.');
+  } catch (error) {
+    if (isShareCancellation(error)) {
+      return false;
+    }
+    const detail =
+      error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : 'Something went wrong while creating the image.';
+    Alert.alert('Export failed', detail);
     return false;
   }
 }

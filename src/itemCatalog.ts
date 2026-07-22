@@ -28,7 +28,7 @@ export const ITEM_CATALOG: CatalogEntry[] = [
 
   { id: 'waste_water', label: 'Waste water', defaultRecurrenceHint: 'Annual service' },
 
-  { id: 'electric_panel', label: 'Electric panel' },
+  { id: 'electric_panel', label: 'Electrical panel' },
 
   { id: 'internet', label: 'Internet' },
 

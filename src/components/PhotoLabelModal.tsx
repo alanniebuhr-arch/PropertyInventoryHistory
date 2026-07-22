@@ -1,5 +1,14 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { sharedStyles, colors } from '../theme';
 
 export function PhotoLabelModal(props: {
@@ -32,16 +41,20 @@ export function PhotoLabelModal(props: {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        onPress={onClose}
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.45)',
-          justifyContent: 'center',
-          padding: 24,
-        }}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
       >
         <Pressable
+          onPress={onClose}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <Pressable
           onPress={(e) => e.stopPropagation()}
           style={{
             backgroundColor: colors.card,
@@ -93,8 +106,9 @@ export function PhotoLabelModal(props: {
               <Text style={sharedStyles.primaryBtnText}>{saveLabel}</Text>
             </Pressable>
           </View>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

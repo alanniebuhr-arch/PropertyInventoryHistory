@@ -116,6 +116,7 @@ export function ItemDetailScreen(props: {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [exportSnapshot, setExportSnapshot] = useState<ItemExportSnapshot | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
@@ -672,11 +673,13 @@ export function ItemDetailScreen(props: {
         )}
       </View>
 
-      <Pressable onPress={confirmDeleteItem} style={sharedStyles.dangerBtn}>
-        <Text style={sharedStyles.dangerBtnText}>Delete asset</Text>
-      </Pressable>
     </View>
   );
+
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    setTimeout(action, 50);
+  }
 
   return (
     <ItemDetailScrollContext.Provider value={handleFieldFocus}>
@@ -686,35 +689,56 @@ export function ItemDetailScreen(props: {
         keyboardVerticalOffset={insets.top}
       >
         <ScreenBackHeader onPress={onBack}>
-          <Pressable
-            onPress={() => void runItemExport()}
-            disabled={exporting}
-            accessibilityRole="button"
-            accessibilityLabel="Share asset"
-            accessibilityHint="Creates an image of this asset and opens the share sheet."
-            hitSlop={8}
-            style={({ pressed }) => [
-              {
-                marginLeft: 'auto',
-                width: 42,
-                height: 36,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: colors.border,
-                borderRadius: 4,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: 'transparent',
-                opacity: exporting ? 0.6 : 1,
-              },
-              pressed && !exporting && { opacity: 0.8 },
-            ]}
+          <View
+            style={{
+              marginLeft: 'auto',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+            }}
           >
-            {exporting ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <MaterialIcons name="ios-share" size={22} color={colors.primary} />
-            )}
-          </Pressable>
+            <Pressable
+              onPress={() => void runItemExport()}
+              disabled={exporting}
+              accessibilityRole="button"
+              accessibilityLabel="Share asset"
+              accessibilityHint="Creates an image of this asset and opens the share sheet."
+              hitSlop={8}
+              style={({ pressed }) => [
+                {
+                  width: 42,
+                  height: 36,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: colors.border,
+                  borderRadius: 4,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'transparent',
+                  opacity: exporting ? 0.6 : 1,
+                },
+                pressed && !exporting && { opacity: 0.8 },
+              ]}
+            >
+              {exporting ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <MaterialIcons name="ios-share" size={22} color={colors.primary} />
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Asset options"
+              accessibilityHint="Opens actions like delete asset."
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons name="settings" size={24} color={colors.primary} />
+            </Pressable>
+          </View>
         </ScreenBackHeader>
         <ScrollView
           ref={scrollRef}
@@ -834,6 +858,66 @@ export function ItemDetailScreen(props: {
         )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.card,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {itemDisplayLabel(inv)}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => runMenuAction(confirmDeleteItem)}
+              accessibilityRole="button"
+              accessibilityLabel="Delete asset"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.danger }}>
+                Delete asset
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(false)}
+              style={({ pressed }) => [
+                sharedStyles.secondaryBtn,
+                { marginTop: 8 },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={exportSnapshot != null} transparent animationType="none" onRequestClose={() => {}}>
         <View

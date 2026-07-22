@@ -13,6 +13,7 @@ import type {
   ProjectVendor,
   Room,
   VendorInteraction,
+  VendorPhoto,
   WaterMainDetails,
   WaterTreatmentDetails,
 } from './types';
@@ -26,6 +27,10 @@ import { ELECTRIC_PANEL_PHOTO_SLOTS } from './electricPanelSlots';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 import { isAfterToday } from './eventRecurrence';
+import { normalizeHiddenPhotoSlotKeys } from './hiddenPhotoSlots';
+import { recordInferredDeletions } from './syncMeta';
+import { ensureUpdatedAt, stampChangedRecords } from './syncStamp';
+import { nowISO } from './utils';
 
 const STORAGE_KEY = 'property_inventory_state_v1';
 
@@ -353,15 +358,17 @@ function normalizeItem(raw: InventoryItem): InventoryItem {
     details: normalizeDetails(itemTypeId, raw.details ?? defaultDetailsForType(itemTypeId)),
     photoIds: Array.isArray(raw.photoIds) ? raw.photoIds : [],
     documentIds: Array.isArray(raw.documentIds) ? raw.documentIds : [],
+    hiddenPhotoSlotKeys: normalizeHiddenPhotoSlotKeys(raw.hiddenPhotoSlotKeys),
     createdAtISO: raw.createdAtISO ?? new Date().toISOString(),
+    updatedAtISO: raw.updatedAtISO ?? raw.createdAtISO ?? new Date().toISOString(),
   };
 }
 
 function normalizeEvent(raw: ItemEvent): ItemEvent {
-  return {
+  return ensureUpdatedAt({
     ...raw,
     photoIds: Array.isArray(raw.photoIds) ? raw.photoIds : [],
-  };
+  });
 }
 
 function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
@@ -434,6 +441,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter(
         (id) => validPropertyPhotoIds.has(id) && !slotPhotoIds.has(id)
       ),
+      hiddenPhotoSlotKeys: normalizeHiddenPhotoSlotKeys(p.hiddenPhotoSlotKeys),
     };
     for (const slot of PROPERTY_PHOTO_SLOTS) {
       const docKey = documentIdKeyForPhotoSlot(slot.key) as keyof Property;
@@ -464,6 +472,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
         photoIds: (Array.isArray(r.photoIds) ? r.photoIds : []).filter((id) =>
           validRoomPhotoIds.has(id)
         ),
+        hiddenPhotoSlotKeys: normalizeHiddenPhotoSlotKeys(r.hiddenPhotoSlotKeys),
       };
     });
   const itemIds = new Set(items.filter((i) => roomIds.has(i.roomId)).map((i) => i.id));
@@ -504,38 +513,65 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       ),
     }));
   const vendorIds = new Set(cleanProjectVendors.map((v) => v.id));
-  const cleanVendorPhotos = vendorPhotos.filter((p) => vendorIds.has(p.vendorId));
+  const interactionIds = new Set(
+    vendorInteractions.filter((i) => vendorIds.has(i.vendorId)).map((i) => i.id)
+  );
+  const cleanVendorPhotos = vendorPhotos.filter(
+    (p) =>
+      vendorIds.has(p.vendorId) && (!p.interactionId || interactionIds.has(p.interactionId))
+  );
   const validVendorPhotoIds = new Set(cleanVendorPhotos.map((p) => p.id));
   const cleanProjectVendorsFinal = cleanProjectVendors.map((v) => ({
     ...v,
-    photoIds: v.photoIds.filter((id) => validVendorPhotoIds.has(id)),
+    photoIds: v.photoIds.filter(
+      (id) =>
+        validVendorPhotoIds.has(id) &&
+        cleanVendorPhotos.some((p) => p.id === id && !p.interactionId)
+    ),
   }));
-  const cleanVendorInteractions = vendorInteractions.filter((i) => vendorIds.has(i.vendorId));
+  const cleanVendorInteractions = vendorInteractions
+    .filter((i) => vendorIds.has(i.vendorId))
+    .map((i) => {
+      // Rebuild photoIds from photo.interactionId ownership so links lost in
+      // older saves or partial imports are repaired; existing order is kept.
+      const ownedIds = cleanVendorPhotos
+        .filter((p) => p.interactionId === i.id)
+        .map((p) => p.id);
+      const ownedSet = new Set(ownedIds);
+      const ordered = (Array.isArray(i.photoIds) ? i.photoIds : []).filter((id) =>
+        ownedSet.has(id)
+      );
+      const orderedSet = new Set(ordered);
+      return {
+        ...i,
+        photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
+      };
+    });
 
   return {
     version: 1,
-    properties: cleanProperties,
-    rooms: cleanRooms,
+    properties: cleanProperties.map(ensureUpdatedAt),
+    rooms: cleanRooms.map(ensureUpdatedAt),
     items: cleanItems.map((i) => ({
-      ...i,
+      ...ensureUpdatedAt(i),
       photoIds: i.photoIds.filter((pid) =>
         cleanPhotos.some((p) => p.id === pid && !p.eventId)
       ),
       documentIds: (i.documentIds ?? []).filter((id) => validDocumentIds.has(id)),
     })),
-    photos: cleanPhotos,
-    propertyPhotos: cleanPropertyPhotos,
-    roomPhotos: cleanRoomPhotos,
-    documents: cleanDocuments,
+    photos: cleanPhotos.map(ensureUpdatedAt),
+    propertyPhotos: cleanPropertyPhotos.map(ensureUpdatedAt),
+    roomPhotos: cleanRoomPhotos.map(ensureUpdatedAt),
+    documents: cleanDocuments.map(ensureUpdatedAt),
     events: cleanEvents.map((e) => ({
-      ...e,
+      ...ensureUpdatedAt(e),
       photoIds: e.photoIds.filter((pid) => cleanPhotos.some((p) => p.id === pid)),
     })),
-    projects: cleanProjectsWithPhotos,
-    projectVendors: cleanProjectVendorsFinal,
-    projectPhotos: cleanProjectPhotos,
-    vendorPhotos: cleanVendorPhotos,
-    vendorInteractions: cleanVendorInteractions,
+    projects: cleanProjectsWithPhotos.map(ensureUpdatedAt),
+    projectVendors: cleanProjectVendorsFinal.map(ensureUpdatedAt),
+    projectPhotos: cleanProjectPhotos.map(ensureUpdatedAt),
+    vendorPhotos: cleanVendorPhotos.map(ensureUpdatedAt),
+    vendorInteractions: cleanVendorInteractions.map(ensureUpdatedAt),
   };
 }
 
@@ -554,7 +590,18 @@ export async function loadAppState(): Promise<AppState> {
 }
 
 export async function saveAppState(state: AppState): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(state)));
+  let prev: AppState = { ...EMPTY_APP_STATE };
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      prev = normalizeState(JSON.parse(raw) as AppState);
+    }
+  } catch {
+    prev = { ...EMPTY_APP_STATE };
+  }
+  const stamped = stampChangedRecords(prev, state, nowISO());
+  await recordInferredDeletions(prev, stamped);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(stamped)));
 }
 
 export function propertyById(state: AppState, id: string): Property | undefined {
@@ -696,6 +743,28 @@ export function interactionsForVendor(state: AppState, vendorId: string): Vendor
     .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
 }
 
+export function photosForVendorInteraction(
+  state: AppState,
+  interactionId: string
+): VendorPhoto[] {
+  // Ownership comes from photo.interactionId; the interaction's photoIds array
+  // only provides ordering. This keeps photos visible even if photoIds was
+  // lost (e.g. records merged from an import while the interaction survived).
+  const owned = state.vendorPhotos.filter((p) => p.interactionId === interactionId);
+  if (owned.length === 0) return [];
+  const interaction = state.vendorInteractions.find((i) => i.id === interactionId);
+  const byId = new Map(owned.map((p) => [p.id, p]));
+  const ordered: VendorPhoto[] = [];
+  for (const id of interaction?.photoIds ?? []) {
+    const photo = byId.get(id);
+    if (photo) {
+      ordered.push(photo);
+      byId.delete(id);
+    }
+  }
+  return [...ordered, ...byId.values()];
+}
+
 export function vendorInteractionById(
   state: AppState,
   id: string
@@ -790,6 +859,7 @@ export function deleteVendorInteractionCascade(state: AppState, interactionId: s
   return {
     ...state,
     vendorInteractions: state.vendorInteractions.filter((i) => i.id !== interactionId),
+    vendorPhotos: state.vendorPhotos.filter((p) => p.interactionId !== interactionId),
   };
 }
 

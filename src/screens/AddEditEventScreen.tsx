@@ -501,17 +501,33 @@ export function AddEditEventScreen(props: {
       );
       const newPhotos = updatedPhotos.filter((p) => !state.photos.some((x) => x.id === p.id));
 
+      // Editing an open reminder on a future-dated visit: the date field shows the
+      // planned service date, so the entered date must move the occurrence and the
+      // matching next-due instead of being discarded.
+      const targetShownDueISO = upcomingDueAtISO(target);
+      const reschedulingPlannedVisit =
+        updatingReminder && !recurring && isAfterToday(target.occurredAtISO);
+      const rescheduledOccurredAtISO =
+        reschedulingPlannedVisit && sameCalendarDay(target.occurredAtISO, targetShownDueISO)
+          ? occurredAtISO
+          : target.occurredAtISO;
+
       const updatedRecurrence = isPastHistoryEdit
         ? target.recurrence
         : updatingReminder
           ? recurring
             ? recurrence
-            : isAfterToday(target.occurredAtISO)
-              ? ensureFutureDatedEventScheduled(
-                  target.occurredAtISO,
-                  target.recurrence,
-                  scheduleNoteText
-                )
+            : reschedulingPlannedVisit && target.recurrence
+              ? {
+                  ...target.recurrence,
+                  nextDueAtISO: sameCalendarDay(
+                    target.recurrence.nextDueAtISO,
+                    targetShownDueISO
+                  )
+                    ? occurredAtISO
+                    : target.recurrence.nextDueAtISO,
+                  notes: scheduleNoteText,
+                }
               : undefined
           : recurrence;
 
@@ -519,8 +535,9 @@ export function AddEditEventScreen(props: {
         ...target,
         title: trimmed,
         eventType,
-        // Updating a schedule reminder: keep the last service date; date field is next due.
-        occurredAtISO: updatingReminder ? target.occurredAtISO : occurredAtISO,
+        // Updating a schedule reminder: keep the last service date (the date field
+        // is the next due) unless this reschedules a future planned visit.
+        occurredAtISO: updatingReminder ? rescheduledOccurredAtISO : occurredAtISO,
         notes: notes.trim() || undefined,
         serviceCompany: serviceCompany.trim() || undefined,
         cost: cost != null && !Number.isNaN(cost) ? cost : undefined,

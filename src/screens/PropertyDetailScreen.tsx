@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
@@ -63,8 +64,15 @@ import {
   setPropertyProjectViewMode,
   type PropertyProjectViewMode,
 } from '../propertyProjectViewPrefs';
-import { buildTransferBundle, sliceAppStateForProperty, transferBundleToJson } from '../transfer';
-import { exportBackupToZip } from '../transferPackage';
+import { buildTransferBundle, buildPropertyUpdateBundle, sliceAppStateForProperty, summarizeChanges, transferBundleToJson } from '../transfer';
+import { exportBackupToZip, exportPropertyUpdateToZip } from '../transferPackage';
+import { clearPendingDeletedIds, getPendingDeletedIds } from '../syncMeta';
+import {
+  buildPropertyExportSnapshot,
+  type PropertyExportSnapshot,
+} from '../propertyExportContent';
+import { PropertyExportSheet } from '../components/PropertyExportSheet';
+import { shareViewAsPng } from '../shareViewImage';
 
 export function PropertyDetailScreen(props: {
   state: AppState;
@@ -98,6 +106,10 @@ export function PropertyDetailScreen(props: {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportSnapshot, setExportSnapshot] = useState<PropertyExportSnapshot | null>(null);
+  const [sharingPng, setSharingPng] = useState(false);
+  const exportRef = useRef<View>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
@@ -122,6 +134,37 @@ export function PropertyDetailScreen(props: {
       cancelled = true;
     };
   }, []);
+
+  const runPropertyImageExport = useCallback(async () => {
+    const snapshot = buildPropertyExportSnapshot(state, propertyId);
+    if (!snapshot) {
+      Alert.alert('Export failed', 'Could not build property summary.');
+      return;
+    }
+    setExportSnapshot(snapshot);
+    setSharingPng(true);
+  }, [propertyId, state]);
+
+  useEffect(() => {
+    if (!exportSnapshot || !sharingPng) return;
+
+    let cancelled = false;
+    // Give the off-screen sheet (and its images) time to lay out before capture.
+    const timer = setTimeout(() => {
+      void (async () => {
+        await shareViewAsPng(exportRef, `Share ${exportSnapshot.title}`);
+        if (!cancelled) {
+          setExportSnapshot(null);
+          setSharingPng(false);
+        }
+      })();
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [exportSnapshot, sharingPng]);
 
   if (!property) {
     return (
@@ -261,13 +304,39 @@ export function PropertyDetailScreen(props: {
   function promptExportProperty() {
     Alert.alert(
       'Export property',
-      `Share "${prop.name}" so another user can import it (Export / import backup → Merge).`,
+      `Share a full copy of "${prop.name}" for first-time setup (Backup → Import → Merge). After that, use Share updates for ongoing changes.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Data only', onPress: () => void exportProperty(false) },
         { text: 'Include photos', onPress: () => void exportProperty(true) },
       ]
     );
+  }
+
+  function promptShareUpdates() {
+    const since = prop.lastSharedAtISO;
+    Alert.alert(
+      'Share updates',
+      since
+        ? `Send changes to "${prop.name}" since the last share so the other person can Import updates.`
+        : `No previous share watermark yet — this will send a full update package for "${prop.name}". For a first handoff, Export property is usually clearer.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Data only', onPress: () => void sharePropertyUpdates(false) },
+        { text: 'Include photos', onPress: () => void sharePropertyUpdates(true) },
+      ]
+    );
+  }
+
+  async function markPropertyShared() {
+    const sharedAt = nowISO();
+    await clearPendingDeletedIds(propertyId);
+    onSave({
+      ...state,
+      properties: state.properties.map((p) =>
+        p.id === propertyId ? { ...p, lastSharedAtISO: sharedAt, updatedAtISO: sharedAt } : p
+      ),
+    });
   }
 
   async function exportProperty(includePhotos: boolean) {
@@ -295,6 +364,7 @@ export function PropertyDetailScreen(props: {
         } else {
           Alert.alert('Exported', `Backup saved to ${path}`);
         }
+        await markPropertyShared();
         return;
       }
 
@@ -312,6 +382,7 @@ export function PropertyDetailScreen(props: {
       } else {
         Alert.alert('Exported', `Backup saved to ${path}`);
       }
+      await markPropertyShared();
     } catch (e) {
       Alert.alert('Export failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {
@@ -319,9 +390,126 @@ export function PropertyDetailScreen(props: {
     }
   }
 
+  async function sharePropertyUpdates(includePhotos: boolean) {
+    setExporting(true);
+    try {
+      const sinceISO = prop.lastSharedAtISO;
+      const deletedIds = await getPendingDeletedIds(propertyId);
+      const bundle = buildPropertyUpdateBundle({
+        state,
+        propertyId,
+        sinceISO,
+        deletedIds,
+        sourceLabel: `Updates: ${prop.name}`,
+      });
+      if (!bundle) {
+        Alert.alert('Share failed', 'Property not found.');
+        return;
+      }
+      const changeSummary = summarizeChanges(bundle.state, bundle.deletedIds);
+      if (changeSummary === 'no changes') {
+        Alert.alert('Nothing to share', 'No changes since the last share.');
+        return;
+      }
+
+      const safeName = prop.name.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '') || 'property';
+      if (includePhotos) {
+        const path = await exportPropertyUpdateToZip(bundle, { fileNamePrefix: safeName });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(path, {
+            mimeType: 'application/zip',
+            UTI: 'public.zip-archive',
+            dialogTitle: `Updates for ${prop.name}`,
+          });
+        } else {
+          Alert.alert('Shared', `Update package saved to ${path}`);
+        }
+      } else {
+        const json = transferBundleToJson(bundle);
+        const fileName = `${safeName}-updates-${new Date().toISOString().slice(0, 10)}.json`;
+        const path = `${FileSystem.cacheDirectory ?? ''}${fileName}`;
+        await FileSystem.writeAsStringAsync(path, json);
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(path, {
+            mimeType: 'application/json',
+            dialogTitle: `Updates for ${prop.name}`,
+          });
+        } else {
+          Alert.alert('Shared', `Update package saved to ${path}`);
+        }
+      }
+      await markPropertyShared();
+    } catch (e) {
+      Alert.alert('Share failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function openPropertyMenu() {
+    setMenuOpen(true);
+  }
+
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    // Let the menu dismiss before opening another alert/modal.
+    setTimeout(action, 50);
+  }
+
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScreenBackHeader onPress={onBack} />
+      <ScreenBackHeader onPress={onBack}>
+        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={() => void runPropertyImageExport()}
+            disabled={exporting || sharingPng}
+            accessibilityRole="button"
+            accessibilityLabel="Share property"
+            accessibilityHint="Creates an image of this property and opens the share sheet."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                width: 42,
+                height: 36,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'transparent',
+                opacity: exporting || sharingPng ? 0.6 : 1,
+              },
+              pressed && !exporting && !sharingPng && { opacity: 0.8 },
+            ]}
+          >
+            {sharingPng ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <MaterialIcons name="ios-share" size={22} color={colors.primary} />
+            )}
+          </Pressable>
+          <Pressable
+            onPress={openPropertyMenu}
+            disabled={exporting || sharingPng}
+            accessibilityRole="button"
+            accessibilityLabel="Property options"
+            accessibilityHint="Opens actions like new room, new project, slideshow, export, share updates, and delete."
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: exporting || sharingPng ? 0.5 : pressed ? 0.7 : 1,
+            })}
+          >
+            {exporting ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <MaterialIcons name="settings" size={24} color={colors.primary} />
+            )}
+          </Pressable>
+        </View>
+      </ScreenBackHeader>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
@@ -403,9 +591,26 @@ export function PropertyDetailScreen(props: {
             marginBottom: 8,
           }}
         >
-          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-            Rooms
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
+            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+              Rooms
+            </Text>
+            <Pressable
+              onPress={() => {
+                setRoomName('');
+                setModalOpen(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Add room"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons name="add" size={24} color={colors.primary} />
+            </Pressable>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Pressable
               onPress={() => {
@@ -481,21 +686,6 @@ export function PropertyDetailScreen(props: {
           ))
         )}
 
-        <Pressable
-          onPress={() => {
-            setRoomName('');
-            setModalOpen(true);
-          }}
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start',
-            paddingVertical: 12,
-            opacity: pressed ? 0.7 : 1,
-            marginTop: 8,
-          })}
-        >
-          <Text style={sharedStyles.textLink}>Add room</Text>
-        </Pressable>
-
         <View
           style={{
             flexDirection: 'row',
@@ -506,9 +696,27 @@ export function PropertyDetailScreen(props: {
             marginBottom: 8,
           }}
         >
-          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-            Projects
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
+            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+              Projects
+            </Text>
+            <Pressable
+              onPress={() => {
+                setProjectName('');
+                setProjectDescription('');
+                setProjectModalOpen(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Add project"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons name="add" size={24} color={colors.primary} />
+            </Pressable>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Pressable
               onPress={() => {
@@ -594,61 +802,156 @@ export function PropertyDetailScreen(props: {
           })
         )}
 
-        <Pressable
-          onPress={() => {
-            setProjectName('');
-            setProjectDescription('');
-            setProjectModalOpen(true);
-          }}
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start',
-            paddingVertical: 12,
-            opacity: pressed ? 0.7 : 1,
-            marginTop: 8,
-          })}
-        >
-          <Text style={sharedStyles.textLink}>Add project</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={openFavoriteSlideshow}
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start',
-            paddingVertical: 8,
-            opacity: pressed ? 0.7 : 1,
-            marginTop: 0,
-          })}
-          accessibilityRole="button"
-          accessibilityLabel="Slideshow"
-          accessibilityHint="Shows favorite photos from this property in full screen."
-        >
-          <Text style={sharedStyles.textLink}>Slideshow</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={promptExportProperty}
-          disabled={exporting}
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start',
-            paddingVertical: 8,
-            opacity: exporting ? 0.5 : pressed ? 0.7 : 1,
-            marginTop: 4,
-          })}
-          accessibilityRole="button"
-          accessibilityLabel="Export property"
-          accessibilityHint="Shares this property so another user can import it."
-        >
-          {exporting ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Text style={[sharedStyles.textLink, { color: colors.textMuted }]}>Export property</Text>
-          )}
-        </Pressable>
-
-        <Pressable onPress={confirmDeleteProperty} style={sharedStyles.dangerBtn}>
-          <Text style={sharedStyles.dangerBtnText}>Delete property</Text>
-        </Pressable>
       </ScrollView>
+
+      {exportSnapshot ? (
+        <View
+          style={{ position: 'absolute', left: 0, top: 0, zIndex: 1 }}
+          pointerEvents="none"
+          collapsable={false}
+        >
+          <View ref={exportRef} collapsable={false}>
+            <PropertyExportSheet snapshot={exportSnapshot} />
+          </View>
+        </View>
+      ) : null}
+
+      {sharingPng ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 2,
+            backgroundColor: 'rgba(0,0,0,0.25)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      ) : null}
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.card,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {prop.name}
+              </Text>
+            </View>
+            {(
+              [
+                {
+                  key: 'room',
+                  label: 'New room',
+                  onPress: () =>
+                    runMenuAction(() => {
+                      setRoomName('');
+                      setModalOpen(true);
+                    }),
+                },
+                {
+                  key: 'project',
+                  label: 'New project',
+                  onPress: () =>
+                    runMenuAction(() => {
+                      setProjectName('');
+                      setProjectDescription('');
+                      setProjectModalOpen(true);
+                    }),
+                },
+                {
+                  key: 'slideshow',
+                  label: 'Slideshow',
+                  star: true,
+                  onPress: () => runMenuAction(openFavoriteSlideshow),
+                },
+                {
+                  key: 'export',
+                  label: 'Export property',
+                  onPress: () => runMenuAction(promptExportProperty),
+                },
+                {
+                  key: 'share',
+                  label: 'Share updates',
+                  onPress: () => runMenuAction(promptShareUpdates),
+                },
+                {
+                  key: 'delete',
+                  label: 'Delete property',
+                  danger: true,
+                  onPress: () => runMenuAction(confirmDeleteProperty),
+                },
+              ] as const
+            ).map((item) => (
+              <Pressable
+                key={item.key}
+                onPress={item.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.hairline,
+                  opacity: pressed ? 0.7 : 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                })}
+              >
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: 'danger' in item && item.danger ? colors.danger : colors.text,
+                  }}
+                >
+                  {item.label}
+                </Text>
+                {'star' in item && item.star ? (
+                  <Text style={{ fontSize: 13, lineHeight: 16, color: '#000' }}>★</Text>
+                ) : null}
+              </Pressable>
+            ))}
+            <Pressable
+              onPress={() => setMenuOpen(false)}
+              style={({ pressed }) => [
+                sharedStyles.secondaryBtn,
+                { marginTop: 8 },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }} onPress={() => setModalOpen(false)}>

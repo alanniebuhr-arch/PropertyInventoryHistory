@@ -258,6 +258,8 @@ export type StoredDocument = {
   fileName: string;
   mimeType: string;
   createdAtISO: string;
+  /** Last local/content change; used for collaborative merge. */
+  updatedAtISO?: string;
 };
 
 export type SlotAttachment =
@@ -276,6 +278,7 @@ export type PropertyPhoto = {
   /** When true, included in the property Slideshow of favorite heroes. */
   favorite?: boolean;
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type RoomPhoto = {
@@ -288,6 +291,7 @@ export type RoomPhoto = {
   /** When true, included in the property Slideshow of favorite heroes. */
   favorite?: boolean;
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type Property = {
@@ -309,7 +313,12 @@ export type Property = {
   plotPlanDocumentId?: string;
   /** Extra property photos beyond the named slots above. */
   photoIds?: string[];
+  /** Named photo slots the user removed (placeholders stay hidden until restored). */
+  hiddenPhotoSlotKeys?: string[];
   createdAtISO: string;
+  updatedAtISO?: string;
+  /** Watermark of last successful Share updates / full property share for collaboration. */
+  lastSharedAtISO?: string;
 };
 
 export type Room = {
@@ -320,6 +329,9 @@ export type Room = {
   photoIds: string[];
   requiresAuth?: boolean;
   slotAttachments?: Partial<Record<RoomSlotKey, SlotAttachment>>;
+  /** Named photo slots the user removed (placeholders stay hidden until restored). */
+  hiddenPhotoSlotKeys?: string[];
+  updatedAtISO?: string;
 };
 
 export type InventoryItem = {
@@ -331,7 +343,10 @@ export type InventoryItem = {
   photoIds: string[];
   /** Extra documents beyond named photo-slot documents. */
   documentIds: string[];
+  /** Named photo slots the user removed (placeholders stay hidden until restored). */
+  hiddenPhotoSlotKeys?: string[];
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type ItemPhoto = {
@@ -346,6 +361,7 @@ export type ItemPhoto = {
   /** When true, included in the property Slideshow of favorite heroes. */
   favorite?: boolean;
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type ItemEventType =
@@ -386,6 +402,7 @@ export type ItemEvent = {
   cost?: number;
   recurrence?: ItemEventRecurrence;
   photoIds: string[];
+  updatedAtISO?: string;
 };
 
 export type VendorStatus =
@@ -406,6 +423,7 @@ export type Project = {
   photoIds: string[];
   sortOrder: number;
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type ProjectVendor = {
@@ -422,6 +440,7 @@ export type ProjectVendor = {
   photoIds: string[];
   documentIds: string[];
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type ProjectPhoto = {
@@ -432,15 +451,19 @@ export type ProjectPhoto = {
   notes?: string;
   favorite?: boolean;
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type VendorPhoto = {
   id: string;
   vendorId: string;
+  /** When set, photo belongs to a vendor interaction (not the vendor gallery). */
+  interactionId?: string;
   localUri: string;
   caption?: string;
   notes?: string;
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type VendorContactMethod =
@@ -459,7 +482,9 @@ export type VendorInteraction = {
   contactName?: string;
   occurredAtISO: string;
   notes?: string;
+  photoIds: string[];
   createdAtISO: string;
+  updatedAtISO?: string;
 };
 
 export type AppState = {
@@ -504,4 +529,33 @@ export type InventoryTransferBundle = {
   state: AppState;
   /** Present when user exports with photos embedded. */
   photoData?: Record<string, string>;
+};
+
+/** Record IDs removed since the last share watermark, keyed by collection. */
+export type SyncDeletedIds = {
+  properties?: string[];
+  rooms?: string[];
+  items?: string[];
+  photos?: string[];
+  propertyPhotos?: string[];
+  roomPhotos?: string[];
+  documents?: string[];
+  events?: string[];
+  projects?: string[];
+  projectVendors?: string[];
+  projectPhotos?: string[];
+  vendorPhotos?: string[];
+  vendorInteractions?: string[];
+};
+
+export type PropertyUpdateBundle = {
+  formatVersion: 2;
+  kind: 'property-update';
+  exportedAtISO: string;
+  sourceLabel?: string;
+  propertyId: string;
+  /** Watermark used when selecting changed records (omit = full property slice). */
+  sinceISO?: string;
+  state: AppState;
+  deletedIds: SyncDeletedIds;
 };

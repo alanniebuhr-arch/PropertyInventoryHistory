@@ -14,9 +14,7 @@ const HOUSE_INSURANCE_SLOT: RoomPhotoSlotDefinition = {
   shortLabel: 'House insurance',
 };
 
-/** Reserved photo slots that apply to rooms that typically hold insurance docs (e.g. Kitchen). */
+/** House insurance is reserved only for the Office room. */
 export function roomPhotoSlotsForRoom(room: Pick<Room, 'name'>): RoomPhotoSlotDefinition[] {
-  const name = room.name.trim().toLowerCase();
-  if (name === 'utilities' || name === 'garage' || name === 'laundry') return [];
-  return [HOUSE_INSURANCE_SLOT];
+  return room.name.trim().toLowerCase() === 'office' ? [HOUSE_INSURANCE_SLOT] : [];
 }

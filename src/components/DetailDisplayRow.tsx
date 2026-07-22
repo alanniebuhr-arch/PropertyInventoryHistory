@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { sharedStyles, colors } from '../theme';
 
 /** Fits longest detail card labels on one line. */
@@ -10,11 +10,32 @@ export function DetailDisplayRow(props: {
   value?: string;
   /** Label above value, value spans full width (default for Notes fields). */
   stacked?: boolean;
+  /** When set, the value is tappable (e.g. open a URL). */
+  onPress?: () => void;
 }) {
   const raw = props.value?.trim();
   const value = raw || 'Not set';
   const muted = !raw;
   const stacked = props.stacked ?? /notes$/i.test(props.label);
+  const canPress = Boolean(raw && props.onPress);
+
+  const valueText = (
+    <Text
+      style={[
+        sharedStyles.cardMeta,
+        {
+          color: muted ? colors.textMuted : canPress ? colors.primary : colors.text,
+          fontSize: 15,
+          marginTop: 0,
+          lineHeight: 22,
+          ...(stacked ? null : { flex: 1, textAlign: 'left' as const }),
+          ...(canPress ? { textDecorationLine: 'underline' as const } : null),
+        },
+      ]}
+    >
+      {value}
+    </Text>
+  );
 
   if (stacked) {
     return (
@@ -30,19 +51,18 @@ export function DetailDisplayRow(props: {
         >
           {props.label}
         </Text>
-        <Text
-          style={[
-            sharedStyles.cardMeta,
-            {
-              color: muted ? colors.textMuted : colors.text,
-              fontSize: 15,
-              marginTop: 0,
-              lineHeight: 22,
-            },
-          ]}
-        >
-          {value}
-        </Text>
+        {canPress ? (
+          <Pressable
+            onPress={props.onPress}
+            accessibilityRole="link"
+            accessibilityLabel={`${props.label}: ${value}`}
+            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+          >
+            {valueText}
+          </Pressable>
+        ) : (
+          valueText
+        )}
       </View>
     );
   }
@@ -70,21 +90,18 @@ export function DetailDisplayRow(props: {
       >
         {props.label}
       </Text>
-      <Text
-        style={[
-          sharedStyles.cardMeta,
-          {
-            color: muted ? colors.textMuted : colors.text,
-            fontSize: 15,
-            flex: 1,
-            textAlign: 'left',
-            marginTop: 0,
-            lineHeight: 22,
-          },
-        ]}
-      >
-        {value}
-      </Text>
+      {canPress ? (
+        <Pressable
+          onPress={props.onPress}
+          accessibilityRole="link"
+          accessibilityLabel={`${props.label}: ${value}`}
+          style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}
+        >
+          {valueText}
+        </Pressable>
+      ) : (
+        valueText
+      )}
     </View>
   );
 }

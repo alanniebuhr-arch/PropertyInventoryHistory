@@ -36,6 +36,7 @@ import {
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
+import { hideItemPhotoSlotKey, restoreItemHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import {
   FurnaceEquipmentFields,
   FurnaceInstallFields,
@@ -58,11 +59,14 @@ export function FurnaceDisplayView(props: {
 
   const slots = furnacePhotoSlotsForDetails(details);
   const extraPhotos = furnaceExtraPhotos(state, itemId, details);
+  const item = state.items.find((entry) => entry.id === itemId);
+  const hasHiddenSlots = (item?.hiddenPhotoSlotKeys?.length ?? 0) > 0;
 
   const photoTiles = useMemo(
     () =>
       buildSlotAndExtraPhotoTiles({
         slots,
+        hiddenSlotKeys: item?.hiddenPhotoSlotKeys,
         getSlotUri: (key) => furnaceSlotPhotoUri(state, details, key as FurnacePhotoSlotKey),
         getSlotDocument: (key) =>
           furnaceSlotDocumentInfo(state, details, key as FurnacePhotoSlotKey),
@@ -94,6 +98,13 @@ export function FurnaceDisplayView(props: {
         onDeleteSlotDocument: (key) => {
           void clearFurnaceSlotDocument(state, itemId, key as FurnacePhotoSlotKey).then(onSave);
         },
+        onRemoveSlot: (key) => {
+          void (async () => {
+            let next = await clearFurnaceSlotPhoto(state, itemId, key as FurnacePhotoSlotKey);
+            next = await clearFurnaceSlotDocument(next, itemId, key as FurnacePhotoSlotKey);
+            onSave(hideItemPhotoSlotKey(next, itemId, key));
+          })();
+        },
         onLabelSlot: (key, notes) => {
           const photoId = details[key as FurnacePhotoSlotKey];
           if (photoId) onSave(setItemPhotoNotes(state, photoId, notes));
@@ -109,7 +120,7 @@ export function FurnaceDisplayView(props: {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [details, extraPhotos, itemId, onSave, slots, state]
+    [details, extraPhotos, item?.hiddenPhotoSlotKeys, itemId, onSave, slots, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
@@ -146,6 +157,8 @@ export function FurnaceDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        hasHiddenSlots={hasHiddenSlots}
+        onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
         {photoHeader}
       </PhotoSection>

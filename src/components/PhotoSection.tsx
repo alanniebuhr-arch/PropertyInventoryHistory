@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { MaterialIcons } from '@expo/vector-icons';
 import { AddPhotoPlaceholder } from './PhotoSlot';
 import { PhotoHeroCarousel } from './PhotoHeroCarousel';
 import { PhotoLabelModal } from './PhotoLabelModal';
@@ -40,6 +41,8 @@ export type PhotoTile =
       onAdd: () => void;
       onDelete?: () => void;
       onDeleteDocument?: () => void;
+      /** Clear content and hide this reserved placeholder. */
+      onRemoveSlot?: () => void;
       /** Named slots: label stays fixed; handler persists notes only. */
       onLabelChange?: (label: string, notes: string) => void;
       onToggleFavorite?: (favorite: boolean) => void;
@@ -81,6 +84,9 @@ export function PhotoSection(props: {
   ) => void | Promise<void>;
   /** Free-form documents shown after named-slot documents. */
   extraDocumentRows?: DocumentListRow[];
+  /** When true, show a control to restore removed reserved slots. */
+  hasHiddenSlots?: boolean;
+  onRestoreHiddenSlots?: () => void;
   /** Called when the hero photo changes; undefined when there is no named label. */
   onActiveHeroLabelChange?: (label: string | undefined) => void;
   /**
@@ -104,6 +110,8 @@ export function PhotoSection(props: {
     onAddPhotos,
     onAddDocuments,
     extraDocumentRows,
+    hasHiddenSlots = false,
+    onRestoreHiddenSlots,
     onActiveHeroLabelChange,
     heroCaptionPlacement = 'below',
     heroDotsPosition = 'above',
@@ -190,6 +198,11 @@ export function PhotoSection(props: {
     [onAddDocuments]
   );
 
+  const openAddPhotos = useCallback(() => {
+    if (!onAddPhotos) return;
+    promptPickOrTakeMulti(handleAddPhotos, onAddDocuments ? handleAddDocuments : undefined);
+  }, [handleAddDocuments, handleAddPhotos, onAddDocuments, onAddPhotos]);
+
   const stripTiles = useMemo((): PhotoTile[] => {
     const withoutAdd = tiles.filter(
       (tile) => tile.kind !== 'add' && !(tile.kind === 'reserved' && tile.document)
@@ -202,15 +215,10 @@ export function PhotoSection(props: {
       ...withoutAdd,
       {
         kind: 'add' as const,
-        onAdd: () => {
-          promptPickOrTakeMulti(
-            handleAddPhotos,
-            onAddDocuments ? handleAddDocuments : undefined
-          );
-        },
+        onAdd: openAddPhotos,
       },
     ];
-  }, [handleAddDocuments, handleAddPhotos, onAddDocuments, onAddPhotos, tiles]);
+  }, [onAddPhotos, openAddPhotos, tiles]);
 
   const documentRows = useMemo((): DocumentListRow[] => {
     const rows: DocumentListRow[] = [];
@@ -382,34 +390,42 @@ export function PhotoSection(props: {
   function renderThumb(tile: PhotoTile) {
     if (tile.kind === 'reserved') {
       const isHero = effectiveHeroId === tile.key;
+      const showSlotActions = () => {
+        if (!tile.onDelete && !tile.onRemoveSlot && !tile.onLabelChange) return;
+        showLabeledPhotoThumbActions({
+          onRename: tile.onLabelChange
+            ? () => openRenameEditor(tile.key, tile.shortLabel, tile.notes)
+            : undefined,
+          onDelete: tile.onDelete,
+          onRemoveSlot: tile.onRemoveSlot,
+          slotLabel: tile.shortLabel,
+        });
+      };
       return tile.uri ? (
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => setHeroPhotoId(tile.key)}
-          onLongPress={() =>
-            tile.onDelete &&
-            showLabeledPhotoThumbActions({
-              onRename: tile.onLabelChange
-                ? () => openRenameEditor(tile.key, tile.shortLabel, tile.notes)
-                : undefined,
-              onDelete: tile.onDelete,
-            })
-          }
+          onLongPress={showSlotActions}
           accessibilityRole="button"
           accessibilityLabel={`Show ${tile.shortLabel}`}
-          accessibilityHint="Displays this photo in the large view."
+          accessibilityHint="Displays this photo in the large view. Long press for options."
         >
           <Image source={{ uri: tile.uri }} style={thumbImageStyle(isHero)} />
         </TouchableOpacity>
       ) : (
         <Pressable
           onPress={tile.onAdd}
+          onLongPress={tile.onRemoveSlot ? showSlotActions : undefined}
           accessibilityRole="button"
           accessibilityLabel={
             tile.document ? `Replace ${tile.shortLabel} PDF` : `Add ${tile.shortLabel}`
           }
           accessibilityHint={
-            tile.document ? 'Choose a new photo or PDF for this slot.' : undefined
+            tile.document
+              ? 'Choose a new photo or PDF for this slot. Long press to remove the slot.'
+              : tile.onRemoveSlot
+                ? 'Long press to remove this slot.'
+                : undefined
           }
           style={{
             width: thumbSize,
@@ -497,67 +513,62 @@ export function PhotoSection(props: {
         marginBottom: heroCaptionPlacement === 'above' ? 8 : 12,
         alignItems: 'center',
         paddingHorizontal: 8,
+        width: '100%',
+        position: 'relative',
       }}
     >
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'flex-start',
-          justifyContent: 'center',
-          gap: 8,
+          alignItems: 'center',
           maxWidth: '100%',
+          paddingHorizontal: activeHeroCanFavorite ? 28 : 0,
         }}
       >
-        <View style={{ flexShrink: 1, alignItems: 'center' }}>
-          {activeHeroLabel ? (
-            <Text
-              style={{
-                fontSize: 15,
-                fontWeight: '700',
-                color: colors.text,
-                textAlign: 'center',
-              }}
-            >
-              {activeHeroLabel}
-            </Text>
-          ) : null}
-          {activeHeroNotes ? (
-            <Text
-              style={[
-                sharedStyles.cardMeta,
-                {
-                  marginTop: activeHeroLabel ? 4 : 0,
-                  textAlign: 'center',
-                },
-              ]}
-            >
-              {activeHeroNotes}
-            </Text>
-          ) : null}
-          {!activeHeroLabel && !activeHeroNotes && activeHeroCanFavorite ? (
-            <Text style={[sharedStyles.cardMeta, { textAlign: 'center' }]}>Favorite</Text>
-          ) : null}
-        </View>
-        {activeHeroCanFavorite ? (
-          <Pressable
-            onPress={() => viewerPhotos[heroIndex]?.onToggleFavorite?.(!activeHeroFavorite)}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={activeHeroFavorite ? 'Remove from favorites' : 'Add to favorites'}
-            style={{ paddingTop: 1 }}
+        {activeHeroLabel ? (
+          <Text
+            style={{
+              fontSize: 15,
+              fontWeight: '700',
+              color: colors.text,
+              textAlign: 'center',
+            }}
           >
-            <Text
-              style={{
-                fontSize: 22,
-                lineHeight: 24,
-                color: activeHeroFavorite ? colors.primary : colors.border,
-              }}
-            >
-              {activeHeroFavorite ? '★' : '☆'}
-            </Text>
-          </Pressable>
+            {activeHeroLabel}
+          </Text>
+        ) : null}
+        {activeHeroNotes ? (
+          <Text
+            style={[
+              sharedStyles.cardMeta,
+              {
+                marginTop: activeHeroLabel ? 4 : 0,
+                textAlign: 'center',
+              },
+            ]}
+          >
+            {activeHeroNotes}
+          </Text>
         ) : null}
       </View>
+      {activeHeroCanFavorite ? (
+        <Pressable
+          onPress={() => viewerPhotos[heroIndex]?.onToggleFavorite?.(!activeHeroFavorite)}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={activeHeroFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          style={{ position: 'absolute', right: 8, top: 1 }}
+        >
+          <Text
+            style={{
+              fontSize: 16.5,
+              lineHeight: 18,
+              color: activeHeroFavorite ? colors.primary : colors.border,
+            }}
+          >
+            {activeHeroFavorite ? '★' : '☆'}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   ) : null;
 
@@ -581,7 +592,31 @@ export function PhotoSection(props: {
 
       {heroCaptionPlacement === 'below' ? heroCaption : null}
 
-      <Text style={sharedStyles.sectionTitle}>{title}</Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 4,
+          marginTop: 16,
+          marginBottom: hint ? 0 : 12,
+        }}
+      >
+        <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>{title}</Text>
+        {onAddPhotos ? (
+          <Pressable
+            onPress={openAddPhotos}
+            accessibilityRole="button"
+            accessibilityLabel="Add photo"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="add" size={24} color={colors.primary} />
+          </Pressable>
+        ) : null}
+      </View>
       {hint ? <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>{hint}</Text> : null}
       <ScrollView
         horizontal
@@ -607,6 +642,21 @@ export function PhotoSection(props: {
           );
         })}
       </ScrollView>
+
+      {hasHiddenSlots && onRestoreHiddenSlots ? (
+        <Pressable
+          onPress={onRestoreHiddenSlots}
+          accessibilityRole="button"
+          accessibilityLabel="Restore removed photo slots"
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            marginBottom: 12,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <Text style={sharedStyles.textLink}>Restore removed slots</Text>
+        </Pressable>
+      ) : null}
 
       <DocumentListSection rows={documentRows} />
 

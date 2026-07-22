@@ -93,7 +93,7 @@ export const sharedStyles = StyleSheet.create({
     lineHeight: 18,
   },
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.sectionTitle,
     marginTop: 16,

@@ -172,7 +172,7 @@ export function PhotoHeroCarousel(props: {
               style={{
                 width: heroPageWidth,
                 height: heroHeight,
-                borderRadius: 2,
+                borderRadius: 12,
                 backgroundColor: colors.photoPlaceholder,
               }}
               resizeMode="cover"

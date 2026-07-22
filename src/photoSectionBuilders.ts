@@ -18,6 +18,8 @@ type ExtraPhoto = Pick<ItemPhoto, 'id' | 'localUri' | 'caption' | 'notes' | 'fav
 
 type SlotAndExtraOptions = {
   slots: SlotDefinition[];
+  /** Named slots the user removed; filtered out of the strip. */
+  hiddenSlotKeys?: string[];
   getSlotUri: (key: string) => string | undefined;
   getSlotDocument?: (key: string) => SlotDocumentTileInfo | undefined;
   getSlotNotes?: (key: string) => string | undefined;
@@ -27,6 +29,8 @@ type SlotAndExtraOptions = {
   onAddSlotDocument?: (key: string, picked: { uri: string; fileName: string; mimeType?: string }) => void | Promise<void>;
   onDeleteSlot: (key: string) => void | Promise<void>;
   onDeleteSlotDocument?: (key: string) => void | Promise<void>;
+  /** Clear slot content and hide the reserved placeholder. */
+  onRemoveSlot?: (key: string) => void | Promise<void>;
   onLabelSlot?: (key: string, notes: string) => void | Promise<void>;
   onToggleFavorite?: (photoId: string, favorite: boolean) => void | Promise<void>;
   extraPhotos: ExtraPhoto[];
@@ -46,6 +50,7 @@ export function buildPropertyPhotoTiles(
 export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): PhotoTile[] {
   const {
     slots,
+    hiddenSlotKeys,
     getSlotUri,
     getSlotDocument,
     getSlotNotes,
@@ -55,6 +60,7 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
     onAddSlotDocument,
     onDeleteSlot,
     onDeleteSlotDocument,
+    onRemoveSlot,
     onLabelSlot,
     onToggleFavorite,
     extraPhotos,
@@ -62,7 +68,10 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
     onLabelExtra,
   } = options;
 
-  const tiles: PhotoTile[] = slots.map((slot) => {
+  const hidden = new Set(hiddenSlotKeys ?? []);
+  const visibleSlots = slots.filter((slot) => !hidden.has(slot.key));
+
+  const tiles: PhotoTile[] = visibleSlots.map((slot) => {
     const uri = getSlotUri(slot.key);
     const document = getSlotDocument?.(slot.key);
     const supportsDocuments = onAddSlotDocument != null;
@@ -94,6 +103,11 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
       onDeleteDocument: document
         ? () => {
             void onDeleteSlotDocument?.(slot.key);
+          }
+        : undefined,
+      onRemoveSlot: onRemoveSlot
+        ? () => {
+            void onRemoveSlot(slot.key);
           }
         : undefined,
       onLabelChange: uri && onLabelSlot

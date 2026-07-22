@@ -1,11 +1,15 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { File, Paths } from 'expo-file-system';
 import { strToU8, unzip, Zip, ZipPassThrough } from 'fflate';
-import type { AppState } from './types';
+import type { AppState, PropertyUpdateBundle, SyncDeletedIds } from './types';
 import { EMPTY_APP_STATE } from './types';
 import { persistPhotoFromUri } from './photoStorage';
 import { persistDocumentFromUri } from './documentStorage';
-import { TRANSFER_FORMAT_VERSION, parseTransferBundle } from './transfer';
+import {
+  TRANSFER_FORMAT_VERSION,
+  UPDATE_FORMAT_VERSION,
+  parseTransferBundle,
+} from './transfer';
 
 export const ZIP_TRANSFER_FORMAT_VERSION = 2 as const;
 
@@ -185,6 +189,110 @@ export async function exportBackupToZip(
   return zipFile.uri;
 }
 
+/** ZIP a property-update package (changed state + deletedIds + media). */
+export async function exportPropertyUpdateToZip(
+  bundle: PropertyUpdateBundle,
+  options?: { fileNamePrefix?: string }
+): Promise<string> {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const stageRoot = `${Paths.cache.uri}update-stage-${Date.now()}`;
+  const prefix = (options?.fileNamePrefix ?? 'property-update')
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'property-update';
+  const zipName = `${prefix}-updates-${stamp}.zip`;
+  const zipFile = new File(Paths.cache, zipName);
+
+  await ensureEmptyDir(stageRoot);
+  await FileSystem.makeDirectoryAsync(`${stageRoot}/photos`, { intermediates: true });
+  await FileSystem.makeDirectoryAsync(`${stageRoot}/documents`, { intermediates: true });
+
+  const manifest = {
+    formatVersion: UPDATE_FORMAT_VERSION,
+    kind: 'property-update' as const,
+    exportedAtISO: bundle.exportedAtISO,
+    sourceLabel: bundle.sourceLabel,
+    propertyId: bundle.propertyId,
+    sinceISO: bundle.sinceISO,
+    state: bundle.state,
+    deletedIds: bundle.deletedIds,
+  };
+  await FileSystem.writeAsStringAsync(`${stageRoot}/state.json`, JSON.stringify(manifest));
+
+  const staged: StagedMedia[] = [];
+  for (const item of collectMediaToStage(bundle.state)) {
+    const dest = `${stageRoot}/${item.zipPath}`;
+    if (await copyIfExists(item.sourceUri, dest)) {
+      staged.push({ zipPath: item.zipPath, sourceUri: dest });
+    }
+  }
+
+  if (zipFile.exists) {
+    zipFile.delete();
+  }
+  zipFile.create({ intermediates: true, overwrite: true });
+  const handle = zipFile.open();
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const fail = (err: unknown) => {
+      if (settled) return;
+      settled = true;
+      try {
+        handle.close();
+      } catch {
+        // ignore
+      }
+      reject(err instanceof Error ? err : new Error(String(err)));
+    };
+
+    const zip = new Zip((err, chunk, final) => {
+      if (err) {
+        fail(err);
+        return;
+      }
+      try {
+        if (chunk.length > 0) {
+          handle.writeBytes(chunk);
+        }
+        if (final && !settled) {
+          settled = true;
+          handle.close();
+          resolve();
+        }
+      } catch (writeErr) {
+        fail(writeErr);
+      }
+    });
+
+    void (async () => {
+      try {
+        const stateEntry = new ZipPassThrough('state.json');
+        zip.add(stateEntry);
+        stateEntry.push(utf8ToBytes(JSON.stringify(manifest)), true);
+
+        for (const item of staged) {
+          const bytes = await readFileBytes(item.sourceUri);
+          const entry = new ZipPassThrough(item.zipPath);
+          zip.add(entry);
+          entry.push(bytes, true);
+        }
+        zip.end();
+      } catch (e) {
+        fail(e);
+      }
+    })();
+  });
+
+  try {
+    await FileSystem.deleteAsync(stageRoot, { idempotent: true });
+  } catch {
+    // ignore cleanup failures
+  }
+
+  return zipFile.uri;
+}
+
 function looksLikeZip(opts: {
   uri: string;
   fileName?: string;
@@ -268,7 +376,32 @@ type ZipImportResult = {
   state: AppState;
   /** Staged extracted media paths by photo/document id. */
   mediaFiles: Record<string, string>;
+  packageKind: 'property-inventory' | 'property-update';
+  propertyId?: string;
+  sinceISO?: string;
+  deletedIds?: SyncDeletedIds;
 };
+
+function coerceState(stateRaw: AppState): AppState {
+  return {
+    version: 1,
+    properties: Array.isArray(stateRaw.properties) ? stateRaw.properties : [],
+    rooms: Array.isArray(stateRaw.rooms) ? stateRaw.rooms : [],
+    items: Array.isArray(stateRaw.items) ? stateRaw.items : [],
+    photos: Array.isArray(stateRaw.photos) ? stateRaw.photos : [],
+    propertyPhotos: Array.isArray(stateRaw.propertyPhotos) ? stateRaw.propertyPhotos : [],
+    roomPhotos: Array.isArray(stateRaw.roomPhotos) ? stateRaw.roomPhotos : [],
+    documents: Array.isArray(stateRaw.documents) ? stateRaw.documents : [],
+    events: Array.isArray(stateRaw.events) ? stateRaw.events : [],
+    projects: Array.isArray(stateRaw.projects) ? stateRaw.projects : [],
+    projectVendors: Array.isArray(stateRaw.projectVendors) ? stateRaw.projectVendors : [],
+    projectPhotos: Array.isArray(stateRaw.projectPhotos) ? stateRaw.projectPhotos : [],
+    vendorPhotos: Array.isArray(stateRaw.vendorPhotos) ? stateRaw.vendorPhotos : [],
+    vendorInteractions: Array.isArray(stateRaw.vendorInteractions)
+      ? stateRaw.vendorInteractions
+      : [],
+  };
+}
 
 async function extractZipToStaging(zipUri: string): Promise<{ extractRoot: string; files: Record<string, string> }> {
   const extractRoot = `${Paths.cache.uri}backup-import-${Date.now()}`;
@@ -298,7 +431,22 @@ export async function importBackupFromUri(
   uri: string,
   hints?: { fileName?: string; mimeType?: string }
 ): Promise<
-  | { ok: true; kind: 'json'; state: AppState; photoData?: Record<string, string> }
+  | {
+      ok: true;
+      kind: 'json';
+      packageKind: 'property-inventory';
+      state: AppState;
+      photoData?: Record<string, string>;
+    }
+  | {
+      ok: true;
+      kind: 'json';
+      packageKind: 'property-update';
+      state: AppState;
+      propertyId: string;
+      sinceISO?: string;
+      deletedIds: SyncDeletedIds;
+    }
   | { ok: true; kind: 'zip'; result: ZipImportResult; extractRoot: string }
   | { ok: false; error: string }
 > {
@@ -328,34 +476,26 @@ export async function importBackupFromUri(
         return { ok: false, error: 'Unrecognized ZIP backup.' };
       }
       const obj = parsed as Record<string, unknown>;
-      if (obj.kind !== 'property-inventory') {
+      if (obj.kind !== 'property-inventory' && obj.kind !== 'property-update') {
         return { ok: false, error: 'Not a Property Asset Manager export.' };
       }
-      if (obj.formatVersion !== ZIP_TRANSFER_FORMAT_VERSION && obj.formatVersion !== TRANSFER_FORMAT_VERSION) {
+      if (obj.kind === 'property-update') {
+        if (obj.formatVersion !== UPDATE_FORMAT_VERSION) {
+          return { ok: false, error: 'Unsupported update package format version.' };
+        }
+        if (typeof obj.propertyId !== 'string' || !obj.propertyId) {
+          return { ok: false, error: 'Update package is missing property id.' };
+        }
+      } else if (
+        obj.formatVersion !== ZIP_TRANSFER_FORMAT_VERSION &&
+        obj.formatVersion !== TRANSFER_FORMAT_VERSION
+      ) {
         return { ok: false, error: 'Unsupported transfer format version.' };
       }
       if (!obj.state || typeof obj.state !== 'object') {
         return { ok: false, error: 'Transfer file is missing data.' };
       }
-      const stateRaw = obj.state as AppState;
-      const state: AppState = {
-        version: 1,
-        properties: Array.isArray(stateRaw.properties) ? stateRaw.properties : [],
-        rooms: Array.isArray(stateRaw.rooms) ? stateRaw.rooms : [],
-        items: Array.isArray(stateRaw.items) ? stateRaw.items : [],
-        photos: Array.isArray(stateRaw.photos) ? stateRaw.photos : [],
-        propertyPhotos: Array.isArray(stateRaw.propertyPhotos) ? stateRaw.propertyPhotos : [],
-        roomPhotos: Array.isArray(stateRaw.roomPhotos) ? stateRaw.roomPhotos : [],
-        documents: Array.isArray(stateRaw.documents) ? stateRaw.documents : [],
-        events: Array.isArray(stateRaw.events) ? stateRaw.events : [],
-        projects: Array.isArray(stateRaw.projects) ? stateRaw.projects : [],
-        projectVendors: Array.isArray(stateRaw.projectVendors) ? stateRaw.projectVendors : [],
-        projectPhotos: Array.isArray(stateRaw.projectPhotos) ? stateRaw.projectPhotos : [],
-        vendorPhotos: Array.isArray(stateRaw.vendorPhotos) ? stateRaw.vendorPhotos : [],
-        vendorInteractions: Array.isArray(stateRaw.vendorInteractions)
-          ? stateRaw.vendorInteractions
-          : [],
-      };
+      const state = coerceState(obj.state as AppState);
 
       const mediaFiles: Record<string, string> = {};
       for (const [path, fileUri] of Object.entries(files)) {
@@ -370,7 +510,17 @@ export async function importBackupFromUri(
         ok: true,
         kind: 'zip',
         extractRoot,
-        result: { state, mediaFiles },
+        result: {
+          state,
+          mediaFiles,
+          packageKind: obj.kind,
+          propertyId: typeof obj.propertyId === 'string' ? obj.propertyId : undefined,
+          sinceISO: typeof obj.sinceISO === 'string' ? obj.sinceISO : undefined,
+          deletedIds:
+            obj.deletedIds && typeof obj.deletedIds === 'object'
+              ? (obj.deletedIds as SyncDeletedIds)
+              : undefined,
+        },
       };
     }
 
@@ -379,9 +529,21 @@ export async function importBackupFromUri(
     if (!parsed.ok) {
       return { ok: false, error: parsed.error };
     }
+    if (parsed.kind === 'property-update') {
+      return {
+        ok: true,
+        kind: 'json',
+        packageKind: 'property-update',
+        state: parsed.bundle.state,
+        propertyId: parsed.bundle.propertyId,
+        sinceISO: parsed.bundle.sinceISO,
+        deletedIds: parsed.bundle.deletedIds,
+      };
+    }
     return {
       ok: true,
       kind: 'json',
+      packageKind: 'property-inventory',
       state: parsed.bundle.state,
       photoData: parsed.bundle.photoData,
     };

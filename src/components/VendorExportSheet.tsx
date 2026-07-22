@@ -1,10 +1,10 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
-import type { ProjectExportSnapshot } from '../projectExportContent';
+import type { VendorExportSnapshot } from '../vendorExportContent';
 
-export const PROJECT_EXPORT_WIDTH = 390;
-const EXPORT_VENDOR_THUMB_SIZE = Math.round(72 * 1.2);
-const EXPORT_PHOTO_SIZE = Math.round(110 * 1.33 * 1.2);
+export const VENDOR_EXPORT_WIDTH = 390;
+const EXPORT_INTERACTION_THUMB_SIZE = 72;
+const EXPORT_PHOTO_SIZE = Math.round(110 * 1.33);
 
 const exportColors = {
   bg: '#f7f5f1',
@@ -59,13 +59,13 @@ function ExportPhotoGrid(props: { photos: { uri: string; label: string }[] }) {
   );
 }
 
-export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
+export function VendorExportSheet(props: { snapshot: VendorExportSnapshot }) {
   const { snapshot } = props;
 
   return (
     <View
       style={{
-        width: PROJECT_EXPORT_WIDTH,
+        width: VENDOR_EXPORT_WIDTH,
         backgroundColor: exportColors.bg,
         padding: 24,
       }}
@@ -131,7 +131,7 @@ export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
         </View>
       ) : null}
 
-      {snapshot.vendors.length > 0 ? (
+      {snapshot.interactions.length > 0 ? (
         <View
           style={{
             marginTop: 20,
@@ -148,18 +148,18 @@ export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
               marginBottom: 10,
             }}
           >
-            Vendors
+            Interaction history
           </Text>
-          {snapshot.vendors.map((vendor, index) => {
-            const firstPhoto = vendor.photos[0];
-            const morePhotos = vendor.photos.slice(1);
+          {snapshot.interactions.map((interaction, index) => {
+            const firstPhoto = interaction.photos[0];
+            const morePhotos = interaction.photos.slice(1);
             return (
               <View
-                key={`${vendor.title}-${index}`}
+                key={`${interaction.title}-${index}`}
                 style={{
                   marginBottom: 16,
                   paddingBottom: 12,
-                  borderBottomWidth: index < snapshot.vendors.length - 1 ? 1 : 0,
+                  borderBottomWidth: index < snapshot.interactions.length - 1 ? 1 : 0,
                   borderBottomColor: exportColors.border,
                 }}
               >
@@ -168,8 +168,8 @@ export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
                     <Image
                       source={{ uri: firstPhoto.uri }}
                       style={{
-                        width: EXPORT_VENDOR_THUMB_SIZE,
-                        height: EXPORT_VENDOR_THUMB_SIZE,
+                        width: EXPORT_INTERACTION_THUMB_SIZE,
+                        height: EXPORT_INTERACTION_THUMB_SIZE,
                         borderRadius: 8,
                         backgroundColor: exportColors.border,
                       }}
@@ -177,9 +177,9 @@ export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
                   ) : null}
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: exportColors.text }}>
-                      {vendor.title}
+                      {interaction.title}
                     </Text>
-                    {vendor.lines.map((line) => (
+                    {interaction.lines.map((line) => (
                       <Text
                         key={line}
                         style={{ fontSize: 13, color: exportColors.muted, marginTop: 4 }}
@@ -189,45 +189,6 @@ export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
                     ))}
                   </View>
                 </View>
-                {vendor.interactions.length > 0 ? (
-                  <View style={{ marginTop: 8, gap: 8 }}>
-                    {vendor.interactions.map((interaction, interactionIndex) => (
-                      <View key={`${interaction.date}-${interactionIndex}`}>
-                        <View
-                          style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              color: exportColors.muted,
-                              width: firstPhoto || interaction.date ? EXPORT_VENDOR_THUMB_SIZE : undefined,
-                              textAlign: firstPhoto || interaction.date ? 'center' : 'left',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {interaction.date}
-                          </Text>
-                          {interaction.detail ? (
-                            <Text
-                              style={{
-                                fontSize: 13,
-                                color: exportColors.muted,
-                                flex: 1,
-                              }}
-                            >
-                              {interaction.detail}
-                            </Text>
-                          ) : (
-                            <View style={{ flex: 1 }} />
-                          )}
-                        </View>
-                        {interaction.photos.length > 0 ? (
-                          <ExportPhotoGrid photos={interaction.photos} />
-                        ) : null}
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
                 {morePhotos.length > 0 ? <ExportPhotoGrid photos={morePhotos} /> : null}
               </View>
             );
