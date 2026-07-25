@@ -7,7 +7,7 @@ import {
   upcomingServiceEventsForProperty,
 } from './eventRecurrence';
 import { overdueCountForRoom } from './itemMaintenance';
-import { favoriteHeroPhotosForProperty } from './propertyFavoritePhotos';
+import { slideshowPhotosForProperty } from './propertyFavoritePhotos';
 import { firstPhotoUriForProject } from './projectPhotos';
 import { firstPhotoUriForRoom } from './roomPhotos';
 import {
@@ -50,7 +50,7 @@ export function buildPropertyExportSnapshot(
     .filter((line): line is string => Boolean(line))
     .map((line) => line);
 
-  const photos: PropertyExportPhoto[] = favoriteHeroPhotosForProperty(state, propertyId).map(
+  const photos: PropertyExportPhoto[] = slideshowPhotosForProperty(state, propertyId).map(
     (photo) => ({
       uri: photo.uri,
       label: photo.label,

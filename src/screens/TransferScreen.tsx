@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Text } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -446,18 +439,17 @@ export function TransferScreen(props: {
       >
         <Text style={sharedStyles.title}>Backup</Text>
         <Text style={sharedStyles.subtitle}>
-          Export a full backup, or import a backup / Share updates package from another device.
-          First-time handoff: Export property → Import → Merge. Ongoing: Share updates → Import.
+          Export a full backup, or import a backup / update package from another device.
+          First-time handoff: Export property → Import → Merge. Ongoing: Property → Save updates → Load updates.
         </Text>
 
-        <View
-          style={[
-            sharedStyles.card,
-            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-          ]}
-        >
+        <View style={sharedStyles.card}>
           <Text style={sharedStyles.cardTitle}>Include photos and PDFs in export</Text>
-          <Switch value={includePhotos} onValueChange={setIncludePhotos} />
+          <Switch
+            value={includePhotos}
+            onValueChange={setIncludePhotos}
+            style={{ alignSelf: 'flex-start', marginTop: 10 }}
+          />
         </View>
         <Text style={sharedStyles.cardMeta}>
           When on, backups export as a ZIP with photo and PDF files (required for large inventories).

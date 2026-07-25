@@ -63,7 +63,7 @@ function runLoadFileForPhoto(
 
 export function promptPickOrTakeSingle(onPhoto: (uri: string) => void | Promise<void>) {
   Alert.alert('Add photo', undefined, [
-    { text: 'Cancel', style: 'cancel' },
+    { text: 'Done', style: 'cancel' },
     {
       text: 'Choose photo',
       onPress: () => {
@@ -92,7 +92,7 @@ export function promptSlotAttachment(handlers: {
   onDocument: (picked: PickedDocument) => void | Promise<void>;
 }) {
   Alert.alert('Add attachment', undefined, [
-    { text: 'Cancel', style: 'cancel' },
+    { text: 'Done', style: 'cancel' },
     {
       text: 'Choose photo',
       onPress: () => {
@@ -134,7 +134,7 @@ export function promptPickOrTakeMulti(
   onDocument?: (picked: PickedDocument) => void | Promise<void>
 ) {
   Alert.alert('Add photo', undefined, [
-    { text: 'Cancel', style: 'cancel' },
+    { text: 'Done', style: 'cancel' },
     {
       text: 'Choose photos',
       onPress: () => {

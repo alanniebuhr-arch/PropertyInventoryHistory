@@ -1,4 +1,5 @@
 import type { AppState } from './types';
+import { syncSlideshowAfterFavoriteChange } from './propertyFavoritePhotos';
 
 /** Update caption and notes on an item (or event) photo. */
 export function setItemPhotoCaptionAndNotes(
@@ -107,7 +108,7 @@ export function setItemPhotoFavorite(
   photoId: string,
   favorite: boolean
 ): AppState {
-  return {
+  const next = {
     ...state,
     photos: state.photos.map((photo) =>
       photo.id === photoId
@@ -115,6 +116,7 @@ export function setItemPhotoFavorite(
         : photo
     ),
   };
+  return syncSlideshowAfterFavoriteChange(next, photoId, favorite);
 }
 
 export function setPropertyPhotoFavorite(
@@ -122,7 +124,7 @@ export function setPropertyPhotoFavorite(
   photoId: string,
   favorite: boolean
 ): AppState {
-  return {
+  const next = {
     ...state,
     propertyPhotos: state.propertyPhotos.map((photo) =>
       photo.id === photoId
@@ -130,6 +132,7 @@ export function setPropertyPhotoFavorite(
         : photo
     ),
   };
+  return syncSlideshowAfterFavoriteChange(next, photoId, favorite);
 }
 
 export function setRoomPhotoFavorite(
@@ -137,7 +140,7 @@ export function setRoomPhotoFavorite(
   photoId: string,
   favorite: boolean
 ): AppState {
-  return {
+  const next = {
     ...state,
     roomPhotos: state.roomPhotos.map((photo) =>
       photo.id === photoId
@@ -145,6 +148,7 @@ export function setRoomPhotoFavorite(
         : photo
     ),
   };
+  return syncSlideshowAfterFavoriteChange(next, photoId, favorite);
 }
 
 export function setProjectPhotoCaptionAndNotes(

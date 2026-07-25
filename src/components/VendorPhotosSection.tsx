@@ -19,8 +19,9 @@ export function VendorPhotosSection(props: {
   state: AppState;
   vendorId: string;
   onSave: (state: AppState) => void;
+  children?: React.ReactNode;
 }) {
-  const { state, vendorId, onSave } = props;
+  const { state, vendorId, onSave, children } = props;
   const vendor = state.projectVendors.find((v) => v.id === vendorId);
   const extraPhotos = photosForVendor(state, vendorId);
 
@@ -66,7 +67,9 @@ export function VendorPhotosSection(props: {
           const next = await addVendorDocuments(state, vendorId, picked);
           onSave(next);
         }}
-      />
+      >
+        {children}
+      </PhotoSection>
       <DocumentListSection rows={documentRows} />
     </>
   );

@@ -1,17 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../textScale';
 import type { ScrollView as RNScrollView } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
@@ -26,7 +15,7 @@ import {
   type ApplianceEditingSection,
 } from '../components/ApplianceDisplayView';
 import { sharedStyles, colors } from '../theme';
-import { formatDate, uid, nowISO } from '../utils';
+import { formatCurrency, formatDate, uid, nowISO } from '../utils';
 import {
   deleteItemCascade,
   eventsForItem,
@@ -84,6 +73,7 @@ import { RoomNavigationDots } from '../components/RoomNavigationDots';
 import { ItemDetailScrollContext } from '../itemDetailScrollContext';
 import { buildItemExportSnapshot, type ItemExportSnapshot } from '../itemExportContent';
 import { shareViewAsPng } from '../shareViewImage';
+import { setItemPhotoFavorite } from '../photoMeta';
 
 export function ItemDetailScreen(props: {
   state: AppState;
@@ -91,6 +81,7 @@ export function ItemDetailScreen(props: {
   startEditingSection?: ApplianceEditingSection;
   onBack: () => void;
   onNavigateItem: (itemId: string) => void;
+  onGoToProperty: () => void;
   onAddEvent: () => void;
   onEditEvent: (eventId: string) => void;
   onLogUpcomingService: (completeFromEventId: string) => void;
@@ -102,6 +93,7 @@ export function ItemDetailScreen(props: {
     startEditingSection,
     onBack,
     onNavigateItem,
+    onGoToProperty,
     onAddEvent,
     onEditEvent,
     onLogUpcomingService,
@@ -197,15 +189,16 @@ export function ItemDetailScreen(props: {
     if (!exportSnapshot || !exporting) return;
 
     let cancelled = false;
+    // Give the on-screen sheet (and its images) time to lay out before capture.
     const timer = setTimeout(() => {
       void (async () => {
-        const shared = await shareViewAsPng(exportRef, `Share ${exportSnapshot.title}`);
+        await shareViewAsPng(exportRef, `Share ${exportSnapshot.title}`);
         if (!cancelled) {
           setExportSnapshot(null);
           setExporting(false);
         }
       })();
-    }, 400);
+    }, 800);
 
     return () => {
       cancelled = true;
@@ -501,12 +494,7 @@ export function ItemDetailScreen(props: {
   }
 
   function handlePhotoFavoriteChange(photoId: string, favorite: boolean) {
-    onSave({
-      ...state,
-      photos: state.photos.map((p) =>
-        p.id === photoId ? { ...p, favorite: favorite || undefined } : p
-      ),
-    });
+    onSave(setItemPhotoFavorite(state, photoId, favorite));
   }
 
   const extraDocumentRows = itemExtraDocumentRows(state, inv, (documentId) => {
@@ -572,7 +560,7 @@ export function ItemDetailScreen(props: {
                       void setPropertyUpcomingHorizon(opt.id);
                     },
                   })),
-                  { text: 'Cancel', style: 'cancel' as const },
+                  { text: 'Done', style: 'cancel' as const },
                 ]
               );
             }}
@@ -615,43 +603,33 @@ export function ItemDetailScreen(props: {
       </View>
 
       <View style={sharedStyles.sectionFrame}>
-        <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>New event</Text>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 12,
+            gap: 4,
+            marginBottom: 8,
           }}
         >
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+            Service history
+          </Text>
           <Pressable
             onPress={onAddEvent}
-            style={({ pressed }) => [
-              sharedStyles.primaryBtn,
-              {
-                marginTop: 0,
-                paddingVertical: 10,
-                paddingHorizontal: 12,
-                maxWidth: 120,
-                flexShrink: 0,
-              },
-              pressed && sharedStyles.primaryBtnPressed,
-            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Add service event"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
           >
-            <Text style={[sharedStyles.primaryBtnText, { fontSize: 14, textAlign: 'center' }]}>
-              {'New\nevent'}
-            </Text>
+            <MaterialIcons name="add" size={24} color={colors.primary} />
           </Pressable>
-          <Text style={[sharedStyles.cardMeta, { flex: 1, marginBottom: 0, marginTop: 0 }]}>
-            Log or Schedule maintenance, repairs, and inspections. Attach receipt and parts photos on each event.
-          </Text>
         </View>
-      </View>
-
-      <View style={sharedStyles.sectionFrame}>
-        <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>Service history</Text>
         {historyEvents.length === 0 ? (
           <Text style={[sharedStyles.cardMeta, { marginTop: 0 }]}>
-            No service events yet — e.g. annual maintenance or a repair.
+            No service events yet — tap + to log maintenance, repairs, or inspections.
           </Text>
         ) : (
           <View>
@@ -663,6 +641,7 @@ export function ItemDetailScreen(props: {
                   title={e.title}
                   eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
                   dateLabel={formatDate(e.occurredAtISO)}
+                  costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
                   notes={e.notes}
                   thumbnailUri={eventPhotos[0]?.localUri}
                   onPress={() => onEditEvent(e.id)}
@@ -697,6 +676,30 @@ export function ItemDetailScreen(props: {
               gap: 4,
             }}
           >
+            <Pressable
+              onPress={onGoToProperty}
+              disabled={exporting || !property}
+              accessibilityRole="button"
+              accessibilityLabel="Go to property"
+              accessibilityHint="Opens the property page for this asset."
+              hitSlop={8}
+              style={({ pressed }) => [
+                {
+                  width: 42,
+                  height: 36,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: colors.border,
+                  borderRadius: 4,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'transparent',
+                  opacity: exporting || !property ? 0.6 : 1,
+                },
+                pressed && !exporting && property && { opacity: 0.8 },
+              ]}
+            >
+              <MaterialIcons name="home" size={22} color={colors.primary} />
+            </Pressable>
             <Pressable
               onPress={() => void runItemExport()}
               disabled={exporting}
@@ -919,16 +922,23 @@ export function ItemDetailScreen(props: {
         </Pressable>
       </Modal>
 
-      <Modal visible={exportSnapshot != null} transparent animationType="none" onRequestClose={() => {}}>
+      {exportSnapshot ? (
         <View
-          style={{ position: 'absolute', left: 0, top: 0, opacity: 0 }}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            zIndex: 3,
+            opacity: 0.02,
+          }}
           pointerEvents="none"
+          collapsable={false}
         >
           <View ref={exportRef} collapsable={false}>
-            {exportSnapshot ? <ItemExportSheet snapshot={exportSnapshot} /> : null}
+            <ItemExportSheet snapshot={exportSnapshot} />
           </View>
         </View>
-      </Modal>
+      ) : null}
 
       {exporting ? (
         <View
@@ -938,6 +948,7 @@ export function ItemDetailScreen(props: {
             left: 0,
             right: 0,
             bottom: 0,
+            zIndex: 2,
             backgroundColor: 'rgba(0,0,0,0.25)',
             alignItems: 'center',
             justifyContent: 'center',

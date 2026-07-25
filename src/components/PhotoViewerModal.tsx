@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
-import { Alert, Modal, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, Modal, Pressable, useWindowDimensions, View } from 'react-native';
+import { Text } from '../textScale';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ZoomablePhotoImage } from './ZoomablePhotoImage';
@@ -29,11 +30,21 @@ export function PhotoViewerModal(props: {
   const { photos, index, onIndexChange, onEditLabel, browseOnly = false } = props;
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  const landscapeSlideshow = browseOnly && width > height;
 
   const currentPhoto = index != null ? photos[index] : null;
   const currentNotes = currentPhoto?.notes?.trim() || undefined;
-  const imageMaxH = height - insets.top - insets.bottom - (currentNotes ? 168 : 120);
+  const imageMaxH = landscapeSlideshow
+    ? height
+    : height - insets.top - insets.bottom - (currentNotes ? 168 : 120);
   const hasMultiple = photos.length > 1;
+
+  function slideshowLabelText(): string | undefined {
+    if (!currentPhoto) return undefined;
+    const label = currentPhoto.label?.trim();
+    if (!label || label === 'Photo') return undefined;
+    return label;
+  }
 
   function renderCaption(center: boolean) {
     if (!currentPhoto) return null;
@@ -130,6 +141,8 @@ export function PhotoViewerModal(props: {
     ]);
   }
 
+  const landscapeLabel = slideshowLabelText();
+
   return (
     <Modal
       visible={currentPhoto != null}
@@ -137,88 +150,148 @@ export function PhotoViewerModal(props: {
       animationType="fade"
       onRequestClose={closeViewer}
       presentationStyle="overFullScreen"
+      supportedOrientations={[
+        'portrait',
+        'portrait-upside-down',
+        'landscape',
+        'landscape-left',
+        'landscape-right',
+      ]}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: '#000',
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-            }}
-          >
-            <Pressable onPress={closeViewer} hitSlop={12}>
-              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Close</Text>
-            </Pressable>
-            {hasMultiple && index != null ? (
-              <Text style={{ color: '#ccc', fontSize: 15 }}>
-                {index + 1} / {photos.length}
-              </Text>
-            ) : (
-              <View style={{ width: 48 }} />
-            )}
-            {currentPhoto && !browseOnly ? (
-              <Pressable onPress={confirmDelete} hitSlop={12}>
-                <Text style={{ color: '#ff8a80', fontSize: 17, fontWeight: '600' }}>Delete</Text>
+        {landscapeSlideshow ? (
+          <View style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              {currentPhoto ? (
+                <ZoomablePhotoImage
+                  key={currentPhoto.id}
+                  uri={currentPhoto.uri}
+                  width={width}
+                  height={
+                    landscapeLabel
+                      ? Math.max(120, height - Math.max(insets.bottom, 12) - 48)
+                      : height
+                  }
+                  resizeMode="contain"
+                  onSwipeLeft={hasMultiple ? showNext : undefined}
+                  onSwipeRight={hasMultiple ? showPrev : undefined}
+                />
+              ) : null}
+            </View>
+            {landscapeLabel ? (
+              <Pressable
+                onPress={closeViewer}
+                accessibilityRole="button"
+                accessibilityLabel={`${landscapeLabel}. Tap to close.`}
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  paddingTop: 12,
+                  paddingBottom: Math.max(insets.bottom, 12),
+                  paddingHorizontal: 24,
+                  backgroundColor: 'rgba(0,0,0,0.45)',
+                  alignItems: 'center',
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: '600',
+                    textAlign: 'center',
+                  }}
+                  numberOfLines={2}
+                >
+                  {landscapeLabel}
+                </Text>
               </Pressable>
-            ) : (
-              <View style={{ width: 48 }} />
-            )}
-          </View>
-
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            {currentPhoto ? (
-              <ZoomablePhotoImage
-                key={currentPhoto.id}
-                uri={currentPhoto.uri}
-                width={width}
-                height={imageMaxH}
-                onSwipeLeft={hasMultiple ? showPrev : undefined}
-                onSwipeRight={hasMultiple ? showNext : undefined}
-              />
             ) : null}
           </View>
-
-          {hasMultiple ? (
+        ) : (
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: '#000',
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+            }}
+          >
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingHorizontal: 24,
-                paddingBottom: 16,
-                gap: 8,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
               }}
             >
-              <Pressable onPress={showPrev} hitSlop={8}>
-                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Previous</Text>
+              <Pressable onPress={closeViewer} hitSlop={12}>
+                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Close</Text>
               </Pressable>
-              {renderCaption(false)}
-              <Pressable onPress={showNext} hitSlop={8}>
-                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Next</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={{ paddingBottom: 16, alignItems: 'center', paddingHorizontal: 24 }}>
-              {renderCaption(true)}
-              {!browseOnly && !currentPhoto?.editableLabel ? (
-                <Text style={{ color: '#888', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
-                  Pinch to zoom
+              {hasMultiple && index != null ? (
+                <Text style={{ color: '#ccc', fontSize: 15 }}>
+                  {index + 1} / {photos.length}
                 </Text>
+              ) : (
+                <View style={{ width: 48 }} />
+              )}
+              {currentPhoto && !browseOnly ? (
+                <Pressable onPress={confirmDelete} hitSlop={12}>
+                  <Text style={{ color: '#ff8a80', fontSize: 17, fontWeight: '600' }}>Delete</Text>
+                </Pressable>
+              ) : (
+                <View style={{ width: 48 }} />
+              )}
+            </View>
+
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              {currentPhoto ? (
+                <ZoomablePhotoImage
+                  key={currentPhoto.id}
+                  uri={currentPhoto.uri}
+                  width={width}
+                  height={imageMaxH}
+                  onSwipeLeft={hasMultiple ? showNext : undefined}
+                  onSwipeRight={hasMultiple ? showPrev : undefined}
+                />
               ) : null}
             </View>
-          )}
-        </View>
+
+            {hasMultiple ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: 24,
+                  paddingBottom: 16,
+                  gap: 8,
+                }}
+              >
+                <Pressable onPress={showPrev} hitSlop={8}>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Previous</Text>
+                </Pressable>
+                {renderCaption(false)}
+                <Pressable onPress={showNext} hitSlop={8}>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Next</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={{ paddingBottom: 16, alignItems: 'center', paddingHorizontal: 24 }}>
+                {renderCaption(true)}
+                {!browseOnly && !currentPhoto?.editableLabel ? (
+                  <Text style={{ color: '#888', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+                    Pinch to zoom
+                  </Text>
+                ) : null}
+              </View>
+            )}
+          </View>
+        )}
       </GestureHandlerRootView>
     </Modal>
   );
 }
+

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Modal, Pressable, ScrollView, Text } from 'react-native';
+import { Modal, Pressable, ScrollView } from 'react-native';
+import { Text } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ItemTypeId } from '../types';
 import { ITEM_CATALOG } from '../itemCatalog';

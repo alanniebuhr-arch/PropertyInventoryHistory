@@ -1,44 +1,46 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import type { AppState, Project, Room } from '../types';
-import { ProjectGalleryTile, ProjectListRow, RoomGalleryTile, RoomListRow } from '../components/ListRows';
+import type { AppState, Project, PropertyTodo, Room, SyncDeletedIds } from '../types';
+import {
+  ProjectGalleryTile,
+  ProjectListRow,
+  PropertyTodoListRow,
+  RoomGalleryTile,
+  RoomListRow,
+} from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
 import { RenameModal } from '../components/RenameModal';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { sharedStyles, colors } from '../theme';
-import { nowISO, uid } from '../utils';
+import { formatDate, nowISO, uid } from '../utils';
 import {
   deletePropertyCascade,
   itemById,
   nextProjectSortOrder,
   nextRoomSortOrder,
   photosForEvent,
+  ideasForProperty,
+  photosForPropertyTodo,
   projectsForProperty,
   propertyById,
   roomsForProperty,
+  todosForProperty,
   vendorsForProject,
+  interactionsForProperty,
 } from '../storage';
 import { overdueCountForRoom } from '../itemMaintenance';
 import { itemDisplayLabel } from '../itemCatalog';
 import { firstPhotoUriForRoom } from '../roomPhotos';
 import { firstPhotoUriForProject } from '../projectPhotos';
-import { favoriteHeroPhotosForProperty } from '../propertyFavoritePhotos';
+import { slideshowPhotosForProperty } from '../propertyFavoritePhotos';
 import { PhotoViewerModal, type ViewerPhoto } from '../components/PhotoViewerModal';
+import { SlideshowEditorModal } from '../components/SlideshowEditorModal';
 import {
   filterUpcomingByHorizon,
   upcomingHorizonLabel,
@@ -64,15 +66,37 @@ import {
   setPropertyProjectViewMode,
   type PropertyProjectViewMode,
 } from '../propertyProjectViewPrefs';
-import { buildTransferBundle, buildPropertyUpdateBundle, sliceAppStateForProperty, summarizeChanges, transferBundleToJson } from '../transfer';
-import { exportBackupToZip, exportPropertyUpdateToZip } from '../transferPackage';
+import { Text, useTextScaleControls, TextInput } from '../textScale';
+import {
+  buildTransferBundle,
+  buildPropertyUpdateBundle,
+  mergeCollaborativeState,
+  sliceAppStateForProperty,
+  summarizeChanges,
+  transferBundleToJson,
+} from '../transfer';
+import {
+  cleanupExtractRoot,
+  exportBackupToZip,
+  exportPropertyUpdateToZip,
+  importBackupFromUri,
+  materializeZipMedia,
+} from '../transferPackage';
 import { clearPendingDeletedIds, getPendingDeletedIds } from '../syncMeta';
+import { writePhotoFromBase64 } from '../photoStorage';
+import { writeDocumentFromBase64 } from '../documentStorage';
 import {
   buildPropertyExportSnapshot,
   type PropertyExportSnapshot,
 } from '../propertyExportContent';
 import { PropertyExportSheet } from '../components/PropertyExportSheet';
+import { SectionHelpTip } from '../components/SectionHelpTip';
 import { shareViewAsPng } from '../shareViewImage';
+import {
+  getSectionHelpVisible,
+  loadSectionHelpVisible,
+  setSectionHelpVisible,
+} from '../sectionHelpPrefs';
 
 export function PropertyDetailScreen(props: {
   state: AppState;
@@ -80,6 +104,11 @@ export function PropertyDetailScreen(props: {
   onBack: () => void;
   onOpenRoom: (roomId: string) => void;
   onOpenProject: (projectId: string) => void;
+  onOpenInteractions: () => void;
+  onOpenTodo: (
+    todoId: string,
+    options?: { startEditing?: boolean; kind?: 'todo' | 'idea' }
+  ) => void;
   onEditEvent: (itemId: string, eventId: string) => void;
   onLogUpcomingService: (itemId: string, completeFromEventId: string) => void;
   onSave: (state: AppState) => void;
@@ -90,6 +119,8 @@ export function PropertyDetailScreen(props: {
     onBack,
     onOpenRoom,
     onOpenProject,
+    onOpenInteractions,
+    onOpenTodo,
     onEditEvent,
     onLogUpcomingService,
     onSave,
@@ -98,6 +129,9 @@ export function PropertyDetailScreen(props: {
   const property = propertyById(state, propertyId);
   const rooms = roomsForProperty(state, propertyId);
   const projects = projectsForProperty(state, propertyId);
+  const todos = todosForProperty(state, propertyId);
+  const ideas = ideasForProperty(state, propertyId);
+  const hasInteractions = interactionsForProperty(state, propertyId).length > 0;
   const [modalOpen, setModalOpen] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [projectModalOpen, setProjectModalOpen] = useState(false);
@@ -105,12 +139,19 @@ export function PropertyDetailScreen(props: {
   const [projectDescription, setProjectDescription] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
+  const [addTodoOpen, setAddTodoOpen] = useState(false);
+  const [newTodoTitle, setNewTodoTitle] = useState('');
+  const [addIdeaOpen, setAddIdeaOpen] = useState(false);
+  const [newIdeaTitle, setNewIdeaTitle] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportSnapshot, setExportSnapshot] = useState<PropertyExportSnapshot | null>(null);
   const [sharingPng, setSharingPng] = useState(false);
   const exportRef = useRef<View>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null);
+  const [slideshowEditorOpen, setSlideshowEditorOpen] = useState(false);
+  /** Snapshot used while the viewer is open so Play uses the order just committed. */
+  const [slideshowPlayPhotos, setSlideshowPlayPhotos] = useState<ViewerPhoto[] | null>(null);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
@@ -118,6 +159,8 @@ export function PropertyDetailScreen(props: {
   const [projectViewMode, setProjectViewMode] = useState<PropertyProjectViewMode>(
     getPropertyProjectViewMode
   );
+  const [helpVisible, setHelpVisible] = useState(getSectionHelpVisible);
+  const textScaleControls = useTextScaleControls();
 
   useEffect(() => {
     let cancelled = false;
@@ -129,6 +172,9 @@ export function PropertyDetailScreen(props: {
     });
     void loadPropertyProjectViewMode().then((mode) => {
       if (!cancelled) setProjectViewMode(mode);
+    });
+    void loadSectionHelpVisible().then((visible) => {
+      if (!cancelled) setHelpVisible(visible);
     });
     return () => {
       cancelled = true;
@@ -178,29 +224,50 @@ export function PropertyDetailScreen(props: {
   }
 
   const prop = property;
-  const favoritePhotos = favoriteHeroPhotosForProperty(state, propertyId);
-  const slideshowPhotos: ViewerPhoto[] = favoritePhotos.map((photo) => ({
+  const favoritePhotos = slideshowPhotosForProperty(state, propertyId);
+  const slideshowPhotosFromState: ViewerPhoto[] = favoritePhotos.map((photo) => ({
     id: photo.id,
     uri: photo.uri,
     label: photo.label,
     notes: photo.notes,
     onDelete: () => {},
   }));
+  const slideshowPhotos = slideshowPlayPhotos ?? slideshowPhotosFromState;
+
+  function openSlideshowEditor() {
+    setSlideshowEditorOpen(true);
+  }
+
+  function playFavoriteSlideshow(playState?: AppState) {
+    const source = playState ?? state;
+    const photos = slideshowPhotosForProperty(source, propertyId);
+    if (photos.length === 0) {
+      Alert.alert(
+        'No slideshow photos',
+        'Add photos in Slideshow, or mark photos as favorites with the star on property, room, or asset heroes.'
+      );
+      return;
+    }
+    if (playState) {
+      onSave(playState);
+    }
+    setSlideshowPlayPhotos(
+      photos.map((photo) => ({
+        id: photo.id,
+        uri: photo.uri,
+        label: photo.label,
+        notes: photo.notes,
+        onDelete: () => {},
+      }))
+    );
+    setSlideshowEditorOpen(false);
+    setSlideshowIndex(0);
+  }
+
   const upcomingEvents = filterUpcomingByHorizon(
     upcomingServiceEventsForProperty(state, propertyId),
     upcomingHorizon
   );
-
-  function openFavoriteSlideshow() {
-    if (slideshowPhotos.length === 0) {
-      Alert.alert(
-        'No favorite photos',
-        'Mark photos as favorites with the star on property, room, or asset heroes to include them here.'
-      );
-      return;
-    }
-    setSlideshowIndex(0);
-  }
 
   function selectUpcomingHorizon(horizon: UpcomingHorizon) {
     setUpcomingHorizon(horizon);
@@ -216,7 +283,7 @@ export function PropertyDetailScreen(props: {
           text: opt.label,
           onPress: () => selectUpcomingHorizon(opt.id),
         })),
-        { text: 'Cancel', style: 'cancel' as const },
+        { text: 'Done', style: 'cancel' as const },
       ]
     );
   }
@@ -282,6 +349,57 @@ export function PropertyDetailScreen(props: {
     setRenameOpen(false);
   }
 
+  function openAddTodo() {
+    setNewTodoTitle('');
+    setAddTodoOpen(true);
+  }
+
+  function saveNewTodo() {
+    const trimmed = newTodoTitle.trim();
+    if (!trimmed) {
+      Alert.alert('Title required', 'Enter a short title for this to-do.');
+      return;
+    }
+    const todo: PropertyTodo = {
+      id: uid('todo'),
+      propertyId,
+      title: trimmed,
+      done: false,
+      photoIds: [],
+      createdAtISO: nowISO(),
+    };
+    onSave({ ...state, propertyTodos: [...state.propertyTodos, todo] });
+    setAddTodoOpen(false);
+    setNewTodoTitle('');
+    onOpenTodo(todo.id, { startEditing: true, kind: 'todo' });
+  }
+
+  function openAddIdea() {
+    setNewIdeaTitle('');
+    setAddIdeaOpen(true);
+  }
+
+  function saveNewIdea() {
+    const trimmed = newIdeaTitle.trim();
+    if (!trimmed) {
+      Alert.alert('Title required', 'Enter a short title for this idea.');
+      return;
+    }
+    const idea: PropertyTodo = {
+      id: uid('todo'),
+      propertyId,
+      kind: 'idea',
+      title: trimmed,
+      done: false,
+      photoIds: [],
+      createdAtISO: nowISO(),
+    };
+    onSave({ ...state, propertyTodos: [...state.propertyTodos, idea] });
+    setAddIdeaOpen(false);
+    setNewIdeaTitle('');
+    onOpenTodo(idea.id, { startEditing: true, kind: 'idea' });
+  }
+
   function confirmDeleteProperty() {
     const propName = prop.name;
     Alert.alert(
@@ -304,7 +422,7 @@ export function PropertyDetailScreen(props: {
   function promptExportProperty() {
     Alert.alert(
       'Export property',
-      `Share a full copy of "${prop.name}" for first-time setup (Backup → Import → Merge). After that, use Share updates for ongoing changes.`,
+      `Share a full copy of "${prop.name}" for first-time setup on another device (Backup → Import → Merge). For ongoing collaboration on this property, use Save updates / Load updates.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Data only', onPress: () => void exportProperty(false) },
@@ -313,17 +431,14 @@ export function PropertyDetailScreen(props: {
     );
   }
 
-  function promptShareUpdates() {
-    const since = prop.lastSharedAtISO;
+  function promptSaveUpdates() {
     Alert.alert(
-      'Share updates',
-      since
-        ? `Send changes to "${prop.name}" since the last share so the other person can Import updates.`
-        : `No previous share watermark yet — this will send a full update package for "${prop.name}". For a first handoff, Export property is usually clearer.`,
+      'Save updates',
+      `Save a complete update package for "${prop.name}" (including vendors and interactions) to send to a collaborator. They use Load updates on the same property.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Data only', onPress: () => void sharePropertyUpdates(false) },
-        { text: 'Include photos', onPress: () => void sharePropertyUpdates(true) },
+        { text: 'Data only', onPress: () => void savePropertyUpdates(false) },
+        { text: 'Include photos', onPress: () => void savePropertyUpdates(true) },
       ]
     );
   }
@@ -390,25 +505,20 @@ export function PropertyDetailScreen(props: {
     }
   }
 
-  async function sharePropertyUpdates(includePhotos: boolean) {
+  async function savePropertyUpdates(includePhotos: boolean) {
     setExporting(true);
     try {
-      const sinceISO = prop.lastSharedAtISO;
+      // Always package the full property slice so vendors/interactions are never dropped
+      // by a stale lastSharedAtISO watermark.
       const deletedIds = await getPendingDeletedIds(propertyId);
       const bundle = buildPropertyUpdateBundle({
         state,
         propertyId,
-        sinceISO,
         deletedIds,
         sourceLabel: `Updates: ${prop.name}`,
       });
       if (!bundle) {
-        Alert.alert('Share failed', 'Property not found.');
-        return;
-      }
-      const changeSummary = summarizeChanges(bundle.state, bundle.deletedIds);
-      if (changeSummary === 'no changes') {
-        Alert.alert('Nothing to share', 'No changes since the last share.');
+        Alert.alert('Save failed', 'Property not found.');
         return;
       }
 
@@ -423,7 +533,7 @@ export function PropertyDetailScreen(props: {
             dialogTitle: `Updates for ${prop.name}`,
           });
         } else {
-          Alert.alert('Shared', `Update package saved to ${path}`);
+          Alert.alert('Saved', `Update package saved to ${path}`);
         }
       } else {
         const json = transferBundleToJson(bundle);
@@ -437,12 +547,231 @@ export function PropertyDetailScreen(props: {
             dialogTitle: `Updates for ${prop.name}`,
           });
         } else {
-          Alert.alert('Shared', `Update package saved to ${path}`);
+          Alert.alert('Saved', `Update package saved to ${path}`);
         }
       }
       await markPropertyShared();
     } catch (e) {
-      Alert.alert('Share failed', e instanceof Error ? e.message : 'Unknown error');
+      Alert.alert('Save failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function materializeEmbeddedPhotoData(
+    merged: AppState,
+    photoData: Record<string, string> | undefined
+  ): Promise<AppState> {
+    if (!photoData) return merged;
+    let next = merged;
+    const collections = [
+      'photos',
+      'propertyPhotos',
+      'roomPhotos',
+      'projectPhotos',
+      'vendorPhotos',
+    ] as const;
+    for (const key of collections) {
+      const updated: AppState[typeof key] = [];
+      for (const photo of next[key]) {
+        const b64 = photoData[photo.id];
+        if (!b64) {
+          updated.push(photo as never);
+          continue;
+        }
+        const localUri = await writePhotoFromBase64(photo.id, b64);
+        updated.push({ ...photo, localUri } as never);
+      }
+      next = { ...next, [key]: updated };
+    }
+    const docs: AppState['documents'] = [];
+    for (const doc of next.documents) {
+      const b64 = photoData[doc.id];
+      if (!b64) {
+        docs.push(doc);
+        continue;
+      }
+      const localUri = await writeDocumentFromBase64(doc.id, b64, doc.fileName);
+      docs.push({ ...doc, localUri });
+    }
+    return { ...next, documents: docs };
+  }
+
+  async function applyPropertyUpdateLoad(
+    incoming: AppState,
+    packagePropertyId: string,
+    deletedIds: SyncDeletedIds,
+    mediaFiles?: Record<string, string>,
+    extractRoot?: string,
+    photoData?: Record<string, string>
+  ) {
+    if (packagePropertyId !== propertyId) {
+      Alert.alert(
+        'Wrong property',
+        'This update package belongs to a different property. Open that property and use Load updates there.'
+      );
+      await cleanupExtractRoot(extractRoot);
+      return;
+    }
+
+    setExporting(true);
+    try {
+      let payload = incoming;
+      if (mediaFiles) {
+        payload = await materializeZipMedia(incoming, mediaFiles);
+      }
+      payload = await materializeEmbeddedPhotoData(payload, photoData);
+      const { state: merged, summary } = mergeCollaborativeState(state, payload, deletedIds);
+      onSave(merged);
+      // Let the spinner clear before the success alert (iOS often drops alerts during modal transitions).
+      setExporting(false);
+      await new Promise((r) => setTimeout(r, 250));
+      Alert.alert(
+        'Updates loaded',
+        `Added ${summary.added}, updated ${summary.updated}, deleted ${summary.deleted}.`
+      );
+    } catch (e) {
+      Alert.alert('Load failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      await cleanupExtractRoot(extractRoot);
+      setExporting(false);
+    }
+  }
+
+  async function loadPropertyUpdates() {
+    let extractRoot: string | undefined;
+    try {
+      // Do not set exporting yet — a spinner during DocumentPicker (especially right after the
+      // gear modal closes) often prevents the picker from appearing on iOS.
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets[0]?.uri) {
+        return;
+      }
+
+      setExporting(true);
+      const asset = result.assets[0];
+      const imported = await importBackupFromUri(asset.uri, {
+        fileName: asset.name,
+        mimeType: asset.mimeType,
+      });
+      setExporting(false);
+      // Document picker dismissal can swallow the next Alert if shown immediately.
+      await new Promise((r) => setTimeout(r, 300));
+
+      if (!imported.ok) {
+        Alert.alert('Invalid file', imported.error);
+        return;
+      }
+
+      const confirmLoad = (
+        message: string,
+        onConfirm: () => void,
+        onCancel?: () => void
+      ) => {
+        Alert.alert('Load updates', message, [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => onCancel?.(),
+          },
+          { text: 'Load', onPress: onConfirm },
+        ]);
+      };
+
+      if (imported.kind === 'zip') {
+        extractRoot = imported.extractRoot;
+        if (imported.result.packageKind === 'property-update') {
+          const pkgPropertyId = imported.result.propertyId;
+          if (!pkgPropertyId) {
+            Alert.alert('Invalid file', 'Update package is missing property id.');
+            await cleanupExtractRoot(extractRoot);
+            return;
+          }
+          const summary = summarizeChanges(
+            imported.result.state,
+            imported.result.deletedIds ?? {}
+          );
+          const zipState = imported.result.state;
+          const zipDeleted = imported.result.deletedIds ?? {};
+          const zipMedia = imported.result.mediaFiles;
+          const zipRoot = imported.extractRoot;
+          confirmLoad(
+            `Apply updates to "${prop.name}"?\n\nIncludes: ${summary}. Newer edits win when both sides changed the same record.`,
+            () =>
+              void applyPropertyUpdateLoad(
+                zipState,
+                pkgPropertyId,
+                zipDeleted,
+                zipMedia,
+                zipRoot
+              ),
+            () => void cleanupExtractRoot(zipRoot)
+          );
+          return;
+        }
+
+        const sliced = sliceAppStateForProperty(imported.result.state, propertyId);
+        if (!sliced || sliced.properties.length === 0) {
+          Alert.alert(
+            'Wrong property',
+            'This file does not contain the current property. Use Export property / Save updates for this property.'
+          );
+          await cleanupExtractRoot(extractRoot);
+          return;
+        }
+        const summary = summarizeChanges(sliced);
+        const zipMedia = imported.result.mediaFiles;
+        const zipRoot = imported.extractRoot;
+        confirmLoad(
+          `Merge exported data into "${prop.name}"?\n\nIncludes: ${summary}. Newer edits win when both sides changed the same record.`,
+          () => void applyPropertyUpdateLoad(sliced, propertyId, {}, zipMedia, zipRoot),
+          () => void cleanupExtractRoot(zipRoot)
+        );
+        return;
+      }
+
+      if (imported.packageKind === 'property-update') {
+        const summary = summarizeChanges(imported.state, imported.deletedIds);
+        confirmLoad(
+          `Apply updates to "${prop.name}"?\n\nIncludes: ${summary}. Newer edits win when both sides changed the same record.`,
+          () =>
+            void applyPropertyUpdateLoad(
+              imported.state,
+              imported.propertyId,
+              imported.deletedIds
+            )
+        );
+        return;
+      }
+
+      const sliced = sliceAppStateForProperty(imported.state, propertyId);
+      if (!sliced || sliced.properties.length === 0) {
+        Alert.alert(
+          'Wrong property',
+          'This file does not contain the current property. Use Export property / Save updates for this property.'
+        );
+        return;
+      }
+      const summary = summarizeChanges(sliced);
+      const photoData = imported.photoData;
+      confirmLoad(
+        `Merge exported data into "${prop.name}"?\n\nIncludes: ${summary}. Newer edits win when both sides changed the same record.`,
+        () =>
+          void applyPropertyUpdateLoad(
+            sliced,
+            propertyId,
+            {},
+            undefined,
+            undefined,
+            photoData
+          )
+      );
+    } catch (e) {
+      Alert.alert('Load failed', e instanceof Error ? e.message : 'Unknown error');
+      await cleanupExtractRoot(extractRoot);
     } finally {
       setExporting(false);
     }
@@ -452,16 +781,81 @@ export function PropertyDetailScreen(props: {
     setMenuOpen(true);
   }
 
+  function toggleHelp() {
+    const next = !helpVisible;
+    setHelpVisible(next);
+    void setSectionHelpVisible(next);
+  }
+
   function runMenuAction(action: () => void) {
     setMenuOpen(false);
     // Let the menu dismiss before opening another alert/modal.
     setTimeout(action, 50);
   }
 
+  /** Extra delay so DocumentPicker can present after the gear modal finishes closing. */
+  function runMenuActionAfterModal(action: () => void) {
+    setMenuOpen(false);
+    setTimeout(action, 400);
+  }
+
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScreenBackHeader onPress={onBack}>
         <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={toggleHelp}
+            disabled={exporting || sharingPng}
+            accessibilityRole="button"
+            accessibilityLabel={helpVisible ? 'Hide section help' : 'Show section help'}
+            accessibilityState={{ selected: helpVisible }}
+            accessibilityHint="Toggles short explanations under each section."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                width: 42,
+                height: 36,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: helpVisible ? colors.helpBg : 'transparent',
+                opacity: exporting || sharingPng ? 0.6 : 1,
+              },
+              pressed && !exporting && !sharingPng && { opacity: 0.8 },
+            ]}
+          >
+            <MaterialIcons
+              name={helpVisible ? 'help' : 'help-outline'}
+              size={22}
+              color={helpVisible ? colors.helpText : colors.primary}
+            />
+          </Pressable>
+          <Pressable
+            onPress={() => playFavoriteSlideshow()}
+            disabled={exporting || sharingPng}
+            accessibilityRole="button"
+            accessibilityLabel="Play slideshow"
+            accessibilityHint="Opens the favorite photo slideshow."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                width: 42,
+                height: 36,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'transparent',
+                opacity: exporting || sharingPng ? 0.6 : 1,
+              },
+              pressed && !exporting && !sharingPng && { opacity: 0.8 },
+            ]}
+          >
+            <MaterialIcons name="slideshow" size={22} color={colors.primary} />
+          </Pressable>
           <Pressable
             onPress={() => void runPropertyImageExport()}
             disabled={exporting || sharingPng}
@@ -490,12 +884,38 @@ export function PropertyDetailScreen(props: {
               <MaterialIcons name="ios-share" size={22} color={colors.primary} />
             )}
           </Pressable>
+          {hasInteractions ? (
+            <Pressable
+              onPress={onOpenInteractions}
+              disabled={exporting || sharingPng}
+              accessibilityRole="button"
+              accessibilityLabel="Property interactions"
+              accessibilityHint="Opens recent vendor interactions for this property."
+              hitSlop={8}
+              style={({ pressed }) => [
+                {
+                  width: 42,
+                  height: 36,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: colors.border,
+                  borderRadius: 4,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'transparent',
+                  opacity: exporting || sharingPng ? 0.6 : 1,
+                },
+                pressed && !exporting && !sharingPng && { opacity: 0.8 },
+              ]}
+            >
+              <MaterialIcons name="forum" size={22} color={colors.primary} />
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={openPropertyMenu}
             disabled={exporting || sharingPng}
             accessibilityRole="button"
             accessibilityLabel="Property options"
-            accessibilityHint="Opens actions like new room, new project, slideshow, export, share updates, and delete."
+            accessibilityHint="Opens actions like new room, new project, edit slideshow, export, save or load updates, and delete."
             hitSlop={6}
             style={({ pressed }) => ({
               padding: 4,
@@ -510,6 +930,25 @@ export function PropertyDetailScreen(props: {
           </Pressable>
         </View>
       </ScreenBackHeader>
+      {helpVisible ? (
+        <Text
+          style={{
+            marginHorizontal: 20,
+            marginBottom: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 8,
+            backgroundColor: colors.helpBg,
+            textAlign: 'right',
+            fontSize: 12,
+            lineHeight: 16,
+            color: colors.helpText,
+          }}
+        >
+          Help | Slideshow | Share
+          {hasInteractions ? ' | Interactions' : ''} | Utilities
+        </Text>
+      ) : null}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
@@ -522,8 +961,24 @@ export function PropertyDetailScreen(props: {
           >
             <Text style={sharedStyles.title}>{prop.name}</Text>
           </Pressable>
-          {prop.address ? <Text style={sharedStyles.subtitle}>{prop.address}</Text> : null}
+          {prop.address ? (
+            <Text style={sharedStyles.subtitle}>{prop.address}</Text>
+          ) : null}
         </PropertyPhotosSection>
+
+        {helpVisible ? (
+          <View style={{ marginTop: 8 }}>
+            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 8 }]}>
+              Photos
+            </Text>
+            <SectionHelpTip>
+              Fill in the reserved photos of your Property. Quick and easy access to all views of
+              your property is very useful. Use the star symbol under the large picture to add it to
+              your slideshow. Add any additional pictures. Long press on small photos to change
+              label, notes and delete.
+            </SectionHelpTip>
+          </View>
+        ) : null}
 
         <View
           style={{
@@ -535,7 +990,9 @@ export function PropertyDetailScreen(props: {
             marginBottom: 8,
           }}
         >
-          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
+          <Text
+            style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}
+          >
             Service schedule
           </Text>
           <Pressable
@@ -552,12 +1009,20 @@ export function PropertyDetailScreen(props: {
               paddingLeft: 8,
             })}
           >
-            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+            <Text
+              style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}
+            >
               {upcomingHorizonLabel(upcomingHorizon)}
             </Text>
             <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
           </Pressable>
         </View>
+        {helpVisible ? (
+          <SectionHelpTip>
+            Use the months selector above right to control how far into the future of this Property
+            schedule should be shown.
+          </SectionHelpTip>
+        ) : null}
         {upcomingEvents.length === 0 ? (
           <Text style={[sharedStyles.cardMeta, { marginBottom: 16 }]}>
             No upcoming service scheduled.
@@ -592,7 +1057,9 @@ export function PropertyDetailScreen(props: {
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
-            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+            <Text
+              style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}
+            >
               Rooms
             </Text>
             <Pressable
@@ -654,8 +1121,16 @@ export function PropertyDetailScreen(props: {
             </Pressable>
           </View>
         </View>
+        {helpVisible ? (
+          <SectionHelpTip>
+            Use rooms as containers for equipment you want to track (Heating, appliances, cars,
+            septic system, tractor...).
+          </SectionHelpTip>
+        ) : null}
         {rooms.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>Add a room like Utilities or Kitchen.</Text>
+          <Text style={sharedStyles.emptyText}>
+            Add a room like Utilities or Kitchen.
+          </Text>
         ) : roomViewMode === 'gallery' ? (
           <View style={sharedStyles.galleryRow}>
             {rooms.map((r) => (
@@ -697,7 +1172,9 @@ export function PropertyDetailScreen(props: {
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
-            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+            <Text
+              style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}
+            >
               Projects
             </Text>
             <Pressable
@@ -760,6 +1237,12 @@ export function PropertyDetailScreen(props: {
             </Pressable>
           </View>
         </View>
+        {helpVisible ? (
+          <SectionHelpTip>
+            Projects help you define a quote to provide contractors and then organize your
+            interactions with each contractor until you reach a decision.
+          </SectionHelpTip>
+        ) : null}
         {projects.length === 0 ? (
           <Text style={sharedStyles.emptyText}>
             Add a project to track contractor bids, like a pool renovation.
@@ -802,11 +1285,123 @@ export function PropertyDetailScreen(props: {
           })
         )}
 
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text
+            style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}
+          >
+            To do
+          </Text>
+          <Pressable
+            onPress={openAddTodo}
+            accessibilityRole="button"
+            accessibilityLabel="Add to-do"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="add" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
+        {helpVisible ? (
+          <SectionHelpTip>
+            Quick simple list of items for the current Property. Fix an outlet, Vacuum under fridge,
+            Cleanup around garbage cans.
+          </SectionHelpTip>
+        ) : null}
+        {todos.length === 0 ? (
+          <Text style={sharedStyles.emptyText}>
+            Track property tasks like repairs, follow-ups, or seasonal chores.
+          </Text>
+        ) : (
+          todos.map((todo) => (
+            <PropertyTodoListRow
+              key={todo.id}
+              title={todo.title}
+              dueLabel={todo.dueAtISO ? formatDate(todo.dueAtISO) : undefined}
+              notes={todo.notes}
+              done={todo.done}
+              thumbnailUri={photosForPropertyTodo(state, todo.id)[0]?.localUri}
+              onPress={() => onOpenTodo(todo.id, { kind: 'todo' })}
+            />
+          ))
+        )}
+
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text
+            style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}
+          >
+            Ideas
+          </Text>
+          <Pressable
+            onPress={openAddIdea}
+            accessibilityRole="button"
+            accessibilityLabel="Add idea"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="add" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
+        {helpVisible ? (
+          <SectionHelpTip>
+            Loosely thought out topics for this property. Ideas still need details added and may
+            someday move to a Project or To Do depending on complexity. Similar to TO DO but may
+            never be done.
+          </SectionHelpTip>
+        ) : null}
+        {ideas.length === 0 ? (
+          <Text style={sharedStyles.emptyText}>
+            Capture rough ideas for this property before they become to-dos or projects.
+          </Text>
+        ) : (
+          ideas.map((idea) => (
+            <PropertyTodoListRow
+              key={idea.id}
+              title={idea.title}
+              dueLabel={idea.dueAtISO ? formatDate(idea.dueAtISO) : undefined}
+              notes={idea.notes}
+              done={idea.done}
+              thumbnailUri={photosForPropertyTodo(state, idea.id)[0]?.localUri}
+              onPress={() => onOpenTodo(idea.id, { kind: 'idea' })}
+              variant="idea"
+            />
+          ))
+        )}
+
       </ScrollView>
 
       {exportSnapshot ? (
         <View
-          style={{ position: 'absolute', left: 0, top: 0, zIndex: 1 }}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            // Above the sharing spinner so iOS can snapshot this hierarchy.
+            zIndex: 3,
+            // Nearly invisible — still mounted on-screen for capture.
+            opacity: 0.02,
+          }}
           pointerEvents="none"
           collapsable={false}
         >
@@ -888,9 +1483,27 @@ export function PropertyDetailScreen(props: {
                 },
                 {
                   key: 'slideshow',
-                  label: 'Slideshow',
+                  label: 'Edit slideshow',
                   star: true,
-                  onPress: () => runMenuAction(openFavoriteSlideshow),
+                  onPress: () => runMenuAction(openSlideshowEditor),
+                },
+                {
+                  key: 'textLarger',
+                  label: 'Text larger',
+                  onPress: () => {
+                    if (!textScaleControls.canMakeLarger) return;
+                    textScaleControls.makeLarger();
+                  },
+                  disabled: !textScaleControls.canMakeLarger,
+                },
+                {
+                  key: 'textSmaller',
+                  label: 'Text smaller',
+                  onPress: () => {
+                    if (!textScaleControls.canMakeSmaller) return;
+                    textScaleControls.makeSmaller();
+                  },
+                  disabled: !textScaleControls.canMakeSmaller,
                 },
                 {
                   key: 'export',
@@ -898,9 +1511,14 @@ export function PropertyDetailScreen(props: {
                   onPress: () => runMenuAction(promptExportProperty),
                 },
                 {
-                  key: 'share',
-                  label: 'Share updates',
-                  onPress: () => runMenuAction(promptShareUpdates),
+                  key: 'saveUpdates',
+                  label: 'Save updates',
+                  onPress: () => runMenuAction(promptSaveUpdates),
+                },
+                {
+                  key: 'loadUpdates',
+                  label: 'Load updates',
+                  onPress: () => runMenuActionAfterModal(() => void loadPropertyUpdates()),
                 },
                 {
                   key: 'delete',
@@ -908,18 +1526,27 @@ export function PropertyDetailScreen(props: {
                   danger: true,
                   onPress: () => runMenuAction(confirmDeleteProperty),
                 },
-              ] as const
+              ] as Array<{
+                key: string;
+                label: string;
+                onPress: () => void;
+                danger?: boolean;
+                star?: boolean;
+                disabled?: boolean;
+              }>
             ).map((item) => (
               <Pressable
                 key={item.key}
-                onPress={item.onPress}
+                onPress={item.disabled ? undefined : item.onPress}
+                disabled={item.disabled}
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
+                accessibilityState={{ disabled: item.disabled === true }}
                 style={({ pressed }) => ({
                   paddingVertical: 14,
                   borderTopWidth: 1,
                   borderTopColor: colors.hairline,
-                  opacity: pressed ? 0.7 : 1,
+                  opacity: item.disabled ? 0.35 : pressed ? 0.7 : 1,
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 8,
@@ -929,12 +1556,12 @@ export function PropertyDetailScreen(props: {
                   style={{
                     fontSize: 16,
                     fontWeight: '500',
-                    color: 'danger' in item && item.danger ? colors.danger : colors.text,
+                    color: item.danger ? colors.danger : colors.text,
                   }}
                 >
                   {item.label}
                 </Text>
-                {'star' in item && item.star ? (
+                {item.star ? (
                   <Text style={{ fontSize: 13, lineHeight: 16, color: '#000' }}>★</Text>
                 ) : null}
               </Pressable>
@@ -1020,10 +1647,44 @@ export function PropertyDetailScreen(props: {
         placeholder="Property name"
       />
 
+      <RenameModal
+        visible={addTodoOpen}
+        title="New to-do"
+        value={newTodoTitle}
+        onChangeText={setNewTodoTitle}
+        onSave={saveNewTodo}
+        onClose={() => setAddTodoOpen(false)}
+        placeholder="What needs to be done"
+        saveLabel="Create"
+      />
+
+      <RenameModal
+        visible={addIdeaOpen}
+        title="New idea"
+        value={newIdeaTitle}
+        onChangeText={setNewIdeaTitle}
+        onSave={saveNewIdea}
+        onClose={() => setAddIdeaOpen(false)}
+        placeholder="A rough idea for this property"
+        saveLabel="Create"
+      />
+
+      <SlideshowEditorModal
+        visible={slideshowEditorOpen}
+        state={state}
+        propertyId={propertyId}
+        onSave={onSave}
+        onClose={() => setSlideshowEditorOpen(false)}
+        onPlay={playFavoriteSlideshow}
+      />
+
       <PhotoViewerModal
         photos={slideshowPhotos}
         index={slideshowIndex}
-        onIndexChange={setSlideshowIndex}
+        onIndexChange={(index) => {
+          setSlideshowIndex(index);
+          if (index == null) setSlideshowPlayPhotos(null);
+        }}
         browseOnly
       />
     </View>

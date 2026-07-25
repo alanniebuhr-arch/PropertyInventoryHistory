@@ -1,12 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Text, useTextScaleControls } from '../textScale';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,7 +44,7 @@ import {
   UPCOMING_HORIZON_OPTIONS,
   type UpcomingHorizon,
 } from '../eventRecurrence';
-import { formatDate } from '../utils';
+import { formatCurrency, formatDate } from '../utils';
 import {
   getPropertyUpcomingHorizon,
   loadPropertyUpcomingHorizon,
@@ -71,6 +65,7 @@ export function RoomDetailScreen(props: {
   roomId: string;
   onBack: () => void;
   onNavigateRoom: (roomId: string) => void;
+  onGoToProperty: () => void;
   onOpenItem: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
   onEditEvent: (itemId: string, eventId: string) => void;
   onLogUpcomingService: (itemId: string, completeFromEventId: string) => void;
@@ -81,6 +76,7 @@ export function RoomDetailScreen(props: {
     roomId,
     onBack,
     onNavigateRoom,
+    onGoToProperty,
     onOpenItem,
     onEditEvent,
     onLogUpcomingService,
@@ -100,6 +96,7 @@ export function RoomDetailScreen(props: {
     getPropertyUpcomingHorizon
   );
   const [itemViewMode, setItemViewMode] = useState<RoomItemViewMode>(getRoomItemViewMode);
+  const textScaleControls = useTextScaleControls();
 
   useEffect(() => {
     let cancelled = false;
@@ -189,7 +186,7 @@ export function RoomDetailScreen(props: {
           text: opt.label,
           onPress: () => selectUpcomingHorizon(opt.id),
         })),
-        { text: 'Cancel', style: 'cancel' as const },
+        { text: 'Done', style: 'cancel' as const },
       ]
     );
   }
@@ -446,6 +443,9 @@ export function RoomDetailScreen(props: {
                 lastServiceDate={lastEvent ? formatDate(lastEvent.occurredAtISO) : undefined}
                 lastServiceTitle={lastEvent?.title}
                 lastServiceNotes={lastEvent?.notes}
+                lastServiceCost={
+                  lastEvent?.cost != null ? formatCurrency(lastEvent.cost) : undefined
+                }
                 nextDueLabel={nextDueLabelForItem(state, item.id)}
                 overdue={isItemOverdue(state, item.id)}
                 onPress={() => onOpenItem(item.id)}
@@ -480,20 +480,50 @@ export function RoomDetailScreen(props: {
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScreenBackHeader onPress={onBack}>
-        <Pressable
-          onPress={() => setMenuOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Room options"
-          accessibilityHint="Opens actions like new asset, require authentication, and delete."
-          hitSlop={6}
-          style={({ pressed }) => ({
+        <View
+          style={{
             marginLeft: 'auto',
-            padding: 4,
-            opacity: pressed ? 0.7 : 1,
-          })}
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+          }}
         >
-          <MaterialIcons name="settings" size={24} color={colors.primary} />
-        </Pressable>
+          <Pressable
+            onPress={onGoToProperty}
+            accessibilityRole="button"
+            accessibilityLabel="Go to property"
+            accessibilityHint="Opens the property page for this room."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                width: 42,
+                height: 36,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'transparent',
+              },
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            <MaterialIcons name="home" size={22} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Room options"
+            accessibilityHint="Opens actions like new asset, require authentication, and delete."
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="settings" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
       </ScreenBackHeader>
       <ScrollView
         style={{ flex: 1 }}
@@ -579,6 +609,46 @@ export function RoomDetailScreen(props: {
             >
               <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
                 New asset
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!textScaleControls.canMakeLarger) return;
+                textScaleControls.makeLarger();
+              }}
+              disabled={!textScaleControls.canMakeLarger}
+              accessibilityRole="button"
+              accessibilityLabel="Text larger"
+              accessibilityState={{ disabled: !textScaleControls.canMakeLarger }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: !textScaleControls.canMakeLarger ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Text larger
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!textScaleControls.canMakeSmaller) return;
+                textScaleControls.makeSmaller();
+              }}
+              disabled={!textScaleControls.canMakeSmaller}
+              accessibilityRole="button"
+              accessibilityLabel="Text smaller"
+              accessibilityState={{ disabled: !textScaleControls.canMakeSmaller }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: !textScaleControls.canMakeSmaller ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Text smaller
               </Text>
             </Pressable>
             <View

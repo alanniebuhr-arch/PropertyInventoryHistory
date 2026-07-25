@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { resolveAppFileUri } from './appFileUri';
 
 const DOCUMENTS_DIR = `${FileSystem.documentDirectory ?? ''}documents`;
 
@@ -14,8 +15,12 @@ function extensionFromFileName(fileName?: string): string {
   return match ? match[1] : 'pdf';
 }
 
+export function documentRelativePath(documentId: string, fileName?: string): string {
+  return `documents/${documentId}.${extensionFromFileName(fileName)}`;
+}
+
 export function documentFilePath(documentId: string, fileName?: string): string {
-  return `${DOCUMENTS_DIR}/${documentId}.${extensionFromFileName(fileName)}`;
+  return resolveAppFileUri(documentRelativePath(documentId, fileName));
 }
 
 export async function persistDocumentFromUri(
@@ -26,14 +31,16 @@ export async function persistDocumentFromUri(
   await ensureDocumentsDirectory();
   const dest = documentFilePath(documentId, fileName);
   await FileSystem.copyAsync({ from: sourceUri, to: dest });
+  // Absolute for immediate UI use; saveAppState persists a Documents-relative path.
   return dest;
 }
 
 export async function deleteDocumentFile(localUri: string): Promise<void> {
   try {
-    const info = await FileSystem.getInfoAsync(localUri);
+    const resolved = resolveAppFileUri(localUri);
+    const info = await FileSystem.getInfoAsync(resolved);
     if (info.exists) {
-      await FileSystem.deleteAsync(localUri, { idempotent: true });
+      await FileSystem.deleteAsync(resolved, { idempotent: true });
     }
   } catch {
     // ignore missing files
@@ -42,9 +49,10 @@ export async function deleteDocumentFile(localUri: string): Promise<void> {
 
 export async function readDocumentAsBase64(localUri: string): Promise<string | null> {
   try {
-    const info = await FileSystem.getInfoAsync(localUri);
+    const resolved = resolveAppFileUri(localUri);
+    const info = await FileSystem.getInfoAsync(resolved);
     if (!info.exists) return null;
-    return await FileSystem.readAsStringAsync(localUri, {
+    return await FileSystem.readAsStringAsync(resolved, {
       encoding: FileSystem.EncodingType.Base64,
     });
   } catch {

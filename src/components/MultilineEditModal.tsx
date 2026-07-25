@@ -1,15 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Dimensions,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Text, TextInput } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sharedStyles, colors } from '../theme';
 

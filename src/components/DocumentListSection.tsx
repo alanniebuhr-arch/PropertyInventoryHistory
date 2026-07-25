@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
+import { Text } from '../textScale';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
 import type { AppState } from '../types';
 import { documentById } from '../documents';
 import { sharedStyles, colors } from '../theme';
+import { resolveAppFileUri } from '../appFileUri';
 import { PdfViewerModal, type ViewerPdf } from './PdfViewerModal';
 
 export type DocumentListRow = {
@@ -46,7 +48,7 @@ async function shareDocument(localUri: string, fileName: string, mimeType: strin
     Alert.alert('Unavailable', 'Sharing is not available on this device.');
     return;
   }
-  await Sharing.shareAsync(localUri, {
+  await Sharing.shareAsync(resolveAppFileUri(localUri), {
     mimeType,
     dialogTitle: fileName,
   });
@@ -68,13 +70,13 @@ function showDocumentActions(
     { text: 'View', onPress: onView },
     { text: 'Share', onPress: onShare },
     { text: 'Delete', style: 'destructive', onPress: () => confirmDeleteDocument(row.onDelete) },
-    { text: 'Cancel', style: 'cancel' },
+    { text: 'Done', style: 'cancel' },
   ]);
 }
 
 function rowToViewerPdf(row: DocumentListRow): ViewerPdf {
   return {
-    uri: row.localUri,
+    uri: resolveAppFileUri(row.localUri),
     label: row.label,
     fileName: row.fileName,
   };

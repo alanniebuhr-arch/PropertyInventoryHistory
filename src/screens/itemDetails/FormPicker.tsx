@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../../textScale';
 import { colors, sharedStyles } from '../../theme';
 
 export function FormPicker<T extends string>(props: {

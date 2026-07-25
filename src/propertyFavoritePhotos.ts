@@ -3,7 +3,7 @@ import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 import { propertyExtraPhotos } from './propertyPhotos';
 import { photosForRoom } from './roomPhotos';
 import { roomPhotoSlotsForRoom } from './roomPhotoSlots';
-import { itemsForRoom, roomsForProperty } from './storage';
+import { itemsForRoom, propertyById, roomsForProperty } from './storage';
 import { APPLIANCE_PHOTO_SLOTS } from './applianceSlots';
 import { AIR_CONDITIONER_PHOTO_SLOTS } from './airConditionerSlots';
 import { AUTOMOBILE_PHOTO_SLOTS } from './automobileSlots';
@@ -18,6 +18,12 @@ export type FavoriteHeroPhoto = {
   uri: string;
   label: string;
   notes?: string;
+};
+
+export type PropertyCatalogPhoto = FavoriteHeroPhoto & {
+  favorite?: boolean;
+  source: 'property' | 'room' | 'item';
+  contextLabel: string;
 };
 
 type SlotDef = { key: string; shortLabel: string };
@@ -63,32 +69,45 @@ function slotPhotoIdFromDetails(item: InventoryItem, slotKey: string): string | 
   return typeof value === 'string' && value ? value : undefined;
 }
 
+function photoLabel(
+  photo: Pick<PropertyPhoto | RoomPhoto | ItemPhoto, 'caption'>,
+  fallback: string
+): string {
+  const caption = photo.caption?.trim();
+  if (caption === 'receipt') return 'Receipt';
+  return fallback.trim() || caption || 'Photo';
+}
+
 /**
- * Favorite hero photos for a property, ordered for Slideshow:
- * property slots → property extras → rooms (sortOrder) slots/extras → items (slots → extras/events).
+ * All property / room / asset photos for a property (for Slideshow picker),
+ * in default traversal order.
  */
-export function favoriteHeroPhotosForProperty(
+export function allHeroPhotosForProperty(
   state: AppState,
   propertyId: string
-): FavoriteHeroPhoto[] {
+): PropertyCatalogPhoto[] {
   const property = state.properties.find((entry) => entry.id === propertyId);
   if (!property) return [];
 
-  const result: FavoriteHeroPhoto[] = [];
+  const result: PropertyCatalogPhoto[] = [];
   const seen = new Set<string>();
 
-  function pushFavorite(
+  function push(
     photo: Pick<PropertyPhoto | RoomPhoto | ItemPhoto, 'id' | 'localUri' | 'caption' | 'notes' | 'favorite'>,
-    label: string
+    label: string,
+    source: PropertyCatalogPhoto['source'],
+    contextLabel: string
   ) {
-    if (!photo.favorite || !photo.localUri || seen.has(photo.id)) return;
+    if (!photo.localUri || seen.has(photo.id)) return;
     seen.add(photo.id);
-    const caption = photo.caption?.trim();
     result.push({
       id: photo.id,
       uri: photo.localUri,
-      label: label.trim() || (caption === 'receipt' ? 'Receipt' : caption) || 'Photo',
+      label: photoLabel(photo, label),
       notes: photo.notes?.trim() || undefined,
+      favorite: photo.favorite === true,
+      source,
+      contextLabel,
     });
   }
 
@@ -96,11 +115,11 @@ export function favoriteHeroPhotosForProperty(
     const photoId = property[slot.key];
     if (!photoId) continue;
     const photo = state.propertyPhotos.find((entry) => entry.id === photoId);
-    if (photo) pushFavorite(photo, slot.shortLabel);
+    if (photo) push(photo, slot.shortLabel, 'property', property.name);
   }
 
   for (const photo of propertyExtraPhotos(state, propertyId)) {
-    pushFavorite(photo, photo.caption?.trim() || 'Photo');
+    push(photo, photo.caption?.trim() || 'Photo', 'property', property.name);
   }
 
   for (const room of roomsForProperty(state, propertyId)) {
@@ -108,37 +127,230 @@ export function favoriteHeroPhotosForProperty(
       const attachment = room.slotAttachments?.[slot.key as RoomSlotKey];
       if (!attachment || attachment.kind !== 'photo') continue;
       const photo = state.roomPhotos.find((entry) => entry.id === attachment.id);
-      if (photo) pushFavorite(photo, slot.shortLabel);
+      if (photo) push(photo, slot.shortLabel, 'room', room.name);
     }
 
     for (const photo of photosForRoom(state, room.id)) {
-      pushFavorite(photo, photo.caption?.trim() || room.name);
+      push(photo, photo.caption?.trim() || room.name, 'room', room.name);
     }
 
     for (const item of itemsForRoom(state, room.id)) {
       const itemPhotos = state.photos.filter((photo) => photo.itemId === item.id);
       const slotIds = new Set<string>();
       const slots = itemPhotoSlots(item);
+      const assetLabel = itemLabel(item);
       for (const slot of slots) {
         const photoId = slotPhotoIdFromDetails(item, slot.key);
         if (!photoId) continue;
         slotIds.add(photoId);
         const photo = itemPhotos.find((entry) => entry.id === photoId);
-        if (photo) pushFavorite(photo, slot.shortLabel);
+        if (photo) push(photo, slot.shortLabel, 'item', assetLabel);
       }
 
       for (const photo of itemPhotos) {
         if (slotIds.has(photo.id)) continue;
         const caption = photo.caption?.trim();
-        pushFavorite(
+        push(
           photo,
-          caption === 'receipt'
-            ? 'Receipt'
-            : caption || itemLabel(item)
+          caption === 'receipt' ? 'Receipt' : caption || assetLabel,
+          'item',
+          assetLabel
         );
       }
     }
   }
 
   return result;
+}
+
+/**
+ * Favorite hero photos for a property in default traversal order
+ * (used when slideshowPhotoIds has never been set).
+ */
+export function favoriteHeroPhotosForProperty(
+  state: AppState,
+  propertyId: string
+): FavoriteHeroPhoto[] {
+  return allHeroPhotosForProperty(state, propertyId)
+    .filter((photo) => photo.favorite)
+    .map(({ id, uri, label, notes }) => ({ id, uri, label, notes }));
+}
+
+function catalogById(
+  state: AppState,
+  propertyId: string
+): Map<string, PropertyCatalogPhoto> {
+  return new Map(allHeroPhotosForProperty(state, propertyId).map((photo) => [photo.id, photo]));
+}
+
+/** Resolved Slideshow list: explicit order when set, otherwise starred favorites. */
+export function slideshowPhotosForProperty(
+  state: AppState,
+  propertyId: string
+): FavoriteHeroPhoto[] {
+  const property = propertyById(state, propertyId);
+  if (!property) return [];
+
+  if (property.slideshowPhotoIds === undefined) {
+    return favoriteHeroPhotosForProperty(state, propertyId);
+  }
+
+  const byId = catalogById(state, propertyId);
+  const result: FavoriteHeroPhoto[] = [];
+  for (const id of property.slideshowPhotoIds) {
+    const photo = byId.get(id);
+    if (photo) {
+      result.push({
+        id: photo.id,
+        uri: photo.uri,
+        label: photo.label,
+        notes: photo.notes,
+      });
+    }
+  }
+  return result;
+}
+
+function updatePropertySlideshowIds(
+  state: AppState,
+  propertyId: string,
+  slideshowPhotoIds: string[]
+): AppState {
+  return {
+    ...state,
+    properties: state.properties.map((property) =>
+      property.id === propertyId ? { ...property, slideshowPhotoIds } : property
+    ),
+  };
+}
+
+/** Initialize slideshowPhotoIds from current favorites if the property has never customized order. */
+export function ensureSlideshowPhotoIds(state: AppState, propertyId: string): AppState {
+  const property = propertyById(state, propertyId);
+  if (!property || property.slideshowPhotoIds !== undefined) return state;
+  return updatePropertySlideshowIds(
+    state,
+    propertyId,
+    favoriteHeroPhotosForProperty(state, propertyId).map((photo) => photo.id)
+  );
+}
+
+export function setSlideshowPhotoIds(
+  state: AppState,
+  propertyId: string,
+  slideshowPhotoIds: string[]
+): AppState {
+  return updatePropertySlideshowIds(state, propertyId, slideshowPhotoIds);
+}
+
+/** Move photo to 1-based position; other slides shift. Clamps to 1..N. */
+export function moveSlideshowPhotoToOrder(
+  state: AppState,
+  propertyId: string,
+  photoId: string,
+  oneBasedOrder: number
+): AppState {
+  let next = ensureSlideshowPhotoIds(state, propertyId);
+  const property = propertyById(next, propertyId);
+  if (!property?.slideshowPhotoIds) return next;
+
+  const ids = property.slideshowPhotoIds.filter((id) => id !== photoId);
+  if (!property.slideshowPhotoIds.includes(photoId)) return next;
+
+  const max = ids.length + 1;
+  const target = Math.max(1, Math.min(max, Math.round(oneBasedOrder))) - 1;
+  ids.splice(target, 0, photoId);
+  return updatePropertySlideshowIds(next, propertyId, ids);
+}
+
+function setFavoriteFlagOnPhoto(state: AppState, photoId: string, favorite: boolean): AppState {
+  if (state.propertyPhotos.some((photo) => photo.id === photoId)) {
+    return {
+      ...state,
+      propertyPhotos: state.propertyPhotos.map((photo) =>
+        photo.id === photoId ? { ...photo, favorite: favorite || undefined } : photo
+      ),
+    };
+  }
+  if (state.roomPhotos.some((photo) => photo.id === photoId)) {
+    return {
+      ...state,
+      roomPhotos: state.roomPhotos.map((photo) =>
+        photo.id === photoId ? { ...photo, favorite: favorite || undefined } : photo
+      ),
+    };
+  }
+  if (state.photos.some((photo) => photo.id === photoId)) {
+    return {
+      ...state,
+      photos: state.photos.map((photo) =>
+        photo.id === photoId ? { ...photo, favorite: favorite || undefined } : photo
+      ),
+    };
+  }
+  return state;
+}
+
+export function propertyIdForSlideshowPhoto(
+  state: AppState,
+  photoId: string
+): string | undefined {
+  const propertyPhoto = state.propertyPhotos.find((photo) => photo.id === photoId);
+  if (propertyPhoto) return propertyPhoto.propertyId;
+
+  const roomPhoto = state.roomPhotos.find((photo) => photo.id === photoId);
+  if (roomPhoto) {
+    return state.rooms.find((room) => room.id === roomPhoto.roomId)?.propertyId;
+  }
+
+  const itemPhoto = state.photos.find((photo) => photo.id === photoId);
+  if (itemPhoto) {
+    const room = state.rooms.find((entry) =>
+      state.items.some((item) => item.id === itemPhoto.itemId && item.roomId === entry.id)
+    );
+    return room?.propertyId;
+  }
+
+  return undefined;
+}
+
+/**
+ * Include/exclude a photo in the Slideshow list and keep the hero ★ in sync.
+ */
+export function setSlideshowPhotoIncluded(
+  state: AppState,
+  propertyId: string,
+  photoId: string,
+  included: boolean
+): AppState {
+  let next = ensureSlideshowPhotoIds(state, propertyId);
+  const property = propertyById(next, propertyId);
+  if (!property) return next;
+
+  const catalog = catalogById(next, propertyId);
+  if (!catalog.has(photoId)) return next;
+
+  const current = property.slideshowPhotoIds ?? [];
+  const has = current.includes(photoId);
+  let slideshowPhotoIds = current;
+  if (included && !has) {
+    slideshowPhotoIds = [...current, photoId];
+  } else if (!included && has) {
+    slideshowPhotoIds = current.filter((id) => id !== photoId);
+  }
+
+  next = updatePropertySlideshowIds(next, propertyId, slideshowPhotoIds);
+  next = setFavoriteFlagOnPhoto(next, photoId, included);
+  return next;
+}
+
+/** Keep Slideshow membership in sync when a hero ★ is toggled. */
+export function syncSlideshowAfterFavoriteChange(
+  state: AppState,
+  photoId: string,
+  favorite: boolean
+): AppState {
+  const propertyId = propertyIdForSlideshowPhoto(state, photoId);
+  if (!propertyId) return state;
+  return setSlideshowPhotoIncluded(state, propertyId, photoId, favorite);
 }

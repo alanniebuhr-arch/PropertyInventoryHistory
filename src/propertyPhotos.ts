@@ -163,7 +163,7 @@ export function propertyExtraPhotos(state: AppState, propertyId: string) {
   return (property.photoIds ?? [])
     .filter((id) => !slotIds.has(id))
     .map((photoId) => state.propertyPhotos.find((p) => p.id === photoId))
-    .filter((p): p is NonNullable<typeof p> => p != null);
+    .filter((p): p is NonNullable<typeof p> => p != null && !p.todoId);
 }
 
 export function propertyExtraPhotoUri(

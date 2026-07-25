@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
+import { View, type KeyboardTypeOptions, type TextInput as RNTextInput } from 'react-native';
+import { Text, TextInput } from '../../textScale';
 import { sharedStyles } from '../../theme';
 import { ItemDetailScrollContext } from '../../itemDetailScrollContext';
 import { dateInputValue } from '../../utils';
@@ -12,7 +13,7 @@ export function FormField(props: {
   placeholder?: string;
   keyboardType?: KeyboardTypeOptions;
 }) {
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<RNTextInput>(null);
   const onFieldFocus = useContext(ItemDetailScrollContext);
 
   return (
@@ -23,7 +24,7 @@ export function FormField(props: {
         value={props.value}
         onChangeText={props.onChangeText}
         onFocus={() => {
-          inputRef.current?.measureInWindow((_x, y, _w, height) => {
+          inputRef.current?.measureInWindow((_x: number, y: number, _w: number, height: number) => {
             onFieldFocus?.(y, height);
           });
         }}

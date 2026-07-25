@@ -9,6 +9,9 @@ import type {
   ItemPhoto,
   ItemTypeId,
   Property,
+  PropertyPhoto,
+  PropertyTodo,
+  PropertyTodoKind,
   Project,
   ProjectVendor,
   Room,
@@ -31,6 +34,7 @@ import { normalizeHiddenPhotoSlotKeys } from './hiddenPhotoSlots';
 import { recordInferredDeletions } from './syncMeta';
 import { ensureUpdatedAt, stampChangedRecords } from './syncStamp';
 import { nowISO } from './utils';
+import { resolveAppFileUri, toStoredAppFileUri } from './appFileUri';
 
 const STORAGE_KEY = 'property_inventory_state_v1';
 
@@ -387,6 +391,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
   const projectPhotos = Array.isArray(raw.projectPhotos) ? raw.projectPhotos : [];
   const vendorPhotos = Array.isArray(raw.vendorPhotos) ? raw.vendorPhotos : [];
   const vendorInteractions = Array.isArray(raw.vendorInteractions) ? raw.vendorInteractions : [];
+  const propertyTodos = Array.isArray(raw.propertyTodos) ? raw.propertyTodos : [];
 
   const validDocumentIds = new Set(
     documents
@@ -402,7 +407,11 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
   const cleanDocuments = documents.filter((doc) => validDocumentIds.has(doc.id));
 
   const propertyIds = new Set(properties.map((p) => p.id));
-  const cleanPropertyPhotos = propertyPhotos.filter((p) => propertyIds.has(p.propertyId));
+  const cleanPropertyTodosDraft = propertyTodos.filter((t) => propertyIds.has(t.propertyId));
+  const todoIds = new Set(cleanPropertyTodosDraft.map((t) => t.id));
+  const cleanPropertyPhotos = propertyPhotos.filter(
+    (p) => propertyIds.has(p.propertyId) && (!p.todoId || todoIds.has(p.todoId))
+  );
   const validPropertyPhotoIds = new Set(cleanPropertyPhotos.map((p) => p.id));
   const cleanProperties = properties.map((p) => {
     const legacy = p as Property & { coverPhotoId?: string };
@@ -439,7 +448,10 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       fieldCardDocumentId: validDocument(p.fieldCardDocumentId),
       plotPlanDocumentId: validDocument(p.plotPlanDocumentId),
       photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter(
-        (id) => validPropertyPhotoIds.has(id) && !slotPhotoIds.has(id)
+        (id) =>
+          validPropertyPhotoIds.has(id) &&
+          !slotPhotoIds.has(id) &&
+          cleanPropertyPhotos.some((photo) => photo.id === id && !photo.todoId)
       ),
       hiddenPhotoSlotKeys: normalizeHiddenPhotoSlotKeys(p.hiddenPhotoSlotKeys),
     };
@@ -504,7 +516,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     .filter((v) => projectIds.has(v.projectId))
     .map((v) => ({
       ...v,
-      status: v.status ?? 'initial_contact',
+      status: v.status ?? 'researching',
       photoIds: (Array.isArray(v.photoIds) ? v.photoIds : []).filter((id) =>
         vendorPhotos.some((photo) => photo.id === id)
       ),
@@ -548,6 +560,27 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       };
     });
 
+  const cleanPropertyTodos = cleanPropertyTodosDraft.map((todo) => {
+    const ownedIds = cleanPropertyPhotos.filter((p) => p.todoId === todo.id).map((p) => p.id);
+    const ownedSet = new Set(ownedIds);
+    const ordered = (Array.isArray(todo.photoIds) ? todo.photoIds : []).filter((id) =>
+      ownedSet.has(id)
+    );
+    const orderedSet = new Set(ordered);
+    return {
+      ...todo,
+      kind: (todo.kind === 'idea' ? 'idea' : 'todo') as PropertyTodoKind,
+      title: typeof todo.title === 'string' ? todo.title : '',
+      done: todo.done === true,
+      photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
+    };
+  });
+
+  const remapUri = <T extends { localUri: string }>(item: T): T => ({
+    ...item,
+    localUri: resolveAppFileUri(item.localUri),
+  });
+
   return {
     version: 1,
     properties: cleanProperties.map(ensureUpdatedAt),
@@ -559,19 +592,36 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       ),
       documentIds: (i.documentIds ?? []).filter((id) => validDocumentIds.has(id)),
     })),
-    photos: cleanPhotos.map(ensureUpdatedAt),
-    propertyPhotos: cleanPropertyPhotos.map(ensureUpdatedAt),
-    roomPhotos: cleanRoomPhotos.map(ensureUpdatedAt),
-    documents: cleanDocuments.map(ensureUpdatedAt),
+    photos: cleanPhotos.map(remapUri).map(ensureUpdatedAt),
+    propertyPhotos: cleanPropertyPhotos.map(remapUri).map(ensureUpdatedAt),
+    roomPhotos: cleanRoomPhotos.map(remapUri).map(ensureUpdatedAt),
+    documents: cleanDocuments.map(remapUri).map(ensureUpdatedAt),
     events: cleanEvents.map((e) => ({
       ...ensureUpdatedAt(e),
       photoIds: e.photoIds.filter((pid) => cleanPhotos.some((p) => p.id === pid)),
     })),
     projects: cleanProjectsWithPhotos.map(ensureUpdatedAt),
     projectVendors: cleanProjectVendorsFinal.map(ensureUpdatedAt),
-    projectPhotos: cleanProjectPhotos.map(ensureUpdatedAt),
-    vendorPhotos: cleanVendorPhotos.map(ensureUpdatedAt),
+    projectPhotos: cleanProjectPhotos.map(remapUri).map(ensureUpdatedAt),
+    vendorPhotos: cleanVendorPhotos.map(remapUri).map(ensureUpdatedAt),
     vendorInteractions: cleanVendorInteractions.map(ensureUpdatedAt),
+    propertyTodos: cleanPropertyTodos.map(ensureUpdatedAt),
+  };
+}
+
+function withStoredMediaUris(state: AppState): AppState {
+  const storeUri = <T extends { localUri: string }>(item: T): T => ({
+    ...item,
+    localUri: toStoredAppFileUri(item.localUri),
+  });
+  return {
+    ...state,
+    photos: state.photos.map(storeUri),
+    propertyPhotos: state.propertyPhotos.map(storeUri),
+    roomPhotos: state.roomPhotos.map(storeUri),
+    projectPhotos: state.projectPhotos.map(storeUri),
+    vendorPhotos: state.vendorPhotos.map(storeUri),
+    documents: state.documents.map(storeUri),
   };
 }
 
@@ -589,7 +639,7 @@ export async function loadAppState(): Promise<AppState> {
   }
 }
 
-export async function saveAppState(state: AppState): Promise<void> {
+export async function saveAppState(state: AppState): Promise<AppState> {
   let prev: AppState = { ...EMPTY_APP_STATE };
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -601,7 +651,9 @@ export async function saveAppState(state: AppState): Promise<void> {
   }
   const stamped = stampChangedRecords(prev, state, nowISO());
   await recordInferredDeletions(prev, stamped);
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(stamped)));
+  const normalized = normalizeState(stamped);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(withStoredMediaUris(normalized)));
+  return normalized;
 }
 
 export function propertyById(state: AppState, id: string): Property | undefined {
@@ -743,6 +795,45 @@ export function interactionsForVendor(state: AppState, vendorId: string): Vendor
     .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
 }
 
+/** All vendor interactions across projects for a property, newest first. */
+export function interactionsForProperty(
+  state: AppState,
+  propertyId: string
+): VendorInteraction[] {
+  const projectIds = new Set(projectsForProperty(state, propertyId).map((p) => p.id));
+  const vendorIds = new Set(
+    state.projectVendors.filter((v) => projectIds.has(v.projectId)).map((v) => v.id)
+  );
+  return sortInteractionsNewestFirst(
+    state.vendorInteractions.filter((i) => vendorIds.has(i.vendorId))
+  );
+}
+
+/** Vendor interactions for a single project, newest first. */
+export function interactionsForProject(
+  state: AppState,
+  projectId: string
+): VendorInteraction[] {
+  const vendorIds = new Set(
+    state.projectVendors.filter((v) => v.projectId === projectId).map((v) => v.id)
+  );
+  return sortInteractionsNewestFirst(
+    state.vendorInteractions.filter((i) => vendorIds.has(i.vendorId))
+  );
+}
+
+function sortInteractionsNewestFirst(
+  interactions: VendorInteraction[]
+): VendorInteraction[] {
+  return [...interactions].sort((a, b) => {
+    const byOccurred = b.occurredAtISO.localeCompare(a.occurredAtISO);
+    if (byOccurred !== 0) return byOccurred;
+    const aSecondary = a.updatedAtISO ?? a.createdAtISO;
+    const bSecondary = b.updatedAtISO ?? b.createdAtISO;
+    return bSecondary.localeCompare(aSecondary);
+  });
+}
+
 export function photosForVendorInteraction(
   state: AppState,
   interactionId: string
@@ -770,6 +861,60 @@ export function vendorInteractionById(
   id: string
 ): VendorInteraction | undefined {
   return state.vendorInteractions.find((i) => i.id === id);
+}
+
+export function todosForProperty(state: AppState, propertyId: string): PropertyTodo[] {
+  return state.propertyTodos
+    .filter((todo) => todo.propertyId === propertyId && todo.kind !== 'idea')
+    .slice()
+    .sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      const aDue = a.dueAtISO ?? '\uffff';
+      const bDue = b.dueAtISO ?? '\uffff';
+      if (aDue !== bDue) return aDue.localeCompare(bDue);
+      return a.createdAtISO.localeCompare(b.createdAtISO);
+    });
+}
+
+export function ideasForProperty(state: AppState, propertyId: string): PropertyTodo[] {
+  return state.propertyTodos
+    .filter((todo) => todo.propertyId === propertyId && todo.kind === 'idea')
+    .slice()
+    .sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      const aDue = a.dueAtISO ?? '\uffff';
+      const bDue = b.dueAtISO ?? '\uffff';
+      if (aDue !== bDue) return aDue.localeCompare(bDue);
+      return a.createdAtISO.localeCompare(b.createdAtISO);
+    });
+}
+
+export function propertyTodoById(state: AppState, id: string): PropertyTodo | undefined {
+  return state.propertyTodos.find((todo) => todo.id === id);
+}
+
+export function photosForPropertyTodo(state: AppState, todoId: string): PropertyPhoto[] {
+  const owned = state.propertyPhotos.filter((p) => p.todoId === todoId);
+  if (owned.length === 0) return [];
+  const todo = state.propertyTodos.find((t) => t.id === todoId);
+  const byId = new Map(owned.map((p) => [p.id, p]));
+  const ordered: PropertyPhoto[] = [];
+  for (const id of todo?.photoIds ?? []) {
+    const photo = byId.get(id);
+    if (photo) {
+      ordered.push(photo);
+      byId.delete(id);
+    }
+  }
+  return [...ordered, ...byId.values()];
+}
+
+export function deletePropertyTodoCascade(state: AppState, todoId: string): AppState {
+  return {
+    ...state,
+    propertyTodos: state.propertyTodos.filter((t) => t.id !== todoId),
+    propertyPhotos: state.propertyPhotos.filter((p) => p.todoId !== todoId),
+  };
 }
 
 export function nextProjectSortOrder(state: AppState, propertyId: string): number {
@@ -807,6 +952,7 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
     projectPhotos: state.projectPhotos.filter((p) => !projectIds.has(p.projectId)),
     vendorPhotos: state.vendorPhotos.filter((p) => !vendorIds.has(p.vendorId)),
     vendorInteractions: state.vendorInteractions.filter((i) => !vendorIds.has(i.vendorId)),
+    propertyTodos: state.propertyTodos.filter((t) => t.propertyId !== propertyId),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
   };
 }

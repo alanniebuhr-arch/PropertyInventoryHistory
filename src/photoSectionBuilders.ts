@@ -154,7 +154,7 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
 
 export function buildExtraOnlyPhotoTiles(options: {
   photos: ExtraPhoto[];
-  onDeletePhoto: (photoId: string) => void | Promise<void>;
+  onDeletePhoto?: (photoId: string) => void | Promise<void>;
   onLabelPhoto?: (photoId: string, label: string, notes: string) => void | Promise<void>;
   onToggleFavorite?: (photoId: string, favorite: boolean) => void | Promise<void>;
 }): PhotoTile[] {
@@ -169,9 +169,11 @@ export function buildExtraOnlyPhotoTiles(options: {
       uri: photo.localUri,
       notes: photo.notes,
       favorite: photo.favorite === true,
-      onDelete: () => {
-        void onDeletePhoto(photo.id);
-      },
+      onDelete: onDeletePhoto
+        ? () => {
+            void onDeletePhoto(photo.id);
+          }
+        : undefined,
       onLabelChange: onLabelPhoto
         ? (label, notes) => {
             void onLabelPhoto(photo.id, label, notes);

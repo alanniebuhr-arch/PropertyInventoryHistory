@@ -1,4 +1,4 @@
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import type { RefObject } from 'react';
@@ -28,6 +28,9 @@ export async function shareViewAsPng(
       format: 'png',
       quality: 1,
       result: 'tmpfile',
+      // iOS: drawViewHierarchyInRect often fails for large / briefly-mounted sheets
+      // (security/tech limitation). renderInContext bypasses that path.
+      ...(Platform.OS === 'ios' ? { useRenderInContext: true } : null),
     });
 
     const canShare = await Sharing.isAvailableAsync();

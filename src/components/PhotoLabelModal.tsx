@@ -1,14 +1,6 @@
 import React from 'react';
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../textScale';
 import { sharedStyles, colors } from '../theme';
 
 export function PhotoLabelModal(props: {

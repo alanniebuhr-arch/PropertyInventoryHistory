@@ -27,6 +27,7 @@ export function mergeDeletedIds(a: SyncDeletedIds, b: SyncDeletedIds): SyncDelet
     projectPhotos: mergeIdLists(a.projectPhotos, b.projectPhotos),
     vendorPhotos: mergeIdLists(a.vendorPhotos, b.vendorPhotos),
     vendorInteractions: mergeIdLists(a.vendorInteractions, b.vendorInteractions),
+    propertyTodos: mergeIdLists(a.propertyTodos, b.propertyTodos),
   };
 }
 
@@ -44,7 +45,8 @@ export function countDeletedIds(deleted: SyncDeletedIds): number {
     (deleted.projectVendors?.length ?? 0) +
     (deleted.projectPhotos?.length ?? 0) +
     (deleted.vendorPhotos?.length ?? 0) +
-    (deleted.vendorInteractions?.length ?? 0)
+    (deleted.vendorInteractions?.length ?? 0) +
+    (deleted.propertyTodos?.length ?? 0)
   );
 }
 
@@ -231,6 +233,11 @@ export function inferDeletedIdsByProperty(
         'vendorInteractions',
         [interaction.id]
       );
+    }
+  }
+  for (const todo of prev.propertyTodos ?? []) {
+    if (!(next.propertyTodos ?? []).some((t) => t.id === todo.id)) {
+      addToMap(map, todo.propertyId, 'propertyTodos', [todo.id]);
     }
   }
 

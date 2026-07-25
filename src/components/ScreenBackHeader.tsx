@@ -1,5 +1,6 @@
 import React, { type ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { Text } from '../textScale';
 import { sharedStyles } from '../theme';
 
 export function ScreenBackHeader(props: {

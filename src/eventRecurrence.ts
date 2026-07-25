@@ -50,7 +50,7 @@ export function advanceRecurrenceAfterEvent(event: ItemEvent): ItemEventRecurren
 
 export function getNextDueForItem(events: ItemEvent[]): string | null {
   const withDue = events
-    .map((e) => e.recurrence?.nextDueAtISO)
+    .map((e) => upcomingDueAtISO(e))
     .filter((d): d is string => Boolean(d));
   if (withDue.length === 0) return null;
   withDue.sort();

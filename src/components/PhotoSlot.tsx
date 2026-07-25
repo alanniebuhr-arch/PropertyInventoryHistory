@@ -1,4 +1,5 @@
-import { Text } from 'react-native';
+
+import { Text } from '../textScale';
 import { colors } from '../theme';
 
 export function AddPhotoPlaceholder(props: { size?: number }) {

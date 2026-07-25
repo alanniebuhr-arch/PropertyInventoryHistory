@@ -5,8 +5,16 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import type { AppState } from './src/types';
 import { EMPTY_APP_STATE } from './src/types';
-import { loadAppState, saveAppState, roomById } from './src/storage';
+import { loadAppState, saveAppState, roomById, projectById, vendorById } from './src/storage';
 import { loadPropertyUpcomingHorizon } from './src/upcomingHorizonPrefs';
+import {
+  DEFAULT_TEXT_SCALE_STEP,
+  getAppTextScaleStep,
+  loadAppTextScaleStep,
+  setAppTextScaleStep,
+  TEXT_SCALE_STEPS,
+} from './src/appTextScalePrefs';
+import { TextScaleProvider } from './src/textScale';
 import {
   authenticateForRoom,
   isRoomUnlocked,
@@ -19,6 +27,8 @@ import { RoomDetailScreen } from './src/screens/RoomDetailScreen';
 import { ProjectDetailScreen } from './src/screens/ProjectDetailScreen';
 import { VendorDetailScreen } from './src/screens/VendorDetailScreen';
 import { AddEditVendorInteractionScreen } from './src/screens/AddEditVendorInteractionScreen';
+import { AddEditPropertyTodoScreen } from './src/screens/AddEditPropertyTodoScreen';
+import { PropertyInteractionsScreen } from './src/screens/PropertyInteractionsScreen';
 import { ItemDetailScreen } from './src/screens/ItemDetailScreen';
 import { AddEditEventScreen } from './src/screens/AddEditEventScreen';
 import { TransferScreen } from './src/screens/TransferScreen';
@@ -29,10 +39,19 @@ import { sharedStyles } from './src/theme';
 type Route =
   | { name: 'home' }
   | { name: 'property'; propertyId: string }
+  | { name: 'propertyInteractions'; propertyId: string; vendorId?: string }
+  | { name: 'projectInteractions'; projectId: string; vendorId?: string }
   | { name: 'room'; roomId: string }
   | { name: 'project'; projectId: string }
-  | { name: 'vendor'; vendorId: string }
+  | { name: 'vendor'; vendorId: string; startEditing?: boolean }
   | { name: 'vendorInteraction'; vendorId: string; interactionId?: string }
+  | {
+      name: 'propertyTodo';
+      propertyId: string;
+      todoId: string;
+      startEditing?: boolean;
+      kind?: 'todo' | 'idea';
+    }
   | { name: 'item'; itemId: string; startEditingSection?: ApplianceEditingSection }
   | { name: 'event'; itemId: string; eventId?: string; completeFromEventId?: string }
   | { name: 'transfer' };
@@ -42,13 +61,20 @@ export default function App() {
   const [state, setState] = useState<AppState>(EMPTY_APP_STATE);
   const [stack, setStack] = useState<Route[]>([{ name: 'home' }]);
   const [bootKey, setBootKey] = useState(0);
+  const [textScaleStep, setTextScaleStepState] = useState(getAppTextScaleStep);
 
   useEffect(() => {
     let cancelled = false;
     async function boot() {
       try {
-        const [s] = await Promise.all([loadAppState(), loadPropertyUpcomingHorizon()]);
-        if (!cancelled) setState(s);
+        const [s, textStep] = await Promise.all([
+          loadAppState(),
+          loadPropertyUpcomingHorizon().then(() => loadAppTextScaleStep()),
+        ]);
+        if (!cancelled) {
+          setState(s);
+          setTextScaleStepState(textStep);
+        }
       } catch {
         if (!cancelled) setState({ ...EMPTY_APP_STATE });
       } finally {
@@ -64,9 +90,16 @@ export default function App() {
   useEffect(() => setupRoomAuthSessionReset(), []);
 
   const persist = useCallback(async (next: AppState) => {
-    setState(next);
-    await saveAppState(next);
+    const saved = await saveAppState(next);
+    setState(saved);
   }, []);
+
+  const setTextScaleStep = useCallback((step: number) => {
+    setTextScaleStepState(step);
+    void setAppTextScaleStep(step);
+  }, []);
+
+  const textScale = TEXT_SCALE_STEPS[textScaleStep] ?? TEXT_SCALE_STEPS[DEFAULT_TEXT_SCALE_STEP];
 
   const resetApp = useCallback(() => {
     setStack([{ name: 'home' }]);
@@ -87,6 +120,17 @@ export default function App() {
 
   function replaceTopRoute(next: Route) {
     setStack((s) => (s.length > 0 ? [...s.slice(0, -1), next] : [next]));
+  }
+
+  function goToProperty(propertyId: string) {
+    setStack((s) => {
+      const idx = s.findIndex(
+        (r) => r.name === 'property' && r.propertyId === propertyId
+      );
+      if (idx >= 0) return s.slice(0, idx + 1);
+      const home = s.find((r) => r.name === 'home') ?? { name: 'home' as const };
+      return [home, { name: 'property', propertyId }];
+    });
   }
 
   async function openRoom(roomId: string, navigate: (id: string) => void) {
@@ -130,11 +174,58 @@ export default function App() {
             onBack={pop}
             onOpenRoom={(roomId) => void openRoom(roomId, (id) => push({ name: 'room', roomId: id }))}
             onOpenProject={(projectId) => push({ name: 'project', projectId })}
+            onOpenInteractions={() =>
+              push({ name: 'propertyInteractions', propertyId: route.propertyId })
+            }
+            onOpenTodo={(todoId, options) =>
+              push({
+                name: 'propertyTodo',
+                propertyId: route.propertyId,
+                todoId,
+                startEditing: options?.startEditing,
+                kind: options?.kind,
+              })
+            }
             onEditEvent={(itemId, eventId) => push({ name: 'event', itemId, eventId })}
             onLogUpcomingService={(itemId, completeFromEventId) =>
               push({ name: 'event', itemId, completeFromEventId })
             }
             onSave={(next) => void persist(next)}
+          />
+        );
+        break;
+      case 'propertyInteractions':
+        screen = (
+          <PropertyInteractionsScreen
+            key={`property:${route.propertyId}:${route.vendorId ?? ''}`}
+            state={state}
+            propertyId={route.propertyId}
+            initialVendorId={route.vendorId}
+            onBack={pop}
+            onGoToProperty={() => goToProperty(route.propertyId)}
+            onOpenInteraction={(vendorId, interactionId) =>
+              push({ name: 'vendorInteraction', vendorId, interactionId })
+            }
+            onOpenVendor={(vendorId) => push({ name: 'vendor', vendorId })}
+          />
+        );
+        break;
+      case 'projectInteractions':
+        screen = (
+          <PropertyInteractionsScreen
+            key={`project:${route.projectId}:${route.vendorId ?? ''}`}
+            state={state}
+            projectId={route.projectId}
+            initialVendorId={route.vendorId}
+            onBack={pop}
+            onGoToProperty={() => {
+              const project = projectById(state, route.projectId);
+              if (project) goToProperty(project.propertyId);
+            }}
+            onOpenInteraction={(vendorId, interactionId) =>
+              push({ name: 'vendorInteraction', vendorId, interactionId })
+            }
+            onOpenVendor={(vendorId) => push({ name: 'vendor', vendorId })}
           />
         );
         break;
@@ -148,6 +239,10 @@ export default function App() {
             onNavigateRoom={(nextRoomId) =>
               void openRoom(nextRoomId, (id) => replaceTopRoute({ name: 'room', roomId: id }))
             }
+            onGoToProperty={() => {
+              const room = roomById(state, route.roomId);
+              if (room) goToProperty(room.propertyId);
+            }}
             onOpenItem={(itemId, startEditingSection) =>
               push({ name: 'item', itemId, startEditingSection })
             }
@@ -169,7 +264,19 @@ export default function App() {
             onNavigateProject={(nextProjectId) =>
               replaceTopRoute({ name: 'project', projectId: nextProjectId })
             }
-            onOpenVendor={(vendorId) => push({ name: 'vendor', vendorId })}
+            onGoToProperty={() => {
+              const project = projectById(state, route.projectId);
+              if (project) goToProperty(project.propertyId);
+            }}
+            onOpenInteractions={() =>
+              push({ name: 'projectInteractions', projectId: route.projectId })
+            }
+            onOpenVendor={(vendorId, options) =>
+              push({ name: 'vendor', vendorId, startEditing: options?.startEditing })
+            }
+            onAddVendorInteraction={(vendorId) =>
+              push({ name: 'vendorInteraction', vendorId })
+            }
             onSave={(next) => void persist(next)}
           />
         );
@@ -180,7 +287,22 @@ export default function App() {
             key={route.vendorId}
             state={state}
             vendorId={route.vendorId}
+            startEditing={route.startEditing}
             onBack={pop}
+            onGoToProperty={() => {
+              const vendor = vendorById(state, route.vendorId);
+              const project = vendor ? projectById(state, vendor.projectId) : undefined;
+              if (project) goToProperty(project.propertyId);
+            }}
+            onOpenInteractions={() => {
+              const vendor = vendorById(state, route.vendorId);
+              if (!vendor) return;
+              push({
+                name: 'projectInteractions',
+                projectId: vendor.projectId,
+                vendorId: vendor.id,
+              });
+            }}
             onAddInteraction={() =>
               push({ name: 'vendorInteraction', vendorId: route.vendorId })
             }
@@ -199,6 +321,32 @@ export default function App() {
             vendorId={route.vendorId}
             interactionId={route.interactionId}
             onBack={pop}
+            onGoToProperty={() => {
+              const vendor = vendorById(state, route.vendorId);
+              const project = vendor ? projectById(state, vendor.projectId) : undefined;
+              if (project) goToProperty(project.propertyId);
+            }}
+            onCreated={(interactionId) =>
+              replaceTopRoute({
+                name: 'vendorInteraction',
+                vendorId: route.vendorId,
+                interactionId,
+              })
+            }
+            onSave={(next) => persist(next)}
+          />
+        );
+        break;
+      case 'propertyTodo':
+        screen = (
+          <AddEditPropertyTodoScreen
+            key={route.todoId}
+            state={state}
+            propertyId={route.propertyId}
+            todoId={route.todoId}
+            startEditing={route.startEditing}
+            kind={route.kind}
+            onBack={pop}
             onSave={(next) => void persist(next)}
           />
         );
@@ -212,6 +360,11 @@ export default function App() {
             startEditingSection={route.startEditingSection}
             onBack={pop}
             onNavigateItem={(nextItemId) => replaceTopRoute({ name: 'item', itemId: nextItemId })}
+            onGoToProperty={() => {
+              const item = state.items.find((entry) => entry.id === route.itemId);
+              const room = item ? roomById(state, item.roomId) : undefined;
+              if (room) goToProperty(room.propertyId);
+            }}
             onAddEvent={() => push({ name: 'event', itemId: route.itemId })}
             onEditEvent={(eventId) => push({ name: 'event', itemId: route.itemId, eventId })}
             onLogUpcomingService={(completeFromEventId) =>
@@ -252,7 +405,9 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
-        <AppErrorBoundary onReset={resetApp}>{screen}</AppErrorBoundary>
+        <TextScaleProvider scale={textScale} step={textScaleStep} setStep={setTextScaleStep}>
+          <AppErrorBoundary onReset={resetApp}>{screen}</AppErrorBoundary>
+        </TextScaleProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

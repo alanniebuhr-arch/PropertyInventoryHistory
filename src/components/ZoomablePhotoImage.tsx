@@ -18,6 +18,7 @@ type Props = {
   height: number;
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
+  resizeMode?: 'contain' | 'cover';
 };
 
 function clampScale(value: number): number {
@@ -25,7 +26,14 @@ function clampScale(value: number): number {
   return Math.min(Math.max(value, MIN_SCALE), MAX_SCALE);
 }
 
-export function ZoomablePhotoImage({ uri, width, height, onSwipeLeft, onSwipeRight }: Props) {
+export function ZoomablePhotoImage({
+  uri,
+  width,
+  height,
+  onSwipeLeft,
+  onSwipeRight,
+  resizeMode = 'contain',
+}: Props) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -102,7 +110,7 @@ export function ZoomablePhotoImage({ uri, width, height, onSwipeLeft, onSwipeRig
         <Animated.Image
           source={{ uri }}
           style={[styles.image, { width, height }, animatedStyle]}
-          resizeMode="contain"
+          resizeMode={resizeMode}
         />
       </Animated.View>
     </GestureDetector>

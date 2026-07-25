@@ -37,6 +37,53 @@ export type ProjectExportSnapshot = {
   exportedAtLabel: string;
 };
 
+export type ProjectExportSectionKey =
+  | 'photos'
+  | 'description'
+  | 'intro'
+  | 'privateNotes'
+  | 'vendors';
+
+export type ProjectExportInclude = Record<ProjectExportSectionKey, boolean>;
+
+export type ProjectExportOptions = {
+  include?: Partial<ProjectExportInclude>;
+};
+
+export const PROJECT_SHARE_PRESET_ALL: ProjectExportInclude = {
+  photos: true,
+  description: true,
+  intro: true,
+  privateNotes: true,
+  vendors: true,
+};
+
+export const PROJECT_SHARE_PRESET_INTRO: ProjectExportInclude = {
+  photos: true,
+  description: true,
+  intro: true,
+  privateNotes: false,
+  vendors: false,
+};
+
+export const PROJECT_SHARE_SECTION_OPTIONS: {
+  key: ProjectExportSectionKey;
+  label: string;
+}[] = [
+  { key: 'photos', label: 'Photos' },
+  { key: 'description', label: 'Description' },
+  { key: 'intro', label: 'Intro to vendors' },
+  { key: 'privateNotes', label: 'Private notes' },
+  { key: 'vendors', label: 'Vendors' },
+];
+
+function resolveInclude(options?: ProjectExportOptions): ProjectExportInclude {
+  return {
+    ...PROJECT_SHARE_PRESET_ALL,
+    ...options?.include,
+  };
+}
+
 function row(label: string, value?: string | null): ProjectExportRow | null {
   const trimmed = value?.trim();
   return trimmed ? { label, value: trimmed } : null;
@@ -88,26 +135,37 @@ function buildVendorExport(state: AppState, vendor: ProjectVendor): ProjectExpor
 
 export function buildProjectExportSnapshot(
   state: AppState,
-  projectId: string
+  projectId: string,
+  options?: ProjectExportOptions
 ): ProjectExportSnapshot | null {
   const project = projectById(state, projectId);
   if (!project) return null;
 
+  const include = resolveInclude(options);
   const property = propertyById(state, project.propertyId);
-  const vendors = vendorsForProject(state, projectId);
+  const vendors = include.vendors ? vendorsForProject(state, projectId) : [];
 
   const metaLines = [property?.name, property?.address]
     .filter((line): line is string => Boolean(line?.trim()))
     .map((line) => line.trim());
 
   const sections: ProjectExportSection[] = [];
-  pushSection(sections, section('Description', [row('Details', project.description)]));
-  pushSection(sections, section('Intro to vendors', [row('Note', project.vendorIntroNote)]));
+  if (include.description) {
+    pushSection(sections, section('Description', [row('Details', project.description)]));
+  }
+  if (include.intro) {
+    pushSection(sections, section('Intro to vendors', [row('Note', project.vendorIntroNote)]));
+  }
+  if (include.privateNotes) {
+    pushSection(sections, section('Private notes', [row('Notes', project.vendorQuestionsNote)]));
+  }
 
-  const photos = photosForProject(state, projectId).map((photo) => ({
-    uri: photo.localUri,
-    label: photo.caption?.trim() || 'Photo',
-  }));
+  const photos = include.photos
+    ? photosForProject(state, projectId).map((photo) => ({
+        uri: photo.localUri,
+        label: photo.caption?.trim() || 'Photo',
+      }))
+    : [];
 
   return {
     title: project.name,

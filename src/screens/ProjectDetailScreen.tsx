@@ -1,14 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput, useTextScaleControls } from '../textScale';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +10,7 @@ import { VendorGalleryTile, VendorListRow } from '../components/ListRows';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { ProjectPhotosSection } from '../components/ProjectPhotosSection';
 import { ProjectExportSheet } from '../components/ProjectExportSheet';
+import { ProjectShareOptionsModal } from '../components/ProjectShareOptionsModal';
 import { RoomNavigationDots } from '../components/RoomNavigationDots';
 import { RenameModal } from '../components/RenameModal';
 import { EditableDetailSection } from '../components/EditableDetailSection';
@@ -26,6 +19,7 @@ import { sharedStyles, colors } from '../theme';
 import { uid, nowISO, formatDate } from '../utils';
 import {
   deleteProjectCascade,
+  interactionsForProject,
   interactionsForVendor,
   photosForVendorInteraction,
   projectById,
@@ -44,8 +38,20 @@ import {
   setProjectVendorViewMode,
   type ProjectVendorViewMode,
 } from '../projectVendorViewPrefs';
-import { buildProjectExportSnapshot, type ProjectExportSnapshot } from '../projectExportContent';
+import {
+  buildProjectExportSnapshot,
+  PROJECT_SHARE_PRESET_ALL,
+  PROJECT_SHARE_PRESET_INTRO,
+  type ProjectExportInclude,
+  type ProjectExportSnapshot,
+} from '../projectExportContent';
 import { shareViewAsPng } from '../shareViewImage';
+import { SectionHelpTip } from '../components/SectionHelpTip';
+import {
+  getSectionHelpVisible,
+  loadSectionHelpVisible,
+  setSectionHelpVisible,
+} from '../sectionHelpPrefs';
 
 function vendorNotesPreview(notes?: string): string | undefined {
   const trimmed = notes?.trim();
@@ -59,10 +65,23 @@ export function ProjectDetailScreen(props: {
   projectId: string;
   onBack: () => void;
   onNavigateProject: (projectId: string) => void;
-  onOpenVendor: (vendorId: string) => void;
+  onGoToProperty: () => void;
+  onOpenInteractions: () => void;
+  onOpenVendor: (vendorId: string, options?: { startEditing?: boolean }) => void;
+  onAddVendorInteraction: (vendorId: string) => void;
   onSave: (state: AppState) => void;
 }) {
-  const { state, projectId, onBack, onNavigateProject, onOpenVendor, onSave } = props;
+  const {
+    state,
+    projectId,
+    onBack,
+    onNavigateProject,
+    onGoToProperty,
+    onOpenInteractions,
+    onOpenVendor,
+    onAddVendorInteraction,
+    onSave,
+  } = props;
   const insets = useSafeAreaInsets();
   const vendors = vendorsForProject(state, projectId);
   const [addVendorOpen, setAddVendorOpen] = useState(false);
@@ -71,21 +90,32 @@ export function ProjectDetailScreen(props: {
   const [renameDraft, setRenameDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [vendorViewMode, setVendorViewMode] = useState<ProjectVendorViewMode>(getProjectVendorViewMode);
+  const textScaleControls = useTextScaleControls();
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [introDraft, setIntroDraft] = useState('');
-  const [editingSection, setEditingSection] = useState<'description' | 'intro' | null>(null);
+  const [questionsDraft, setQuestionsDraft] = useState('');
+  const [editingSection, setEditingSection] = useState<
+    'description' | 'intro' | 'questions' | null
+  >(null);
   const [exportSnapshot, setExportSnapshot] = useState<ProjectExportSnapshot | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [shareOptionsOpen, setShareOptionsOpen] = useState(false);
+  const [shareInclude, setShareInclude] = useState<ProjectExportInclude>(PROJECT_SHARE_PRESET_ALL);
+  const [helpVisible, setHelpVisible] = useState(getSectionHelpVisible);
   const exportRef = useRef<View>(null);
 
   const project = projectById(state, projectId);
   const propertyProjects = project ? projectsForProperty(state, project.propertyId) : [];
   const projectIndex = project ? propertyProjects.findIndex((p) => p.id === projectId) : -1;
+  const hasInteractions = interactionsForProject(state, projectId).length > 0;
 
   useEffect(() => {
     let cancelled = false;
     void loadProjectVendorViewMode().then((mode) => {
       if (!cancelled) setVendorViewMode(mode);
+    });
+    void loadSectionHelpVisible().then((visible) => {
+      if (!cancelled) setHelpVisible(visible);
     });
     return () => {
       cancelled = true;
@@ -96,18 +126,32 @@ export function ProjectDetailScreen(props: {
     if (project) {
       setDescriptionDraft(project.description ?? '');
       setIntroDraft(project.vendorIntroNote ?? '');
+      setQuestionsDraft(project.vendorQuestionsNote ?? '');
     }
-  }, [project?.id, project?.description, project?.vendorIntroNote]);
+  }, [project?.id, project?.description, project?.vendorIntroNote, project?.vendorQuestionsNote]);
 
-  const runProjectExport = useCallback(async () => {
-    const snapshot = buildProjectExportSnapshot(state, projectId);
-    if (!snapshot) {
-      Alert.alert('Export failed', 'Could not build project summary.');
-      return;
-    }
-    setExportSnapshot(snapshot);
-    setExporting(true);
-  }, [projectId, state]);
+  const openShareOptions = useCallback((preset: ProjectExportInclude) => {
+    setShareInclude({ ...preset });
+    setShareOptionsOpen(true);
+  }, []);
+
+  const runProjectExport = useCallback(
+    async (include: ProjectExportInclude) => {
+      if (!Object.values(include).some(Boolean)) {
+        Alert.alert('Nothing selected', 'Choose at least one section to include.');
+        return;
+      }
+      const snapshot = buildProjectExportSnapshot(state, projectId, { include });
+      if (!snapshot) {
+        Alert.alert('Export failed', 'Could not build project summary.');
+        return;
+      }
+      setShareOptionsOpen(false);
+      setExportSnapshot(snapshot);
+      setExporting(true);
+    },
+    [projectId, state]
+  );
 
   useEffect(() => {
     if (!exportSnapshot || !exporting) return;
@@ -189,7 +233,9 @@ export function ProjectDetailScreen(props: {
   const property = propertyById(state, proj.propertyId);
   const subtitleParts = [property?.name].filter(Boolean);
 
-  function saveProjectField(patch: Partial<Pick<Project, 'description' | 'vendorIntroNote'>>) {
+  function saveProjectField(
+    patch: Partial<Pick<Project, 'description' | 'vendorIntroNote' | 'vendorQuestionsNote'>>
+  ) {
     onSave({
       ...state,
       projects: state.projects.map((p) =>
@@ -208,15 +254,22 @@ export function ProjectDetailScreen(props: {
     saveProjectField({ vendorIntroNote: trimmed || undefined });
   }
 
-  function openSection(section: 'description' | 'intro') {
+  function saveQuestionsNote() {
+    const trimmed = questionsDraft.trim();
+    saveProjectField({ vendorQuestionsNote: trimmed || undefined });
+  }
+
+  function openSection(section: 'description' | 'intro' | 'questions') {
     if (editingSection === 'description') saveDescription();
     if (editingSection === 'intro') saveIntroNote();
+    if (editingSection === 'questions') saveQuestionsNote();
     setEditingSection(section);
   }
 
   function closeSection() {
     if (editingSection === 'description') saveDescription();
     if (editingSection === 'intro') saveIntroNote();
+    if (editingSection === 'questions') saveQuestionsNote();
     setEditingSection(null);
   }
   closeSectionRef.current = closeSection;
@@ -251,7 +304,7 @@ export function ProjectDetailScreen(props: {
       id: uid('vendor'),
       projectId,
       name: trimmed,
-      status: 'initial_contact',
+      status: 'researching',
       photoIds: [],
       documentIds: [],
       createdAtISO: nowISO(),
@@ -259,7 +312,7 @@ export function ProjectDetailScreen(props: {
     onSave({ ...state, projectVendors: [...state.projectVendors, vendor] });
     setAddVendorOpen(false);
     setNewVendorName('');
-    onOpenVendor(vendor.id);
+    onOpenVendor(vendor.id, { startEditing: true });
   }
 
   function confirmDeleteProject() {
@@ -292,6 +345,12 @@ export function ProjectDetailScreen(props: {
     setMenuOpen(false);
     // Let the menu dismiss before opening another alert/modal.
     setTimeout(action, 50);
+  }
+
+  function toggleHelp() {
+    const next = !helpVisible;
+    setHelpVisible(next);
+    void setSectionHelpVisible(next);
   }
 
   const vendorsSection = (
@@ -361,6 +420,13 @@ export function ProjectDetailScreen(props: {
         </View>
       </View>
 
+      {helpVisible ? (
+        <SectionHelpTip>
+          All the companies you will contact to get a quote on this project. Your emails, calls,
+          texts… can all be documented and easily found, viewed and shared.
+        </SectionHelpTip>
+      ) : null}
+
       {vendors.length === 0 ? (
         <Text style={sharedStyles.emptyText}>
           Add a contractor or vendor you&apos;ve contacted.
@@ -408,6 +474,7 @@ export function ProjectDetailScreen(props: {
                 lastInteractionNotes={lastInteraction?.notes}
                 lastInteractionPhotoUri={lastInteractionPhoto?.localUri}
                 onPress={() => onOpenVendor(vendor.id)}
+                onAddInteraction={() => onAddVendorInteraction(vendor.id)}
               />
             );
           })}
@@ -432,13 +499,92 @@ export function ProjectDetailScreen(props: {
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScreenBackHeader onPress={onBack}>
-        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Pressable
-            onPress={() => void runProjectExport()}
+            onPress={toggleHelp}
+            disabled={exporting}
+            accessibilityRole="button"
+            accessibilityLabel={helpVisible ? 'Hide section help' : 'Show section help'}
+            accessibilityState={{ selected: helpVisible }}
+            accessibilityHint="Toggles short explanations under each section."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                width: 42,
+                height: 36,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: helpVisible ? colors.helpBg : 'transparent',
+                opacity: exporting ? 0.6 : 1,
+              },
+              pressed && !exporting && { opacity: 0.8 },
+            ]}
+          >
+            <MaterialIcons
+              name={helpVisible ? 'help' : 'help-outline'}
+              size={22}
+              color={helpVisible ? colors.helpText : colors.primary}
+            />
+          </Pressable>
+          <Pressable
+            onPress={onGoToProperty}
+            disabled={exporting}
+            accessibilityRole="button"
+            accessibilityLabel="Go to property"
+            accessibilityHint="Opens the property page for this project."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                width: 42,
+                height: 36,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'transparent',
+                opacity: exporting ? 0.6 : 1,
+              },
+              pressed && !exporting && { opacity: 0.8 },
+            ]}
+          >
+            <MaterialIcons name="home" size={22} color={colors.primary} />
+          </Pressable>
+          {hasInteractions ? (
+            <Pressable
+              onPress={onOpenInteractions}
+              disabled={exporting}
+              accessibilityRole="button"
+              accessibilityLabel="Project interactions"
+              accessibilityHint="Opens recent vendor interactions for this project."
+              hitSlop={8}
+              style={({ pressed }) => [
+                {
+                  width: 42,
+                  height: 36,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: colors.border,
+                  borderRadius: 4,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'transparent',
+                  opacity: exporting ? 0.6 : 1,
+                },
+                pressed && !exporting && { opacity: 0.8 },
+              ]}
+            >
+              <MaterialIcons name="forum" size={22} color={colors.primary} />
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() => openShareOptions(PROJECT_SHARE_PRESET_ALL)}
             disabled={exporting}
             accessibilityRole="button"
             accessibilityLabel="Share project"
-            accessibilityHint="Creates an image of this project and opens the share sheet."
+            accessibilityHint="Opens options for which project sections to include in a shared image."
             hitSlop={8}
             style={({ pressed }) => [
               {
@@ -476,6 +622,25 @@ export function ProjectDetailScreen(props: {
           </Pressable>
         </View>
       </ScreenBackHeader>
+      {helpVisible ? (
+        <Text
+          style={{
+            marginHorizontal: 20,
+            marginBottom: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 8,
+            backgroundColor: colors.helpBg,
+            textAlign: 'right',
+            fontSize: 12,
+            lineHeight: 16,
+            color: colors.helpText,
+          }}
+        >
+          Help | Home
+          {hasInteractions ? ' | Interactions' : ''} | Share | Utilities.
+        </Text>
+      ) : null}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
@@ -508,12 +673,23 @@ export function ProjectDetailScreen(props: {
           ) : null}
         </ProjectPhotosSection>
 
+        {helpVisible ? (
+          <SectionHelpTip>
+            Add as many pictures here as you want. The pictures marked with a star will be sent to
+            Vendors. Long press on pictures to add a name and description.
+          </SectionHelpTip>
+        ) : null}
+
         <EditableDetailSection
           title="Description"
           isEditing={editingSection === 'description'}
           onPress={() => openSection('description')}
           onDone={keyboardDone.dismiss}
+          useEditIcon
         >
+          {helpVisible ? (
+            <SectionHelpTip>All details for this project that you want to share.</SectionHelpTip>
+          ) : null}
           {editingSection === 'description' ? (
             <TextInput
               style={[sharedStyles.input, sharedStyles.inputMultiline]}
@@ -539,7 +715,15 @@ export function ProjectDetailScreen(props: {
           isEditing={editingSection === 'intro'}
           onPress={() => openSection('intro')}
           onDone={keyboardDone.dismiss}
+          onShare={() => openShareOptions(PROJECT_SHARE_PRESET_INTRO)}
+          shareDisabled={exporting}
+          useEditIcon
         >
+          {helpVisible ? (
+            <SectionHelpTip>
+              Text that will be shared with the Vendor Share icon immediately above.
+            </SectionHelpTip>
+          ) : null}
           {editingSection === 'intro' ? (
             <TextInput
               style={[sharedStyles.input, sharedStyles.inputMultiline, { minHeight: 120 }]}
@@ -554,6 +738,36 @@ export function ProjectDetailScreen(props: {
           ) : introDraft.trim() ? (
             <Text style={[sharedStyles.cardMeta, { marginTop: 0, color: colors.text }]}>
               {introDraft.trim()}
+            </Text>
+          ) : (
+            <Text style={sharedStyles.cardMeta}>Not set</Text>
+          )}
+        </EditableDetailSection>
+
+        <EditableDetailSection
+          title="Private notes"
+          isEditing={editingSection === 'questions'}
+          onPress={() => openSection('questions')}
+          onDone={keyboardDone.dismiss}
+          useEditIcon
+        >
+          {helpVisible ? (
+            <SectionHelpTip>Notes to yourself that will not be shared with Vendors.</SectionHelpTip>
+          ) : null}
+          {editingSection === 'questions' ? (
+            <TextInput
+              style={[sharedStyles.input, sharedStyles.inputMultiline, { minHeight: 120 }]}
+              value={questionsDraft}
+              onChangeText={setQuestionsDraft}
+              placeholder="Private notes for yourself"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              autoFocus
+              {...keyboardDone.textInputProps}
+            />
+          ) : questionsDraft.trim() ? (
+            <Text style={[sharedStyles.cardMeta, { marginTop: 0, color: colors.text }]}>
+              {questionsDraft.trim()}
             </Text>
           ) : (
             <Text style={sharedStyles.cardMeta}>Not set</Text>
@@ -618,6 +832,46 @@ export function ProjectDetailScreen(props: {
               </Text>
             </Pressable>
             <Pressable
+              onPress={() => {
+                if (!textScaleControls.canMakeLarger) return;
+                textScaleControls.makeLarger();
+              }}
+              disabled={!textScaleControls.canMakeLarger}
+              accessibilityRole="button"
+              accessibilityLabel="Text larger"
+              accessibilityState={{ disabled: !textScaleControls.canMakeLarger }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: !textScaleControls.canMakeLarger ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Text larger
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!textScaleControls.canMakeSmaller) return;
+                textScaleControls.makeSmaller();
+              }}
+              disabled={!textScaleControls.canMakeSmaller}
+              accessibilityRole="button"
+              accessibilityLabel="Text smaller"
+              accessibilityState={{ disabled: !textScaleControls.canMakeSmaller }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: !textScaleControls.canMakeSmaller ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Text smaller
+              </Text>
+            </Pressable>
+            <Pressable
               onPress={() => runMenuAction(confirmDeleteProject)}
               accessibilityRole="button"
               accessibilityLabel="Delete project"
@@ -645,6 +899,14 @@ export function ProjectDetailScreen(props: {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ProjectShareOptionsModal
+        visible={shareOptionsOpen}
+        include={shareInclude}
+        onChangeInclude={setShareInclude}
+        onShare={() => void runProjectExport(shareInclude)}
+        onClose={() => setShareOptionsOpen(false)}
+      />
 
       <RenameModal
         visible={addVendorOpen}

@@ -20,11 +20,12 @@ export function confirmRemovePhotoSlot(slotLabel: string, onRemove: () => void) 
 
 export function showLabeledPhotoThumbActions(options: {
   onRename?: () => void;
+  onSave?: () => void;
   onDelete?: () => void;
   onRemoveSlot?: () => void;
   slotLabel?: string;
 }) {
-  const { onRename, onDelete, onRemoveSlot, slotLabel = 'photo' } = options;
+  const { onRename, onSave, onDelete, onRemoveSlot, slotLabel = 'photo' } = options;
   const buttons: {
     text: string;
     style?: 'cancel' | 'destructive';
@@ -33,6 +34,9 @@ export function showLabeledPhotoThumbActions(options: {
 
   if (onRename) {
     buttons.push({ text: 'Edit label & notes', onPress: onRename });
+  }
+  if (onSave) {
+    buttons.push({ text: 'Save', onPress: onSave });
   }
   if (onDelete) {
     buttons.push({
@@ -48,13 +52,13 @@ export function showLabeledPhotoThumbActions(options: {
       onPress: () => confirmRemovePhotoSlot(slotLabel, onRemoveSlot),
     });
   }
-  buttons.push({ text: 'Cancel', style: 'cancel' });
+  buttons.push({ text: 'Done', style: 'cancel' });
 
-  if (!onRename && onDelete && !onRemoveSlot) {
+  if (!onRename && !onSave && onDelete && !onRemoveSlot) {
     confirmDeletePhoto(onDelete);
     return;
   }
-  if (!onRename && !onDelete && onRemoveSlot) {
+  if (!onRename && !onSave && !onDelete && onRemoveSlot) {
     confirmRemovePhotoSlot(slotLabel, onRemoveSlot);
     return;
   }

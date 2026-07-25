@@ -1,14 +1,6 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import {
-  InputAccessoryView,
-  Keyboard,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { InputAccessoryView, Keyboard, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../textScale';
 import { colors } from '../theme';
 
 function sanitizeAccessoryId(id: string): string {
@@ -34,6 +26,9 @@ function DoneAccessoryBar(props: { onPress: () => void; label?: string }) {
 /**
  * iOS InputAccessoryView + Android/web fallback bar above the keyboard,
  * modeled after Playing Card Scoring's NumericInput dismiss accessory.
+ *
+ * Use `variant: 'overlay'` inside a React Native Modal — native InputAccessoryView
+ * (and a nested accessory Modal) often do not appear there.
  */
 export function useKeyboardDoneAccessory(options?: {
   /** Stable id shared by TextInputs that should show this accessory. */
@@ -41,6 +36,11 @@ export function useKeyboardDoneAccessory(options?: {
   /** Called after the keyboard is dismissed (e.g. close Edit section). */
   onDone?: () => void;
   label?: string;
+  /**
+   * `native` — iOS InputAccessoryView + Android modal fallback (default).
+   * `overlay` — absolute bar in the parent; required inside RN Modal.
+   */
+  variant?: 'native' | 'overlay';
 }) {
   const generatedId = useId();
   const accessoryNativeId = sanitizeAccessoryId(options?.id ?? `kbdDone_${generatedId}`);
@@ -50,6 +50,8 @@ export function useKeyboardDoneAccessory(options?: {
   const onDoneRef = useRef(options?.onDone);
   onDoneRef.current = options?.onDone;
   const label = options?.label ?? 'Enter';
+  const variant = options?.variant ?? 'native';
+  const useOverlay = variant === 'overlay';
 
   useEffect(
     () => () => {
@@ -59,18 +61,22 @@ export function useKeyboardDoneAccessory(options?: {
   );
 
   useEffect(() => {
-    if (!barVisible || Platform.OS === 'ios') return;
-    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+    const needsKeyboardHeight = useOverlay || (barVisible && Platform.OS !== 'ios');
+    if (!needsKeyboardHeight) return;
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
       setKeyboardHeight(e.endCoordinates.height);
     });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+    const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardHeight(0);
     });
     return () => {
       showSub.remove();
       hideSub.remove();
     };
-  }, [barVisible]);
+  }, [barVisible, useOverlay]);
 
   const showBar = useCallback(() => {
     if (blurTimerRef.current) {
@@ -95,12 +101,27 @@ export function useKeyboardDoneAccessory(options?: {
   }, []);
 
   const textInputProps = {
-    inputAccessoryViewID: Platform.OS === 'ios' ? accessoryNativeId : undefined,
+    inputAccessoryViewID:
+      !useOverlay && Platform.OS === 'ios' ? accessoryNativeId : undefined,
     onFocus: showBar,
     onBlur: scheduleHideBar,
   };
 
-  const accessory = (
+  const overlayBar =
+    barVisible && keyboardHeight > 0 ? (
+      <View
+        style={[styles.overlayBar, { bottom: keyboardHeight }]}
+        pointerEvents="box-none"
+      >
+        <DoneAccessoryBar onPress={dismiss} label={label} />
+      </View>
+    ) : null;
+
+  const accessory = useOverlay ? (
+    <View style={styles.overlayRoot} pointerEvents="box-none">
+      {overlayBar}
+    </View>
+  ) : (
     <>
       {Platform.OS === 'ios' ? (
         <InputAccessoryView nativeID={accessoryNativeId}>
@@ -155,5 +176,15 @@ const styles = StyleSheet.create({
   fallbackModalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
+  },
+  overlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    elevation: 20,
+  },
+  overlayBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
   },
 });

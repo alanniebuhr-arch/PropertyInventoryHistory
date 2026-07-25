@@ -271,6 +271,8 @@ export type RoomSlotKey = 'houseInsurance';
 export type PropertyPhoto = {
   id: string;
   propertyId: string;
+  /** When set, photo belongs to a property to-do (not the property gallery). */
+  todoId?: string;
   localUri: string;
   caption?: string;
   /** Free-form notes shown with the hero when this photo is active. */
@@ -315,6 +317,11 @@ export type Property = {
   photoIds?: string[];
   /** Named photo slots the user removed (placeholders stay hidden until restored). */
   hiddenPhotoSlotKeys?: string[];
+  /**
+   * Ordered photo ids for the property Slideshow (and Property Share favorites).
+   * When undefined, Slideshow falls back to photos marked favorite in default order.
+   */
+  slideshowPhotoIds?: string[];
   createdAtISO: string;
   updatedAtISO?: string;
   /** Watermark of last successful Share updates / full property share for collaboration. */
@@ -406,6 +413,7 @@ export type ItemEvent = {
 };
 
 export type VendorStatus =
+  | 'researching'
   | 'initial_contact'
   | 'meeting_setup'
   | 'vendor_onsite'
@@ -420,6 +428,8 @@ export type Project = {
   description?: string;
   /** Intro note sent to vendors (who you are, scope, timeframe). */
   vendorIntroNote?: string;
+  /** Private notes — app-only; not included in intro share image. */
+  vendorQuestionsNote?: string;
   photoIds: string[];
   sortOrder: number;
   createdAtISO: string;
@@ -487,6 +497,23 @@ export type VendorInteraction = {
   updatedAtISO?: string;
 };
 
+export type PropertyTodoKind = 'todo' | 'idea';
+
+export type PropertyTodo = {
+  id: string;
+  propertyId: string;
+  /** 'todo' = actionable task, 'idea' = loosely thought-out topic. Missing = 'todo'. */
+  kind?: PropertyTodoKind;
+  title: string;
+  dueAtISO?: string;
+  notes?: string;
+  done: boolean;
+  completedAtISO?: string;
+  photoIds: string[];
+  createdAtISO: string;
+  updatedAtISO?: string;
+};
+
 export type AppState = {
   version: 1;
   properties: Property[];
@@ -502,6 +529,7 @@ export type AppState = {
   projectPhotos: ProjectPhoto[];
   vendorPhotos: VendorPhoto[];
   vendorInteractions: VendorInteraction[];
+  propertyTodos: PropertyTodo[];
 };
 
 export const EMPTY_APP_STATE: AppState = {
@@ -519,6 +547,7 @@ export const EMPTY_APP_STATE: AppState = {
   projectPhotos: [],
   vendorPhotos: [],
   vendorInteractions: [],
+  propertyTodos: [],
 };
 
 export type InventoryTransferBundle = {
@@ -546,6 +575,7 @@ export type SyncDeletedIds = {
   projectPhotos?: string[];
   vendorPhotos?: string[];
   vendorInteractions?: string[];
+  propertyTodos?: string[];
 };
 
 export type PropertyUpdateBundle = {

@@ -24,6 +24,9 @@ export const colors = {
   lastService: '#2f6b3a',
   /** All-caps section titles (Service schedule, Assets, Rooms, etc.). */
   sectionTitle: '#1f5fbf',
+  /** In-context help tip callouts on Property Detail. */
+  helpBg: '#e3ecf8',
+  helpText: '#1a4a8a',
 };
 
 export const sharedStyles = StyleSheet.create({

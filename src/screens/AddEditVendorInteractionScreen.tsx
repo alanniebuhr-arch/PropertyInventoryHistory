@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
-  Text,
-  TextInput,
+  StyleSheet,
   View,
 } from 'react-native';
+import type { ScrollView as RNScrollView } from 'react-native';
+import { Text, TextInput } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, VendorContactMethod, VendorInteraction, VendorPhoto } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { InteractionPhotoSection } from '../components/InteractionPhotoSection';
+import { DetailDisplayRow } from '../components/DetailDisplayRow';
+import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
 import { sharedStyles, colors } from '../theme';
 import {
   dateInputValue,
@@ -31,18 +37,34 @@ import {
 } from '../vendorContactMethod';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
 
+const headerIconBtn = {
+  width: 42,
+  height: 36,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: colors.border,
+  borderRadius: 4,
+  alignItems: 'center' as const,
+  justifyContent: 'center' as const,
+  backgroundColor: 'transparent' as const,
+};
+
 export function AddEditVendorInteractionScreen(props: {
   state: AppState;
   vendorId: string;
   interactionId?: string;
   onBack: () => void;
-  onSave: (state: AppState) => void;
+  onGoToProperty: () => void;
+  /** After creating a new interaction, parent should pin the new id in the route. */
+  onCreated: (interactionId: string) => void;
+  onSave: (state: AppState) => void | Promise<void>;
 }) {
-  const { state, vendorId, interactionId, onBack, onSave } = props;
+  const { state, vendorId, interactionId, onBack, onGoToProperty, onCreated, onSave } = props;
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<RNScrollView>(null);
   const vendor = vendorById(state, vendorId);
   const existing = interactionId ? vendorInteractionById(state, interactionId) : undefined;
 
+  const [isEditing, setIsEditing] = useState(!existing);
   const [dateStr, setDateStr] = useState(() =>
     dateInputValue(existing?.occurredAtISO ?? nowISO())
   );
@@ -57,6 +79,11 @@ export function AddEditVendorInteractionScreen(props: {
   const [interactionPhotos, setInteractionPhotos] = useState<VendorPhoto[]>(() =>
     existing ? photosForVendorInteraction(state, existing.id) : []
   );
+
+  const keyboardDone = useKeyboardDoneAccessory({
+    id: 'vendorInteractionNotesDone',
+    label: 'Done',
+  });
 
   if (!vendor) {
     return (
@@ -78,9 +105,27 @@ export function AddEditVendorInteractionScreen(props: {
           text: opt.label,
           onPress: () => setContactMethod(opt.id),
         })),
-        { text: 'Cancel', style: 'cancel' as const },
+        { text: 'Done', style: 'cancel' as const },
       ]
     );
+  }
+
+  function resetDraftFromExisting() {
+    if (!existing) return;
+    setDateStr(dateInputValue(existing.occurredAtISO));
+    setContactMethod(existing.contactMethod);
+    setContactName(existing.contactName ?? vendor?.contactName ?? '');
+    setNotes(existing.notes ?? '');
+    setInteractionPhotos(photosForVendorInteraction(state, existing.id));
+  }
+
+  function cancelEditing() {
+    if (existing) {
+      resetDraftFromExisting();
+      setIsEditing(false);
+      return;
+    }
+    onBack();
   }
 
   async function addInteractionPhotos(sourceUris: string[]) {
@@ -124,7 +169,7 @@ export function AddEditVendorInteractionScreen(props: {
     setInteractionPhotos((prev) => prev.filter((p) => p.id !== photoId));
   }
 
-  function saveInteraction() {
+  async function saveInteraction() {
     const occurredAtISO = parseDateInputToISO(dateStr);
     if (!occurredAtISO) {
       Alert.alert('Invalid date', 'Enter a date as MM/DD/YYYY.');
@@ -162,14 +207,18 @@ export function AddEditVendorInteractionScreen(props: {
         occurredAtISO,
         notes: trimmedNotes || undefined,
         photoIds,
+        updatedAtISO: nowISO(),
       };
-      onSave({
-        ...state,
-        vendorInteractions: state.vendorInteractions.map((i) =>
-          i.id === existing.id ? updated : i
-        ),
-        vendorPhotos: [...mergedPhotos, ...newPhotos],
-      });
+      await Promise.resolve(
+        onSave({
+          ...state,
+          vendorInteractions: state.vendorInteractions.map((i) =>
+            i.id === existing.id ? updated : i
+          ),
+          vendorPhotos: [...mergedPhotos, ...newPhotos],
+        })
+      );
+      setIsEditing(false);
     } else {
       // Mirror AddEditEventScreen create path.
       const newInteractionId = uid('interaction');
@@ -186,14 +235,18 @@ export function AddEditVendorInteractionScreen(props: {
         notes: trimmedNotes || undefined,
         photoIds,
         createdAtISO: nowISO(),
+        updatedAtISO: nowISO(),
       };
-      onSave({
-        ...state,
-        vendorInteractions: [...state.vendorInteractions, interaction],
-        vendorPhotos: [...state.vendorPhotos, ...photoRecords],
-      });
+      await Promise.resolve(
+        onSave({
+          ...state,
+          vendorInteractions: [...state.vendorInteractions, interaction],
+          vendorPhotos: [...state.vendorPhotos, ...photoRecords],
+        })
+      );
+      // Pin id in the route after state is saved; remount opens read-only.
+      onCreated(newInteractionId);
     }
-    onBack();
   }
 
   function confirmDelete() {
@@ -216,123 +269,189 @@ export function AddEditVendorInteractionScreen(props: {
     ]);
   }
 
+  const occurredAtISO = parseDateInputToISO(dateStr);
+  const title = !existing ? 'New interaction' : isEditing ? 'Edit interaction' : 'Interaction';
+
   return (
-    <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScreenBackHeader onPress={onBack} label="← Cancel">
+    <KeyboardAvoidingView
+      style={[sharedStyles.screen, { paddingTop: insets.top }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={insets.top}
+    >
+      <ScreenBackHeader onPress={isEditing ? cancelEditing : onBack} label={isEditing ? '← Cancel' : '← Back'}>
         <View
           style={{
             marginLeft: 'auto',
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
+            gap: 4,
           }}
         >
+          <Pressable
+            onPress={onGoToProperty}
+            accessibilityRole="button"
+            accessibilityLabel="Go to property"
+            accessibilityHint="Opens the property page for this interaction."
+            hitSlop={8}
+            style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
+          >
+            <MaterialIcons name="home" size={22} color={colors.primary} />
+          </Pressable>
           {existing ? (
             <Pressable
               onPress={confirmDelete}
               accessibilityRole="button"
               accessibilityLabel="Delete interaction"
               hitSlop={8}
-              style={({ pressed }) => ({
-                paddingVertical: 8,
-                paddingHorizontal: 10,
-                opacity: pressed ? 0.7 : 1,
-              })}
+              style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
             >
-              <Text style={{ color: colors.danger, fontSize: 16, fontWeight: '600' }}>Delete</Text>
+              <MaterialIcons name="delete" size={22} color={colors.danger} />
             </Pressable>
-          ) : null}
-          <Pressable
-            onPress={saveInteraction}
-            accessibilityRole="button"
-            accessibilityLabel="Save interaction"
-            hitSlop={8}
-            style={({ pressed }) => ({
-              paddingVertical: 8,
-              paddingHorizontal: 14,
-              borderRadius: 8,
-              backgroundColor: colors.primary,
-              opacity: pressed ? 0.85 : 1,
-            })}
-          >
-            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Save</Text>
-          </Pressable>
+          ) : (
+            <View style={{ width: 42, height: 36 }} />
+          )}
+          {isEditing ? (
+            <Pressable
+              onPress={() => void saveInteraction()}
+              accessibilityRole="button"
+              accessibilityLabel="Save interaction"
+              hitSlop={8}
+              style={({ pressed }) => [
+                {
+                  width: 42,
+                  height: 36,
+                  borderRadius: 4,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: colors.primary,
+                },
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <MaterialIcons name="check" size={22} color="#fff" />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => setIsEditing(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit interaction"
+              accessibilityHint="Switches to edit mode."
+              hitSlop={8}
+              style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
+            >
+              <MaterialIcons name="edit" size={22} color={colors.primary} />
+            </Pressable>
+          )}
         </View>
       </ScreenBackHeader>
 
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={[sharedStyles.content, { paddingTop: 0, paddingBottom: 40 }]}
+        contentContainerStyle={[sharedStyles.content, { paddingTop: 0, paddingBottom: 120 }]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
-        <Text style={sharedStyles.title}>{existing ? 'Edit interaction' : 'New interaction'}</Text>
-        <Text style={sharedStyles.subtitle}>{vendor.name}</Text>
-
-        <Text style={sharedStyles.fieldLabel}>Date</Text>
-        <TextInput
-          style={sharedStyles.input}
-          value={dateStr}
-          onChangeText={setDateStr}
-          placeholder="MM/DD/YYYY"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="numbers-and-punctuation"
-        />
-        {parseDateInputToISO(dateStr) ? (
-          <Text style={[sharedStyles.cardMeta, { marginTop: 4 }]}>
-            {formatDate(parseDateInputToISO(dateStr)!)}
-          </Text>
-        ) : null}
-
-        <Text style={sharedStyles.fieldLabel}>How contacted</Text>
-        <Pressable
-          onPress={openMethodPicker}
-          style={({ pressed }) => [
-            sharedStyles.input,
-            {
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-          accessibilityRole="button"
-          accessibilityHint="Opens a list of contact methods"
-        >
-          <Text style={{ fontSize: 16, color: colors.text }}>
-            {vendorContactMethodLabel(contactMethod)}
-          </Text>
-          <Text style={{ fontSize: 18, color: colors.textMuted }}>›</Text>
-        </Pressable>
-
-        <Text style={sharedStyles.fieldLabel}>Contact person</Text>
-        <TextInput
-          style={sharedStyles.input}
-          value={contactName}
-          onChangeText={setContactName}
-          placeholder="Person you spoke with"
-          placeholderTextColor={colors.textMuted}
-        />
-
-        <Text style={sharedStyles.fieldLabel}>Notes</Text>
-        <TextInput
-          style={[sharedStyles.input, sharedStyles.inputMultiline, { minHeight: 120 }]}
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Notes from the conversation"
-          placeholderTextColor={colors.textMuted}
-          multiline
-        />
-
         <InteractionPhotoSection
           photos={interactionPhotos}
-          onAddPhotos={addInteractionPhotos}
-          onDeletePhoto={(photoId) => {
-            void removeInteractionPhoto(photoId);
-          }}
-          onLabelPhoto={handleInteractionPhotoLabel}
-          hint="Attach screenshots, quotes, or photos from this interaction."
-        />
+          onAddPhotos={isEditing ? addInteractionPhotos : undefined}
+          onDeletePhoto={
+            isEditing
+              ? (photoId) => {
+                  void removeInteractionPhoto(photoId);
+                }
+              : undefined
+          }
+          onLabelPhoto={isEditing ? handleInteractionPhotoLabel : undefined}
+          hint={
+            isEditing
+              ? 'Attach screenshots, quotes, or photos from this interaction.'
+              : undefined
+          }
+        >
+          <Text style={sharedStyles.title}>{title}</Text>
+          <Text style={sharedStyles.subtitle}>{vendor.name}</Text>
+        </InteractionPhotoSection>
+
+        {isEditing ? (
+          <>
+            <Text style={sharedStyles.fieldLabel}>Date</Text>
+            <TextInput
+              style={sharedStyles.input}
+              value={dateStr}
+              onChangeText={setDateStr}
+              placeholder="MM/DD/YYYY"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numbers-and-punctuation"
+              {...keyboardDone.textInputProps}
+            />
+            {occurredAtISO ? (
+              <Text style={[sharedStyles.cardMeta, { marginTop: 4 }]}>
+                {formatDate(occurredAtISO)}
+              </Text>
+            ) : null}
+
+            <Text style={sharedStyles.fieldLabel}>How contacted</Text>
+            <Pressable
+              onPress={openMethodPicker}
+              style={({ pressed }) => [
+                sharedStyles.input,
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityHint="Opens a list of contact methods"
+            >
+              <Text style={{ fontSize: 16, color: colors.text }}>
+                {vendorContactMethodLabel(contactMethod)}
+              </Text>
+              <Text style={{ fontSize: 18, color: colors.textMuted }}>›</Text>
+            </Pressable>
+
+            <Text style={sharedStyles.fieldLabel}>Contact person</Text>
+            <TextInput
+              style={sharedStyles.input}
+              value={contactName}
+              onChangeText={setContactName}
+              placeholder="Person you spoke with"
+              placeholderTextColor={colors.textMuted}
+              {...keyboardDone.textInputProps}
+            />
+
+            <Text style={sharedStyles.fieldLabel}>Notes</Text>
+            <TextInput
+              style={[sharedStyles.input, sharedStyles.inputMultiline, { minHeight: 120 }]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Notes from the conversation"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              onFocus={() => {
+                setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+              }}
+              {...keyboardDone.textInputProps}
+            />
+          </>
+        ) : (
+          <View style={[sharedStyles.catalogSection, { marginTop: 12 }]}>
+            <DetailDisplayRow
+              label="Date"
+              value={occurredAtISO ? formatDate(occurredAtISO) : dateStr}
+            />
+            <DetailDisplayRow
+              label="How contacted"
+              value={vendorContactMethodLabel(contactMethod)}
+            />
+            <DetailDisplayRow label="Contact person" value={contactName} />
+            <DetailDisplayRow label="Notes" value={notes} stacked />
+          </View>
+        )}
       </ScrollView>
-    </View>
+      {isEditing ? keyboardDone.accessory : null}
+    </KeyboardAvoidingView>
   );
 }

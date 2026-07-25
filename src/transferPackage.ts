@@ -3,6 +3,7 @@ import { File, Paths } from 'expo-file-system';
 import { strToU8, unzip, Zip, ZipPassThrough } from 'fflate';
 import type { AppState, PropertyUpdateBundle, SyncDeletedIds } from './types';
 import { EMPTY_APP_STATE } from './types';
+import { resolveAppFileUri } from './appFileUri';
 import { persistPhotoFromUri } from './photoStorage';
 import { persistDocumentFromUri } from './documentStorage';
 import {
@@ -46,37 +47,37 @@ function collectMediaToStage(state: AppState): StagedMedia[] {
   for (const photo of state.photos) {
     staged.push({
       zipPath: `photos/${photo.id}`,
-      sourceUri: photo.localUri,
+      sourceUri: resolveAppFileUri(photo.localUri),
     });
   }
   for (const photo of state.propertyPhotos) {
     staged.push({
       zipPath: `photos/${photo.id}`,
-      sourceUri: photo.localUri,
+      sourceUri: resolveAppFileUri(photo.localUri),
     });
   }
   for (const photo of state.roomPhotos) {
     staged.push({
       zipPath: `photos/${photo.id}`,
-      sourceUri: photo.localUri,
+      sourceUri: resolveAppFileUri(photo.localUri),
     });
   }
   for (const photo of state.projectPhotos) {
     staged.push({
       zipPath: `photos/${photo.id}`,
-      sourceUri: photo.localUri,
+      sourceUri: resolveAppFileUri(photo.localUri),
     });
   }
   for (const photo of state.vendorPhotos) {
     staged.push({
       zipPath: `photos/${photo.id}`,
-      sourceUri: photo.localUri,
+      sourceUri: resolveAppFileUri(photo.localUri),
     });
   }
   for (const document of state.documents) {
     staged.push({
       zipPath: `documents/${document.id}`,
-      sourceUri: document.localUri,
+      sourceUri: resolveAppFileUri(document.localUri),
     });
   }
   return staged;
@@ -400,6 +401,7 @@ function coerceState(stateRaw: AppState): AppState {
     vendorInteractions: Array.isArray(stateRaw.vendorInteractions)
       ? stateRaw.vendorInteractions
       : [],
+    propertyTodos: Array.isArray(stateRaw.propertyTodos) ? stateRaw.propertyTodos : [],
   };
 }
 

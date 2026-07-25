@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Pressable, Text, TextInput } from 'react-native';
+import { Modal, Pressable } from 'react-native';
+import { Text, TextInput } from '../textScale';
 import { sharedStyles } from '../theme';
 
 export function RenameModal(props: {

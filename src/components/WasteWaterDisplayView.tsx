@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState, type ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import { Text } from '../textScale';
 import type { AppState, WasteWaterDetails } from '../types';
 import { DetailDisplayRow } from './DetailDisplayRow';
 import { EditableDetailSection } from './EditableDetailSection';

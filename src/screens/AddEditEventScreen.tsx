@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Image,
@@ -9,11 +10,12 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Switch,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
+import { Text, TextInput } from '../textScale';
+import type { TextInput as RNTextInput } from 'react-native';
 import type { ScrollView as RNScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -21,8 +23,9 @@ import type { AppState, ItemEvent, ItemEventRecurrence, ItemEventType, ItemPhoto
 import { EventPhotoSection } from '../components/EventPhotoSection';
 import { EventListRow } from '../components/ListRows';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { EventExportSheet } from '../components/EventExportSheet';
 import { sharedStyles, colors } from '../theme';
-import { uid, nowISO, dateInputValue, parseDateInputToISO, parseDateInputValue, formatDate } from '../utils';
+import { uid, nowISO, dateInputValue, parseDateInputToISO, parseDateInputValue, formatDate, formatCurrency } from '../utils';
 import { deleteEventCascade, firstPhotoUriForItem, itemById, photosForEvent, serviceHistoryEventsForItem } from '../storage';
 import { itemDisplayLabel } from '../itemCatalog';
 import {
@@ -37,6 +40,12 @@ import {
   upcomingDueAtISO,
 } from '../eventRecurrence';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import {
+  buildEventExportSnapshot,
+  scheduleLabelFromRecurrence,
+  type EventExportSnapshot,
+} from '../eventExportContent';
+import { shareViewAsPng } from '../shareViewImage';
 
 type HistoryMode = 'related' | 'all';
 
@@ -154,11 +163,14 @@ export function AddEditEventScreen(props: {
   );
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [historyMode, setHistoryMode] = useState<HistoryMode>('related');
+  const [exportSnapshot, setExportSnapshot] = useState<EventExportSnapshot | null>(null);
+  const [sharingPng, setSharingPng] = useState(false);
+  const exportRef = useRef<View>(null);
   const scrollRef = useRef<RNScrollView>(null);
   const scrollYRef = useRef(0);
   const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
-  const nextDueInputRef = useRef<TextInput>(null);
-  const scheduleNotesInputRef = useRef<TextInput>(null);
+  const nextDueInputRef = useRef<RNTextInput>(null);
+  const scheduleNotesInputRef = useRef<RNTextInput>(null);
   const dirtyRef = useRef(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
@@ -189,10 +201,10 @@ export function AddEditEventScreen(props: {
   );
 
   const measureAndScroll = useCallback(
-    (input: TextInput | null) => {
+    (input: RNTextInput | null) => {
       // Defer so layout reflects the focused field before measuring.
       requestAnimationFrame(() => {
-        input?.measureInWindow((_x, y, _w, height) => {
+        input?.measureInWindow((_x: number, y: number, _w: number, height: number) => {
           handleFieldFocus(y, height);
         });
       });
@@ -261,6 +273,74 @@ export function AddEditEventScreen(props: {
     showScheduleControls &&
     !occurrenceIsFuture &&
     (editingOpenReminder || !eventDateIsFuture);
+
+  const runEventShare = useCallback(() => {
+    const occurredAtISO = parseDateInputToISO(dateStr);
+    if (!occurredAtISO) {
+      Alert.alert('Share failed', 'Enter a valid service date (MM/DD/YYYY) before sharing.');
+      return;
+    }
+    const cost = costStr.trim() ? parseFloat(costStr) : undefined;
+    const draftRecurrence =
+      recurring && parseDateInputToISO(nextDueStr)
+        ? {
+            interval: 'once' as const,
+            nextDueAtISO: parseDateInputToISO(nextDueStr)!,
+            notes: scheduleNotes.trim() || undefined,
+          }
+        : undefined;
+    const snapshot = buildEventExportSnapshot({
+      state,
+      itemId,
+      title: title.trim() || 'Service event',
+      eventType,
+      occurredAtISO,
+      notes: notes.trim() || undefined,
+      serviceCompany: serviceCompany.trim() || undefined,
+      cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
+      scheduleLabel: scheduleLabelFromRecurrence(draftRecurrence),
+      photos: eventPhotos,
+    });
+    if (!snapshot) {
+      Alert.alert('Share failed', 'Could not build service event summary.');
+      return;
+    }
+    setExportSnapshot(snapshot);
+    setSharingPng(true);
+  }, [
+    costStr,
+    dateStr,
+    eventPhotos,
+    eventType,
+    itemId,
+    nextDueStr,
+    notes,
+    recurring,
+    scheduleNotes,
+    serviceCompany,
+    state,
+    title,
+  ]);
+
+  useEffect(() => {
+    if (!exportSnapshot || !sharingPng) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        await shareViewAsPng(exportRef, `Share ${exportSnapshot.title}`);
+        if (!cancelled) {
+          setExportSnapshot(null);
+          setSharingPng(false);
+        }
+      })();
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [exportSnapshot, sharingPng]);
 
   if (!item) {
     return (
@@ -501,31 +581,29 @@ export function AddEditEventScreen(props: {
       );
       const newPhotos = updatedPhotos.filter((p) => !state.photos.some((x) => x.id === p.id));
 
-      // Editing an open reminder on a future-dated visit: the date field shows the
-      // planned service date, so the entered date must move the occurrence and the
-      // matching next-due instead of being discarded.
+      // Editing an open reminder: the date field is "Next service date". Always apply it
+      // as nextDue. For a future planned visit, also move occurredAt so Room/Schedule
+      // (which use the earliest of nextDue and future occurredAt) do not keep the old day.
       const targetShownDueISO = upcomingDueAtISO(target);
-      const reschedulingPlannedVisit =
-        updatingReminder && !recurring && isAfterToday(target.occurredAtISO);
-      const rescheduledOccurredAtISO =
-        reschedulingPlannedVisit && sameCalendarDay(target.occurredAtISO, targetShownDueISO)
-          ? occurredAtISO
-          : target.occurredAtISO;
+      const plannedFutureVisit =
+        updatingReminder && isAfterToday(target.occurredAtISO);
+      const movePlannedOccurrence =
+        plannedFutureVisit &&
+        (sameCalendarDay(target.occurredAtISO, targetShownDueISO) ||
+          sameCalendarDay(target.occurredAtISO, target.recurrence?.nextDueAtISO));
+      const rescheduledOccurredAtISO = movePlannedOccurrence
+        ? occurredAtISO
+        : target.occurredAtISO;
 
       const updatedRecurrence = isPastHistoryEdit
         ? target.recurrence
         : updatingReminder
           ? recurring
-            ? recurrence
-            : reschedulingPlannedVisit && target.recurrence
+            ? buildRecurrenceForNextDue(occurredAtISO)
+            : plannedFutureVisit || target.recurrence?.nextDueAtISO
               ? {
-                  ...target.recurrence,
-                  nextDueAtISO: sameCalendarDay(
-                    target.recurrence.nextDueAtISO,
-                    targetShownDueISO
-                  )
-                    ? occurredAtISO
-                    : target.recurrence.nextDueAtISO,
+                  interval: 'once' as const,
+                  nextDueAtISO: occurredAtISO,
                   notes: scheduleNoteText,
                 }
               : undefined
@@ -628,6 +706,34 @@ export function AddEditEventScreen(props: {
             gap: 8,
           }}
         >
+          <Pressable
+            onPress={runEventShare}
+            disabled={sharingPng}
+            accessibilityRole="button"
+            accessibilityLabel="Share service event"
+            accessibilityHint="Creates an image of this service event and opens the share sheet."
+            hitSlop={8}
+            style={({ pressed }) => [
+              {
+                width: 42,
+                height: 36,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'transparent',
+                opacity: sharingPng ? 0.6 : 1,
+              },
+              pressed && !sharingPng && { opacity: 0.8 },
+            ]}
+          >
+            {sharingPng ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <MaterialIcons name="ios-share" size={22} color={colors.primary} />
+            )}
+          </Pressable>
           {deletableEvent ? (
             <Pressable
               onPress={confirmDelete}
@@ -818,6 +924,7 @@ export function AddEditEventScreen(props: {
                     title={e.title}
                     eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
                     dateLabel={formatDate(e.occurredAtISO)}
+                    costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
                     notes={e.notes}
                     thumbnailUri={eventPhotos[0]?.localUri}
                   />
@@ -892,6 +999,8 @@ export function AddEditEventScreen(props: {
           keyboardType="decimal-pad"
           placeholder="0.00"
         />
+
+        <View style={{ height: 24 }} />
 
         <EventPhotoSection
           photos={eventPhotos}
@@ -1048,6 +1157,43 @@ export function AddEditEventScreen(props: {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {exportSnapshot ? (
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            zIndex: 3,
+            opacity: 0.02,
+          }}
+          pointerEvents="none"
+          collapsable={false}
+        >
+          <View ref={exportRef} collapsable={false}>
+            <EventExportSheet snapshot={exportSnapshot} />
+          </View>
+        </View>
+      ) : null}
+
+      {sharingPng ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 2,
+            backgroundColor: 'rgba(255,255,255,0.35)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          pointerEvents="auto"
+        >
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }

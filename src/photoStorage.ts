@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { resolveAppFileUri } from './appFileUri';
 
 const PHOTOS_DIR = `${FileSystem.documentDirectory ?? ''}photos`;
 
@@ -9,22 +10,28 @@ export async function ensurePhotosDirectory(): Promise<void> {
   }
 }
 
+export function photoRelativePath(photoId: string): string {
+  return `photos/${photoId}.jpg`;
+}
+
 export function photoFilePath(photoId: string): string {
-  return `${PHOTOS_DIR}/${photoId}.jpg`;
+  return resolveAppFileUri(photoRelativePath(photoId));
 }
 
 export async function persistPhotoFromUri(sourceUri: string, photoId: string): Promise<string> {
   await ensurePhotosDirectory();
   const dest = photoFilePath(photoId);
   await FileSystem.copyAsync({ from: sourceUri, to: dest });
+  // Absolute for immediate UI use; saveAppState persists a Documents-relative path.
   return dest;
 }
 
 export async function deletePhotoFile(localUri: string): Promise<void> {
   try {
-    const info = await FileSystem.getInfoAsync(localUri);
+    const resolved = resolveAppFileUri(localUri);
+    const info = await FileSystem.getInfoAsync(resolved);
     if (info.exists) {
-      await FileSystem.deleteAsync(localUri, { idempotent: true });
+      await FileSystem.deleteAsync(resolved, { idempotent: true });
     }
   } catch {
     // ignore missing files
@@ -33,9 +40,10 @@ export async function deletePhotoFile(localUri: string): Promise<void> {
 
 export async function readPhotoAsBase64(localUri: string): Promise<string | null> {
   try {
-    const info = await FileSystem.getInfoAsync(localUri);
+    const resolved = resolveAppFileUri(localUri);
+    const info = await FileSystem.getInfoAsync(resolved);
     if (!info.exists) return null;
-    return await FileSystem.readAsStringAsync(localUri, {
+    return await FileSystem.readAsStringAsync(resolved, {
       encoding: FileSystem.EncodingType.Base64,
     });
   } catch {

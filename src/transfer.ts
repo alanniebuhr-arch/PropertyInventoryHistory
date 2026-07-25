@@ -62,6 +62,7 @@ function coerceAppState(state: Partial<AppState> | AppState | undefined): AppSta
     vendorInteractions: Array.isArray(state?.vendorInteractions)
       ? state!.vendorInteractions
       : [],
+    propertyTodos: Array.isArray(state?.propertyTodos) ? state!.propertyTodos : [],
   };
 }
 
@@ -88,6 +89,7 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
   const vendorIds = new Set(projectVendors.map((v) => v.id));
   const vendorPhotos = state.vendorPhotos.filter((p) => vendorIds.has(p.vendorId));
   const vendorInteractions = state.vendorInteractions.filter((i) => vendorIds.has(i.vendorId));
+  const propertyTodos = state.propertyTodos.filter((t) => t.propertyId === propertyId);
 
   const documentIds = new Set<string>();
   for (const slot of PROPERTY_PHOTO_SLOTS) {
@@ -115,6 +117,7 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
     projectPhotos,
     vendorPhotos,
     vendorInteractions,
+    propertyTodos,
   };
 }
 
@@ -136,15 +139,60 @@ export function slicePropertyChanges(
   const rooms = full.rooms.filter((r) => isNewerThan(r, sinceISO));
   const items = full.items.filter((i) => isNewerThan(i, sinceISO));
   const events = full.events.filter((e) => isNewerThan(e, sinceISO));
-  const photos = full.photos.filter((p) => isNewerThan(p, sinceISO));
   const propertyPhotos = full.propertyPhotos.filter((p) => isNewerThan(p, sinceISO));
   const roomPhotos = full.roomPhotos.filter((p) => isNewerThan(p, sinceISO));
   const projects = full.projects.filter((p) => isNewerThan(p, sinceISO));
-  const projectVendors = full.projectVendors.filter((v) => isNewerThan(v, sinceISO));
   const projectPhotos = full.projectPhotos.filter((p) => isNewerThan(p, sinceISO));
-  const vendorPhotos = full.vendorPhotos.filter((p) => isNewerThan(p, sinceISO));
-  const vendorInteractions = full.vendorInteractions.filter((i) => isNewerThan(i, sinceISO));
-  const documents = full.documents.filter((d) => isNewerThan(d, sinceISO));
+  const propertyTodos = full.propertyTodos.filter((t) => isNewerThan(t, sinceISO));
+
+  const changedVendorIds = new Set(
+    full.projectVendors.filter((v) => isNewerThan(v, sinceISO)).map((v) => v.id)
+  );
+  const changedInteractionIds = new Set(
+    full.vendorInteractions.filter((i) => isNewerThan(i, sinceISO)).map((i) => i.id)
+  );
+
+  // Include every interaction for a changed vendor, and the vendor for every changed interaction.
+  for (const interaction of full.vendorInteractions) {
+    if (changedInteractionIds.has(interaction.id) || changedVendorIds.has(interaction.vendorId)) {
+      changedInteractionIds.add(interaction.id);
+      changedVendorIds.add(interaction.vendorId);
+    }
+  }
+
+  const projectVendors = full.projectVendors.filter((v) => changedVendorIds.has(v.id));
+  const vendorInteractions = full.vendorInteractions.filter((i) =>
+    changedInteractionIds.has(i.id)
+  );
+  const vendorPhotos = full.vendorPhotos.filter(
+    (p) =>
+      isNewerThan(p, sinceISO) ||
+      changedVendorIds.has(p.vendorId) ||
+      (p.interactionId != null && changedInteractionIds.has(p.interactionId))
+  );
+
+  const eventIds = new Set(events.map((e) => e.id));
+  const itemIds = new Set(items.map((i) => i.id));
+  const photos = full.photos.filter(
+    (p) =>
+      isNewerThan(p, sinceISO) ||
+      (p.eventId != null && eventIds.has(p.eventId)) ||
+      (itemIds.has(p.itemId) && isNewerThan(p, sinceISO))
+  );
+
+  const documentIds = new Set<string>();
+  for (const property of properties.length > 0 ? properties : []) {
+    for (const slot of PROPERTY_PHOTO_SLOTS) {
+      const docKey = documentIdKeyForPhotoSlot(slot.key) as keyof typeof property;
+      addDocumentId(documentIds, property[docKey]);
+    }
+  }
+  collectDocumentIdsFromValue(rooms, documentIds);
+  collectDocumentIdsFromValue(items, documentIds);
+  collectDocumentIdsFromValue(projectVendors, documentIds);
+  const documents = full.documents.filter(
+    (d) => documentIds.has(d.id) || isNewerThan(d, sinceISO)
+  );
 
   return {
     version: 1,
@@ -161,6 +209,7 @@ export function slicePropertyChanges(
     projectPhotos,
     vendorPhotos,
     vendorInteractions,
+    propertyTodos,
   };
 }
 
@@ -302,6 +351,7 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
   const projectPhotoIds = new Set(local.projectPhotos.map((p) => p.id));
   const vendorPhotoIds = new Set(local.vendorPhotos.map((p) => p.id));
   const vendorInteractionIds = new Set(local.vendorInteractions.map((i) => i.id));
+  const propertyTodoIds = new Set((local.propertyTodos ?? []).map((t) => t.id));
 
   return {
     version: 1,
@@ -344,6 +394,10 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
     vendorInteractions: [
       ...local.vendorInteractions,
       ...((incoming.vendorInteractions ?? []).filter((i) => !vendorInteractionIds.has(i.id))),
+    ],
+    propertyTodos: [
+      ...(local.propertyTodos ?? []),
+      ...((incoming.propertyTodos ?? []).filter((t) => !propertyTodoIds.has(t.id))),
     ],
   };
 }
@@ -392,6 +446,7 @@ function applyDeletedIds(state: AppState, deleted: SyncDeletedIds): AppState {
     projectPhotos: new Set(deleted.projectPhotos ?? []),
     vendorPhotos: new Set(deleted.vendorPhotos ?? []),
     vendorInteractions: new Set(deleted.vendorInteractions ?? []),
+    propertyTodos: new Set(deleted.propertyTodos ?? []),
   };
 
   return {
@@ -411,6 +466,7 @@ function applyDeletedIds(state: AppState, deleted: SyncDeletedIds): AppState {
     vendorInteractions: state.vendorInteractions.filter(
       (i) => !drop.vendorInteractions.has(i.id)
     ),
+    propertyTodos: (state.propertyTodos ?? []).filter((t) => !drop.propertyTodos.has(t.id)),
   };
 }
 
@@ -445,6 +501,7 @@ export function mergeCollaborativeState(
       incoming.vendorInteractions ?? [],
       summary
     ),
+    propertyTodos: upsertById(local.propertyTodos ?? [], incoming.propertyTodos ?? [], summary),
   };
 
   if (countDeletedIds(deletedIds) > 0) {
@@ -469,6 +526,8 @@ export function summarizeChanges(state: AppState, deletedIds: SyncDeletedIds = {
       `${state.projectVendors.length} vendor${state.projectVendors.length === 1 ? '' : 's'}`,
     state.vendorInteractions.length &&
       `${state.vendorInteractions.length} interaction${state.vendorInteractions.length === 1 ? '' : 's'}`,
+    (state.propertyTodos?.length ?? 0) &&
+      `${state.propertyTodos!.length} to-do${state.propertyTodos!.length === 1 ? '' : 's'}`,
     (state.photos.length +
       state.propertyPhotos.length +
       state.roomPhotos.length +

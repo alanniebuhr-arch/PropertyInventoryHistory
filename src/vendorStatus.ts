@@ -2,6 +2,7 @@ import { colors } from './theme';
 import type { VendorStatus } from './types';
 
 export const VENDOR_STATUS_OPTIONS: { id: VendorStatus; label: string }[] = [
+  { id: 'researching', label: 'Researching' },
   { id: 'initial_contact', label: 'Initial contact' },
   { id: 'meeting_setup', label: 'Meeting setup' },
   { id: 'vendor_onsite', label: 'Vendor onsite' },
@@ -23,6 +24,7 @@ export function vendorStatusColor(status: VendorStatus): string {
       return colors.lastService;
     case 'rejected':
       return colors.overdue;
+    case 'researching':
     case 'initial_contact':
     case 'vendor_onsite':
     default:

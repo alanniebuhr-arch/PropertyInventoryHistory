@@ -1,10 +1,11 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import type { ItemEvent } from '../types';
 import { sharedStyles, colors } from '../theme';
 import { formatDate } from '../utils';
 import { daysOverdue, isOverdue, upcomingDueAtISO } from '../eventRecurrence';
 import { EVENT_LIST_THUMB_SIZE } from './ListRows';
+import { Text } from '../textScale';
 
 export function UpcomingServiceCard(props: {
   event: ItemEvent;
@@ -50,12 +51,12 @@ export function UpcomingServiceCard(props: {
     >
       <Text
         style={{
-          fontSize: 13,
-          fontWeight: '500',
-          letterSpacing: 0.2,
-          color: dueOverdue ? colors.overdue : colors.text,
-          marginBottom: hasSecondary ? 8 : 0,
-        }}
+            fontSize: 13,
+            fontWeight: '500',
+            letterSpacing: 0.2,
+            color: dueOverdue ? colors.overdue : colors.text,
+            marginBottom: hasSecondary ? 8 : 0,
+          }}
       >
         {dueOverdue ? 'OVERDUE · ' : ''}
         {dateLabel}
@@ -77,10 +78,10 @@ export function UpcomingServiceCard(props: {
           {notesText ? (
             <Text
               style={[
-                sharedStyles.cardMeta,
-                { flex: 1 },
-                dueOverdue && { color: colors.overdue },
-              ]}
+                  sharedStyles.cardMeta,
+                  { flex: 1 },
+                  dueOverdue && { color: colors.overdue },
+                ]}
               numberOfLines={6}
             >
               {notesText}

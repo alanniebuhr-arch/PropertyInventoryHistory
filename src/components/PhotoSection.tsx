@@ -1,11 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import {
-  Image,
-  Pressable,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Image, Pressable, TouchableOpacity, View } from 'react-native';
+import { Text } from '../textScale';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { MaterialIcons } from '@expo/vector-icons';
 import { AddPhotoPlaceholder } from './PhotoSlot';
@@ -15,6 +10,7 @@ import { PhotoViewerModal, type ViewerPhoto } from './PhotoViewerModal';
 import { sharedStyles, colors } from '../theme';
 import { ADD_PHOTO_TILE_LABEL, promptPickOrTakeMulti } from '../photoPicker';
 import { showLabeledPhotoThumbActions } from '../photoLabeling';
+import { savePhotoToCameraRoll } from '../savePhotoToCameraRoll';
 import { DocumentListSection, type DocumentListRow } from './DocumentListSection';
 
 const DEFAULT_THUMB_SIZE = 72;
@@ -129,6 +125,7 @@ export function PhotoSection(props: {
   const [renaming, setRenaming] = useState(false);
   /** Index to restore after labeling opened from the fullscreen viewer (nested Modals). */
   const [viewerReturnIndex, setViewerReturnIndex] = useState<number | null>(null);
+  const [addingPhotos, setAddingPhotos] = useState(false);
 
   const labelHandlerForId = useCallback(
     (photoId: string): LabelHandler | undefined => {
@@ -179,13 +176,18 @@ export function PhotoSection(props: {
   const handleAddPhotos = useCallback(
     (uris: string[]) => {
       if (!onAddPhotos || uris.length === 0) return;
-      void Promise.resolve(onAddPhotos(uris)).then((result) => {
-        const ids = Array.isArray(result) ? result : [];
-        if (ids.length > 0) {
-          setHeroPhotoId(ids[0] ?? null);
-          queueLabels(ids);
-        }
-      });
+      setAddingPhotos(true);
+      void Promise.resolve(onAddPhotos(uris))
+        .then((result) => {
+          const ids = Array.isArray(result) ? result : [];
+          if (ids.length > 0) {
+            setHeroPhotoId(ids[0] ?? null);
+            queueLabels(ids);
+          }
+        })
+        .finally(() => {
+          setAddingPhotos(false);
+        });
     },
     [onAddPhotos, queueLabels]
   );
@@ -199,9 +201,9 @@ export function PhotoSection(props: {
   );
 
   const openAddPhotos = useCallback(() => {
-    if (!onAddPhotos) return;
+    if (!onAddPhotos || addingPhotos) return;
     promptPickOrTakeMulti(handleAddPhotos, onAddDocuments ? handleAddDocuments : undefined);
-  }, [handleAddDocuments, handleAddPhotos, onAddDocuments, onAddPhotos]);
+  }, [addingPhotos, handleAddDocuments, handleAddPhotos, onAddDocuments, onAddPhotos]);
 
   const stripTiles = useMemo((): PhotoTile[] => {
     const withoutAdd = tiles.filter(
@@ -391,11 +393,12 @@ export function PhotoSection(props: {
     if (tile.kind === 'reserved') {
       const isHero = effectiveHeroId === tile.key;
       const showSlotActions = () => {
-        if (!tile.onDelete && !tile.onRemoveSlot && !tile.onLabelChange) return;
+        if (!tile.onDelete && !tile.onRemoveSlot && !tile.onLabelChange && !tile.uri) return;
         showLabeledPhotoThumbActions({
           onRename: tile.onLabelChange
             ? () => openRenameEditor(tile.key, tile.shortLabel, tile.notes)
             : undefined,
+          onSave: tile.uri ? () => void savePhotoToCameraRoll(tile.uri!) : undefined,
           onDelete: tile.onDelete,
           onRemoveSlot: tile.onRemoveSlot,
           slotLabel: tile.shortLabel,
@@ -453,6 +456,7 @@ export function PhotoSection(props: {
               onRename: tile.onLabelChange
                 ? () => openRenameEditor(tile.id, label, tile.notes)
                 : undefined,
+              onSave: () => void savePhotoToCameraRoll(tile.uri),
               onDelete: tile.onDelete,
             })
           }
@@ -605,12 +609,13 @@ export function PhotoSection(props: {
         {onAddPhotos ? (
           <Pressable
             onPress={openAddPhotos}
+            disabled={addingPhotos}
             accessibilityRole="button"
             accessibilityLabel="Add photo"
             hitSlop={6}
             style={({ pressed }) => ({
               padding: 4,
-              opacity: pressed ? 0.7 : 1,
+              opacity: addingPhotos ? 0.5 : pressed ? 0.7 : 1,
             })}
           >
             <MaterialIcons name="add" size={24} color={colors.primary} />
@@ -691,6 +696,29 @@ export function PhotoSection(props: {
         saveLabel={renaming ? 'Save' : labelQueue.length > 1 ? 'Save & next' : 'Save'}
         labelLocked={labelingHandler?.labelLocked}
       />
+
+      {addingPhotos ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(232, 228, 220, 0.72)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 20,
+          }}
+          pointerEvents="auto"
+          accessibilityLabel="Adding photos"
+        >
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[sharedStyles.cardMeta, { marginTop: 12, color: colors.text }]}>
+            Adding photos…
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

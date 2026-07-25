@@ -1,18 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
+import { Text, TextInput, useTextScaleControls } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, Property } from '../types';
@@ -22,6 +10,7 @@ import { uid, nowISO } from '../utils';
 import {
   itemsForProperty,
   roomsForProperty,
+  todosForProperty,
 } from '../storage';
 import { propertyCoverPhotoUri } from '../propertyPhotos';
 import { overdueCountForProperty } from '../itemMaintenance';
@@ -115,6 +104,7 @@ export function HomeScreen(props: {
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
+  const textScaleControls = useTextScaleControls();
 
   useEffect(() => {
     let cancelled = false;
@@ -173,7 +163,7 @@ export function HomeScreen(props: {
           text: opt.label,
           onPress: () => selectUpcomingHorizon(opt.id),
         })),
-        { text: 'Cancel', style: 'cancel' as const },
+        { text: 'Done', style: 'cancel' as const },
       ]
     );
   }
@@ -250,6 +240,7 @@ export function HomeScreen(props: {
           sorted.map((p) => {
             const rooms = roomsForProperty(state, p.id);
             const items = itemsForProperty(state, p.id);
+            const todos = todosForProperty(state, p.id);
             return (
               <PropertyListRow
                 key={p.id}
@@ -258,6 +249,7 @@ export function HomeScreen(props: {
                 thumbnailUri={propertyCoverPhotoUri(state, p)}
                 roomCount={rooms.length}
                 itemCount={items.length}
+                todoCount={todos.length}
                 overdueCount={overdueCountForProperty(state, p.id)}
                 dueSoonCount={upcomingServiceCountForProperty(
                   state,
@@ -316,6 +308,46 @@ export function HomeScreen(props: {
             >
               <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
                 New property
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!textScaleControls.canMakeLarger) return;
+                textScaleControls.makeLarger();
+              }}
+              disabled={!textScaleControls.canMakeLarger}
+              accessibilityRole="button"
+              accessibilityLabel="Text larger"
+              accessibilityState={{ disabled: !textScaleControls.canMakeLarger }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: !textScaleControls.canMakeLarger ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Text larger
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!textScaleControls.canMakeSmaller) return;
+                textScaleControls.makeSmaller();
+              }}
+              disabled={!textScaleControls.canMakeSmaller}
+              accessibilityRole="button"
+              accessibilityLabel="Text smaller"
+              accessibilityState={{ disabled: !textScaleControls.canMakeSmaller }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: !textScaleControls.canMakeSmaller ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Text smaller
               </Text>
             </Pressable>
             <Pressable
