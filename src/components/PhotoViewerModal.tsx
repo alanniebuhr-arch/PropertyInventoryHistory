@@ -14,7 +14,7 @@ export type ViewerPhoto = {
   editableLabel?: boolean;
   /** Named slots keep a fixed label; only notes are editable. */
   labelLocked?: boolean;
-  onDelete: () => void;
+  onDelete?: () => void;
   onLabelChange?: (label: string, notes: string) => void;
   onToggleFavorite?: (favorite: boolean) => void;
 };
@@ -127,14 +127,14 @@ export function PhotoViewerModal(props: {
   }, [hasMultiple, index, onIndexChange, photos.length]);
 
   function confirmDelete() {
-    if (!currentPhoto) return;
+    if (!currentPhoto?.onDelete) return;
     Alert.alert('Delete photo?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          currentPhoto.onDelete();
+          currentPhoto.onDelete?.();
           onIndexChange(null);
         },
       },
@@ -237,7 +237,7 @@ export function PhotoViewerModal(props: {
               ) : (
                 <View style={{ width: 48 }} />
               )}
-              {currentPhoto && !browseOnly ? (
+              {currentPhoto?.onDelete && !browseOnly ? (
                 <Pressable onPress={confirmDelete} hitSlop={12}>
                   <Text style={{ color: '#ff8a80', fontSize: 17, fontWeight: '600' }}>Delete</Text>
                 </Pressable>

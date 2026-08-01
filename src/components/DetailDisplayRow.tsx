@@ -2,6 +2,8 @@ import React from 'react';
 import { Pressable, View } from 'react-native';
 import { Text } from '../textScale';
 import { sharedStyles, colors } from '../theme';
+import { splitHighlightParts } from '../searchSnippet';
+import { formatPhoneNumber, formatCurrencyDisplay } from '../utils';
 
 /** Fits longest detail card labels on one line. */
 export const DETAIL_LABEL_COLUMN_WIDTH = 136;
@@ -13,12 +15,24 @@ export function DetailDisplayRow(props: {
   stacked?: boolean;
   /** When set, the value is tappable (e.g. open a URL). */
   onPress?: () => void;
+  /** When set (view/search), highlight first case-insensitive match in value. */
+  highlightQuery?: string;
 }) {
-  const raw = props.value?.trim();
+  const trimmed = props.value?.trim();
+  const formattedPhone =
+    trimmed && /phone/i.test(props.label) ? formatPhoneNumber(trimmed) : '';
+  const formattedMoney =
+    trimmed && /cost|price|paid/i.test(props.label)
+      ? formatCurrencyDisplay(trimmed)
+      : '';
+  const raw = formattedPhone || formattedMoney || trimmed;
   const value = raw || 'Not set';
   const muted = !raw;
   const stacked = props.stacked ?? /notes$/i.test(props.label);
   const canPress = Boolean(raw && props.onPress);
+  const highlightQuery = !muted ? props.highlightQuery?.trim() : undefined;
+  const parts =
+    highlightQuery && raw ? splitHighlightParts(raw, highlightQuery) : null;
 
   const valueText = (
     <Text
@@ -34,7 +48,24 @@ export function DetailDisplayRow(props: {
         },
       ]}
     >
-      {value}
+      {parts
+        ? parts.map((part, i) =>
+            part.highlight ? (
+              <Text
+                key={i}
+                style={{
+                  backgroundColor: colors.searchHighlight,
+                  color: colors.text,
+                  fontWeight: '700',
+                }}
+              >
+                {part.text}
+              </Text>
+            ) : (
+              <Text key={i}>{part.text}</Text>
+            )
+          )
+        : value}
     </Text>
   );
 

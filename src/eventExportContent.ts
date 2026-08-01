@@ -2,10 +2,11 @@ import type { AppState, ItemEventType, ItemPhoto } from './types';
 import { catalogLabel, itemDisplayLabel } from './itemCatalog';
 import { EVENT_TYPE_LABELS, recurrenceLabel } from './eventRecurrence';
 import { itemById, propertyById, roomById } from './storage';
-import { formatCurrency, formatDate, nowISO } from './utils';
+import { formatCurrency, formatDate, formatDisplayDate, nowISO } from './utils';
+import { applySharePhotoMode, type SharePhotoMode } from './sharePhotoMode';
 
 export type EventExportRow = { label: string; value: string };
-export type EventExportPhoto = { uri: string; label: string };
+export type EventExportPhoto = { uri: string; label: string; notes?: string };
 
 export type EventExportSnapshot = {
   title: string;
@@ -34,6 +35,7 @@ export function buildEventExportSnapshot(params: {
   cost?: number;
   scheduleLabel?: string;
   photos: ItemPhoto[];
+  photoMode?: SharePhotoMode;
 }): EventExportSnapshot | null {
   const item = itemById(params.state, params.itemId);
   if (!item) return null;
@@ -53,15 +55,16 @@ export function buildEventExportSnapshot(params: {
 
   const rows = [
     row('Type', EVENT_TYPE_LABELS[params.eventType]),
-    row('Date', formatDate(params.occurredAtISO)),
+    row('Date', formatDisplayDate(params.occurredAtISO)),
     row('Service company', params.serviceCompany),
     row('Cost', params.cost != null ? formatCurrency(params.cost) : undefined),
     row('Notes', params.notes),
   ].filter((entry): entry is EventExportRow => entry != null);
 
-  const photos = params.photos.map((photo) => ({
+  const photos = applySharePhotoMode(params.photos, params.photoMode ?? 'all').map((photo) => ({
     uri: photo.localUri,
     label: photo.caption === 'receipt' ? 'Receipt' : photo.caption?.trim() || 'Photo',
+    notes: photo.notes?.trim() || undefined,
   }));
 
   return {

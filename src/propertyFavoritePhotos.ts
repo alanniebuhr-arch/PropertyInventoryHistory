@@ -10,8 +10,21 @@ import { AUTOMOBILE_PHOTO_SLOTS } from './automobileSlots';
 import { ELECTRIC_PANEL_PHOTO_SLOTS } from './electricPanelSlots';
 import { furnacePhotoSlotsForDetails } from './furnaceSlots';
 import { waterMainPhotoSlotsForSource } from './waterMainSlots';
+import { WATER_HEATER_PHOTO_SLOTS } from './waterHeaterSlots';
+import { SECURITY_SYSTEM_PHOTO_SLOTS } from './securitySystemSlots';
+import { RADON_MITIGATION_PHOTO_SLOTS } from './radonMitigationSlots';
 import { WATER_TREATMENT_PHOTO_SLOTS } from './waterTreatmentSlots';
 import { wasteWaterPhotoSlotsForDetails } from './wasteWaterSlots';
+import { WELL_PUMP_PHOTO_SLOTS } from './wellPumpSlots';
+import { GENERATOR_PHOTO_SLOTS } from './generatorSlots';
+import { SUMP_PUMP_PHOTO_SLOTS } from './sumpPumpSlots';
+import { GARAGE_DOOR_PHOTO_SLOTS } from './garageDoorSlots';
+import { ROOF_PHOTO_SLOTS } from './roofSlots';
+import { POOL_PHOTO_SLOTS } from './poolSlots';
+import { IRRIGATION_PHOTO_SLOTS } from './irrigationSlots';
+import { EV_CHARGER_PHOTO_SLOTS } from './evChargerSlots';
+import { SOLAR_PHOTO_SLOTS } from './solarSlots';
+import { HOT_TUB_PHOTO_SLOTS } from './hotTubSlots';
 
 export type FavoriteHeroPhoto = {
   id: string;
@@ -52,12 +65,38 @@ function itemPhotoSlots(item: InventoryItem): SlotDef[] {
       return item.details.kind === 'water_main'
         ? waterMainPhotoSlotsForSource(item.details)
         : [];
+    case 'water_heater':
+      return WATER_HEATER_PHOTO_SLOTS;
+    case 'security_system':
+      return SECURITY_SYSTEM_PHOTO_SLOTS;
+    case 'radon_mitigation':
+      return RADON_MITIGATION_PHOTO_SLOTS;
     case 'water_treatment':
       return WATER_TREATMENT_PHOTO_SLOTS;
     case 'waste_water':
       return item.details.kind === 'waste_water'
         ? wasteWaterPhotoSlotsForDetails(item.details)
         : [];
+    case 'well_pump':
+      return WELL_PUMP_PHOTO_SLOTS;
+    case 'generator':
+      return GENERATOR_PHOTO_SLOTS;
+    case 'sump_pump':
+      return SUMP_PUMP_PHOTO_SLOTS;
+    case 'garage_door':
+      return GARAGE_DOOR_PHOTO_SLOTS;
+    case 'roof':
+      return ROOF_PHOTO_SLOTS;
+    case 'pool':
+      return POOL_PHOTO_SLOTS;
+    case 'irrigation':
+      return IRRIGATION_PHOTO_SLOTS;
+    case 'ev_charger':
+      return EV_CHARGER_PHOTO_SLOTS;
+    case 'solar':
+      return SOLAR_PHOTO_SLOTS;
+    case 'hot_tub':
+      return HOT_TUB_PHOTO_SLOTS;
     default:
       return [];
   }

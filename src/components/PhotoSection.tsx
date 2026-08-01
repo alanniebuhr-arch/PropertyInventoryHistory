@@ -11,7 +11,10 @@ import { sharedStyles, colors } from '../theme';
 import { ADD_PHOTO_TILE_LABEL, promptPickOrTakeMulti } from '../photoPicker';
 import { showLabeledPhotoThumbActions } from '../photoLabeling';
 import { savePhotoToCameraRoll } from '../savePhotoToCameraRoll';
+import { sharePhoto } from '../sharePhoto';
 import { DocumentListSection, type DocumentListRow } from './DocumentListSection';
+import { CollapsibleSectionTitle } from './CollapsibleSectionTitle';
+import { collapsedSectionLabel } from '../utils';
 
 const DEFAULT_THUMB_SIZE = 72;
 const DEFAULT_SLOT_LABEL_WIDTH = 80;
@@ -34,7 +37,7 @@ export type PhotoTile =
       /** Underlying stored photo id (for favorites). */
       photoId?: string;
       favorite?: boolean;
-      onAdd: () => void;
+      onAdd?: () => void;
       onDelete?: () => void;
       onDeleteDocument?: () => void;
       /** Clear content and hide this reserved placeholder. */
@@ -50,7 +53,9 @@ export type PhotoTile =
       uri: string;
       notes?: string;
       favorite?: boolean;
-      onDelete: () => void;
+      onDelete?: () => void;
+      onMoveLeft?: () => void;
+      onMoveRight?: () => void;
       onLabelChange?: (label: string, notes: string) => void;
       onToggleFavorite?: (favorite: boolean) => void;
     }
@@ -93,9 +98,16 @@ export function PhotoSection(props: {
   heroCaptionPlacement?: 'above' | 'below';
   /** Where hero page dots sit. Default: above. */
   heroDotsPosition?: 'above' | 'below';
+  /** How the hero image fills its frame. Default: contain (entire photo, may letterbox). */
+  heroResizeMode?: 'cover' | 'contain';
   children?: ReactNode;
   /** Optional pan gesture for the heading area (title, etc.). */
   childrenGesture?: ReturnType<typeof Gesture.Pan>;
+  /** When set with onToggleExpanded, show expand/collapse on the Photos heading. */
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
+  /** When true, show ← → above movable (extra) thumbs. */
+  showReorderArrows?: boolean;
 }) {
   const {
     tiles,
@@ -111,8 +123,12 @@ export function PhotoSection(props: {
     onActiveHeroLabelChange,
     heroCaptionPlacement = 'below',
     heroDotsPosition = 'above',
+    heroResizeMode = 'contain',
     children,
     childrenGesture,
+    expanded = true,
+    onToggleExpanded,
+    showReorderArrows = false,
   } = props;
 
   const addPlaceholderSize = Math.round(thumbSize / 3);
@@ -177,17 +193,22 @@ export function PhotoSection(props: {
     (uris: string[]) => {
       if (!onAddPhotos || uris.length === 0) return;
       setAddingPhotos(true);
-      void Promise.resolve(onAddPhotos(uris))
-        .then((result) => {
+      void (async () => {
+        // Yield so the spinner can paint before heavy persist work.
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+        try {
+          const result = await onAddPhotos(uris);
           const ids = Array.isArray(result) ? result : [];
           if (ids.length > 0) {
             setHeroPhotoId(ids[0] ?? null);
             queueLabels(ids);
           }
-        })
-        .finally(() => {
+        } finally {
           setAddingPhotos(false);
-        });
+        }
+      })();
     },
     [onAddPhotos, queueLabels]
   );
@@ -202,7 +223,9 @@ export function PhotoSection(props: {
 
   const openAddPhotos = useCallback(() => {
     if (!onAddPhotos || addingPhotos) return;
-    promptPickOrTakeMulti(handleAddPhotos, onAddDocuments ? handleAddDocuments : undefined);
+    promptPickOrTakeMulti(handleAddPhotos, onAddDocuments ? handleAddDocuments : undefined, {
+      onBusyChange: setAddingPhotos,
+    });
   }, [addingPhotos, handleAddDocuments, handleAddPhotos, onAddDocuments, onAddPhotos]);
 
   const stripTiles = useMemo((): PhotoTile[] => {
@@ -241,6 +264,29 @@ export function PhotoSection(props: {
     return rows;
   }, [extraDocumentRows, tiles]);
 
+  const hasCollapsiblePhotoContent = useMemo(() => {
+    const hasPhotoTiles = tiles.some(
+      (tile) =>
+        tile.kind === 'extra' ||
+        (tile.kind === 'reserved' && (Boolean(tile.uri) || Boolean(tile.document)))
+    );
+    return hasPhotoTiles || documentRows.length > 0;
+  }, [documentRows.length, tiles]);
+
+  const collapsibleItemCount = useMemo(() => {
+    let count = 0;
+    for (const tile of tiles) {
+      if (tile.kind === 'extra') count += 1;
+      else if (tile.kind === 'reserved' && (tile.uri || tile.document)) count += 1;
+    }
+    return count + documentRows.length;
+  }, [documentRows.length, tiles]);
+
+  const headingTitle =
+    onToggleExpanded && hasCollapsiblePhotoContent
+      ? collapsedSectionLabel(title, expanded, collapsibleItemCount)
+      : title;
+
   const viewerPhotos = useMemo((): ViewerPhoto[] => {
     const photos: ViewerPhoto[] = [];
     for (const tile of stripTiles) {
@@ -265,7 +311,7 @@ export function PhotoSection(props: {
           notes: tile.notes,
           favorite: tile.favorite,
           editableLabel: tile.onLabelChange != null,
-          onDelete: tile.onDelete,
+          onDelete: tile.onDelete ? () => tile.onDelete?.() : undefined,
           onLabelChange: tile.onLabelChange,
           onToggleFavorite: tile.onToggleFavorite,
         });
@@ -394,11 +440,13 @@ export function PhotoSection(props: {
       const isHero = effectiveHeroId === tile.key;
       const showSlotActions = () => {
         if (!tile.onDelete && !tile.onRemoveSlot && !tile.onLabelChange && !tile.uri) return;
+        if (tile.uri) setHeroPhotoId(tile.key);
         showLabeledPhotoThumbActions({
           onRename: tile.onLabelChange
             ? () => openRenameEditor(tile.key, tile.shortLabel, tile.notes)
             : undefined,
           onSave: tile.uri ? () => void savePhotoToCameraRoll(tile.uri!) : undefined,
+          onShare: tile.uri ? () => void sharePhoto(tile.uri!) : undefined,
           onDelete: tile.onDelete,
           onRemoveSlot: tile.onRemoveSlot,
           slotLabel: tile.shortLabel,
@@ -415,7 +463,7 @@ export function PhotoSection(props: {
         >
           <Image source={{ uri: tile.uri }} style={thumbImageStyle(isHero)} />
         </TouchableOpacity>
-      ) : (
+      ) : tile.onAdd ? (
         <Pressable
           onPress={tile.onAdd}
           onLongPress={tile.onRemoveSlot ? showSlotActions : undefined}
@@ -441,6 +489,15 @@ export function PhotoSection(props: {
         >
           <AddPhotoPlaceholder size={addPlaceholderSize} />
         </Pressable>
+      ) : (
+        <View
+          style={{
+            width: thumbSize,
+            height: thumbSize,
+            borderRadius: 2,
+            backgroundColor: colors.photoPlaceholder,
+          }}
+        />
       );
     }
 
@@ -451,18 +508,20 @@ export function PhotoSection(props: {
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => setHeroPhotoId(tile.id)}
-          onLongPress={() =>
+          onLongPress={() => {
+            setHeroPhotoId(tile.id);
             showLabeledPhotoThumbActions({
               onRename: tile.onLabelChange
                 ? () => openRenameEditor(tile.id, label, tile.notes)
                 : undefined,
               onSave: () => void savePhotoToCameraRoll(tile.uri),
+              onShare: () => void sharePhoto(tile.uri),
               onDelete: tile.onDelete,
-            })
-          }
+            });
+          }}
           accessibilityRole="button"
           accessibilityLabel={label ? `Show ${label} photo` : 'Show photo'}
-          accessibilityHint="Displays this photo in the large view."
+          accessibilityHint="Displays this photo in the large view. Long press for options."
         >
           <Image source={{ uri: tile.uri }} style={thumbImageStyle(isHero)} />
         </TouchableOpacity>
@@ -592,6 +651,7 @@ export function PhotoSection(props: {
         onActiveIdChange={setHeroPhotoId}
         onOpenViewer={openHeroViewer}
         dotsPosition={heroDotsPosition}
+        resizeMode={heroResizeMode}
       />
 
       {heroCaptionPlacement === 'below' ? heroCaption : null}
@@ -605,7 +665,18 @@ export function PhotoSection(props: {
           marginBottom: hint ? 0 : 12,
         }}
       >
-        <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>{title}</Text>
+        {onToggleExpanded && hasCollapsiblePhotoContent ? (
+          <CollapsibleSectionTitle
+            title={title}
+            expanded={expanded}
+            count={collapsibleItemCount}
+            onExpand={onToggleExpanded}
+          />
+        ) : (
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+            {headingTitle}
+          </Text>
+        )}
         {onAddPhotos ? (
           <Pressable
             onPress={openAddPhotos}
@@ -621,49 +692,112 @@ export function PhotoSection(props: {
             <MaterialIcons name="add" size={24} color={colors.primary} />
           </Pressable>
         ) : null}
+        {hasCollapsiblePhotoContent && onToggleExpanded ? (
+          <Pressable
+            onPress={onToggleExpanded}
+            accessibilityRole="button"
+            accessibilityLabel={expanded ? `Hide ${title}` : `Show ${title}`}
+            accessibilityState={{ expanded }}
+            hitSlop={6}
+            style={({ pressed }) => ({
+              marginLeft: 'auto',
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons
+              name={expanded ? 'expand-less' : 'expand-more'}
+              size={24}
+              color={colors.primary}
+            />
+          </Pressable>
+        ) : null}
       </View>
-      {hint ? <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>{hint}</Text> : null}
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingVertical: 4, gap: 10 }}
-        style={{ marginBottom: 12 }}
-      >
-        {stripTiles.map((tile, index) => {
-          const label = tileLabel(tile);
-          return (
-            <View key={tileKey(tile, index)} style={{ width: slotLabelWidth, alignItems: 'center' }}>
-              {renderThumb(tile)}
-              {label ? (
-                <Text
-                  style={[sharedStyles.cardMeta, { fontSize: 11, marginTop: 4, textAlign: 'center' }]}
-                  numberOfLines={2}
-                >
-                  {label}
-                </Text>
-              ) : null}
-            </View>
-          );
-        })}
-      </ScrollView>
+      {expanded || !onToggleExpanded || !hasCollapsiblePhotoContent ? (
+        <>
+          {hint ? <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>{hint}</Text> : null}
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingVertical: 4, gap: 10 }}
+            style={{ marginBottom: 12 }}
+          >
+            {stripTiles.map((tile, index) => {
+              const label = tileLabel(tile);
+              const showArrows =
+                showReorderArrows &&
+                tile.kind === 'extra' &&
+                Boolean(tile.onMoveLeft || tile.onMoveRight);
+              return (
+                <View key={tileKey(tile, index)} style={{ width: slotLabelWidth, alignItems: 'center' }}>
+                  {showArrows && tile.kind === 'extra' ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        marginBottom: 4,
+                        minHeight: 22,
+                      }}
+                    >
+                      {tile.onMoveLeft ? (
+                        <Pressable
+                          onPress={tile.onMoveLeft}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel="Move photo left"
+                          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingHorizontal: 4 })}
+                        >
+                          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.primary }}>←</Text>
+                        </Pressable>
+                      ) : null}
+                      {tile.onMoveRight ? (
+                        <Pressable
+                          onPress={tile.onMoveRight}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel="Move photo right"
+                          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingHorizontal: 4 })}
+                        >
+                          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.primary }}>→</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                  {renderThumb(tile)}
+                  {label ? (
+                    <Text
+                      style={[sharedStyles.cardMeta, { fontSize: 11, marginTop: 4, textAlign: 'center' }]}
+                      numberOfLines={2}
+                    >
+                      {label}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })}
+          </ScrollView>
 
-      {hasHiddenSlots && onRestoreHiddenSlots ? (
-        <Pressable
-          onPress={onRestoreHiddenSlots}
-          accessibilityRole="button"
-          accessibilityLabel="Restore removed photo slots"
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start',
-            marginBottom: 12,
-            opacity: pressed ? 0.7 : 1,
-          })}
-        >
-          <Text style={sharedStyles.textLink}>Restore removed slots</Text>
-        </Pressable>
+          {hasHiddenSlots && onRestoreHiddenSlots ? (
+            <Pressable
+              onPress={onRestoreHiddenSlots}
+              accessibilityRole="button"
+              accessibilityLabel="Restore removed photo slots"
+              style={({ pressed }) => ({
+                alignSelf: 'flex-start',
+                marginBottom: 12,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={sharedStyles.textLink}>Restore removed slots</Text>
+            </Pressable>
+          ) : null}
+
+          <DocumentListSection rows={documentRows} />
+        </>
       ) : null}
-
-      <DocumentListSection rows={documentRows} />
 
       <PhotoViewerModal
         photos={viewerPhotos}

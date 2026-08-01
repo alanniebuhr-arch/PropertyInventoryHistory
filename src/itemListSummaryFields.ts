@@ -1,5 +1,7 @@
 import type { InventoryItem } from './types';
+import { itemCustomName } from './itemCatalog';
 import { formatStoredDate } from './itemDetailDisplayHelpers';
+import { formatCurrencyDisplay } from './utils';
 import {
   fuelTankLocationLabel,
   fuelTankSizeLabel,
@@ -10,8 +12,14 @@ import {
 import { acTypeLabel } from './airConditionerSlots';
 import { automobileDescription } from './automobileSlots';
 import { furnaceUsesFuelTank } from './furnaceSlots';
+import { securitySystemTypeLabel } from './securitySystemSlots';
+import { radonMitigationSystemTypeLabel } from './radonMitigationSlots';
 import { valveTypeLabel, waterSourceLabel } from './waterMainSlots';
 import { wasteWaterSystemLabel } from './wasteWaterSlots';
+import { generatorFuelTypeLabel } from './generatorSlots';
+import { sumpPumpRoleLabel } from './sumpPumpSlots';
+import { roofMaterialLabel } from './roofSlots';
+import { poolTypeLabel } from './poolSlots';
 
 export type ItemListSummaryField = { label: string; value: string };
 
@@ -21,7 +29,12 @@ function pushField(
   value?: string | null
 ) {
   const trimmed = value?.trim();
-  if (trimmed) fields.push({ label, value: trimmed });
+  if (!trimmed) return;
+  const formatted =
+    /cost|price|paid/i.test(label)
+      ? formatCurrencyDisplay(trimmed) || trimmed
+      : trimmed;
+  fields.push({ label, value: formatted });
 }
 
 export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField[] {
@@ -141,9 +154,40 @@ export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField
     }
     case 'water_heater': {
       if (details.kind !== 'water_heater') break;
+      pushField(
+        fields,
+        'Fuel type',
+        details.fuelType ? fuelTypeLabel(details.fuelType, details.fuelTypeOther) : undefined
+      );
       pushField(fields, 'Make', details.make);
       pushField(fields, 'Model', details.modelNumber);
       pushField(fields, 'Serial number', details.serialNumber);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'security_system': {
+      if (details.kind !== 'security_system') break;
+      pushField(
+        fields,
+        'System type',
+        securitySystemTypeLabel(details.systemType, details.systemTypeOther)
+      );
+      pushField(fields, 'Monitoring', details.monitoringCompany);
+      pushField(fields, 'Make', details.make);
+      pushField(fields, 'Panel location', details.panelLocation);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'radon_mitigation': {
+      if (details.kind !== 'radon_mitigation') break;
+      pushField(
+        fields,
+        'System type',
+        radonMitigationSystemTypeLabel(details.systemType, details.systemTypeOther)
+      );
+      pushField(fields, 'Fan make', details.fanMake);
+      pushField(fields, 'Fan location', details.fanLocation);
+      pushField(fields, 'Last test', details.lastTestResult);
       pushField(fields, 'Notes', details.notes);
       break;
     }
@@ -151,6 +195,84 @@ export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField
       if (details.kind !== 'water_treatment') break;
       pushField(fields, 'System type', details.systemType);
       pushField(fields, 'Filter name', details.filterName);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'well_pump': {
+      if (details.kind !== 'well_pump') break;
+      pushField(fields, 'Pump make', details.pumpMake);
+      pushField(fields, 'Pump model', details.pumpModel);
+      pushField(fields, 'Well depth', details.wellDepth);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'generator': {
+      if (details.kind !== 'generator') break;
+      pushField(fields, 'Fuel type', generatorFuelTypeLabel(details.fuelType, details.fuelTypeOther));
+      pushField(fields, 'Make', details.make);
+      pushField(fields, 'Wattage', details.wattage);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'sump_pump': {
+      if (details.kind !== 'sump_pump') break;
+      pushField(fields, 'Pump role', sumpPumpRoleLabel(details.pumpRole));
+      pushField(fields, 'Make', details.make);
+      pushField(fields, 'Discharge location', details.dischargeLocation);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'garage_door': {
+      if (details.kind !== 'garage_door') break;
+      pushField(fields, 'Opener make', details.openerMake);
+      pushField(fields, 'Opener model', details.openerModel);
+      pushField(fields, 'Spring type', details.springType);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'roof': {
+      if (details.kind !== 'roof') break;
+      pushField(fields, 'Material', roofMaterialLabel(details.material, details.materialOther));
+      pushField(fields, 'Color', details.color);
+      pushField(fields, 'Install date', formatStoredDate(details.installDateAtISO));
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'pool': {
+      if (details.kind !== 'pool') break;
+      pushField(fields, 'Pool type', poolTypeLabel(details.poolType, details.poolTypeOther));
+      pushField(fields, 'Volume (gallons)', details.volumeGallons);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'irrigation': {
+      if (details.kind !== 'irrigation') break;
+      pushField(fields, 'Controller make', details.controllerMake);
+      pushField(fields, 'Zone count', details.zoneCount);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'ev_charger': {
+      if (details.kind !== 'ev_charger') break;
+      pushField(fields, 'Make', details.make);
+      pushField(fields, 'Amperage', details.amperage);
+      pushField(fields, 'Connector type', details.connectorType);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'solar': {
+      if (details.kind !== 'solar') break;
+      pushField(fields, 'System size (kW)', details.systemSizeKw);
+      pushField(fields, 'Panel make', details.panelMake);
+      pushField(fields, 'Inverter make', details.inverterMake);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'hot_tub': {
+      if (details.kind !== 'hot_tub') break;
+      pushField(fields, 'Make', details.make);
+      pushField(fields, 'Model', details.modelNumber);
+      pushField(fields, 'Capacity (persons)', details.capacityPersons);
       pushField(fields, 'Notes', details.notes);
       break;
     }
@@ -172,4 +294,13 @@ export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField
   }
 
   return fields;
+}
+
+/** True when an asset has no custom name, summary fields, photos, or documents. */
+export function isEmptyInventoryItem(item: InventoryItem): boolean {
+  if (itemCustomName(item)) return false;
+  if (itemListSummaryFields(item).length > 0) return false;
+  if (item.photoIds.length > 0) return false;
+  if (item.documentIds.length > 0) return false;
+  return true;
 }

@@ -2,11 +2,14 @@ import React, { useMemo } from 'react';
 import type { AppState } from '../types';
 import { PhotoSection } from './PhotoSection';
 import { DocumentListSection } from './DocumentListSection';
-import { buildExtraOnlyPhotoTiles } from '../photoSectionBuilders';
+import { buildSlotAndExtraPhotoTiles } from '../photoSectionBuilders';
 import {
   addVendorPhotos,
-  photosForVendor,
+  extraPhotosForVendor,
   removeVendorPhoto,
+  setVendorImagePhoto,
+  VENDOR_IMAGE_CAPTION,
+  vendorImagePhoto,
 } from '../vendorPhotos';
 import {
   vendorDocumentRows,
@@ -14,41 +17,74 @@ import {
   removeVendorDocument,
 } from '../vendorDocuments';
 import { setVendorPhotoCaptionAndNotes } from '../photoMeta';
+import { withReorderedVendorPhotoIds } from '../photoReorder';
+
+const VENDOR_PHOTO_SLOTS = [{ key: VENDOR_IMAGE_CAPTION, shortLabel: 'Vendor image' }] as const;
 
 export function VendorPhotosSection(props: {
   state: AppState;
   vendorId: string;
   onSave: (state: AppState) => void;
   children?: React.ReactNode;
+  showReorderArrows?: boolean;
 }) {
-  const { state, vendorId, onSave, children } = props;
+  const { state, vendorId, onSave, children, showReorderArrows } = props;
   const vendor = state.projectVendors.find((v) => v.id === vendorId);
-  const extraPhotos = photosForVendor(state, vendorId);
+  const imagePhoto = vendorImagePhoto(state, vendorId);
+  const extraPhotos = extraPhotosForVendor(state, vendorId);
 
   const photoTiles = useMemo(
     () =>
-      buildExtraOnlyPhotoTiles({
-        photos: extraPhotos.map((photo) => ({
+      buildSlotAndExtraPhotoTiles({
+        slots: [...VENDOR_PHOTO_SLOTS],
+        getSlotUri: () => imagePhoto?.localUri,
+        getSlotNotes: () => imagePhoto?.notes,
+        getSlotPhotoId: () => imagePhoto?.id,
+        onAddSlot: (_key, uri) => {
+          void setVendorImagePhoto(state, vendorId, uri).then(onSave);
+        },
+        onDeleteSlot: () => {
+          if (!imagePhoto) return;
+          void removeVendorPhoto(state, vendorId, imagePhoto.id).then(onSave);
+        },
+        onLabelSlot: (_key, notes) => {
+          if (!imagePhoto) return;
+          onSave(
+            setVendorPhotoCaptionAndNotes(state, imagePhoto.id, VENDOR_IMAGE_CAPTION, notes)
+          );
+        },
+        extraPhotos: extraPhotos.map((photo) => ({
           id: photo.id,
           localUri: photo.localUri,
           caption: photo.caption,
           notes: photo.notes,
         })),
-        onDeletePhoto: (photoId) => {
+        onDeleteExtra: (photoId) => {
           void removeVendorPhoto(state, vendorId, photoId).then(onSave);
         },
-        onLabelPhoto: (photoId, label, notes) => {
+        onReorderExtra: (photoId, direction) => {
+          onSave(
+            withReorderedVendorPhotoIds(
+              state,
+              vendorId,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
+        },
+        onLabelExtra: (photoId, label, notes) => {
           onSave(setVendorPhotoCaptionAndNotes(state, photoId, label, notes));
         },
       }),
-    [extraPhotos, onSave, vendorId, state]
+    [extraPhotos, imagePhoto, onSave, vendorId, state]
   );
 
   async function handleAddPhotos(sourceUris: string[]) {
     if (sourceUris.length === 0) return;
     const next = await addVendorPhotos(state, vendorId, sourceUris);
     onSave(next);
-    const added = photosForVendor(next, vendorId).slice(-sourceUris.length);
+    const added = extraPhotosForVendor(next, vendorId).slice(-sourceUris.length);
     return added.map((photo) => photo.id);
   }
 
@@ -60,7 +96,9 @@ export function VendorPhotosSection(props: {
     <>
       <PhotoSection
         tiles={photoTiles}
+        showReorderArrows={showReorderArrows}
         title="Photos"
+        heroResizeMode="contain"
         onAddPhotos={handleAddPhotos}
         onAddDocuments={async (picked) => {
           if (picked.length === 0) return;

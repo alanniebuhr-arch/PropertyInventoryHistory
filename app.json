@@ -2,7 +2,7 @@
   "expo": {
     "name": "Property Asset Manager",
     "slug": "PropertyInventoryHistory",
-    "version": "1.3.5",
+    "version": "1.3.7",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.alanniebuhr.propertyinventoryhistory",
-      "buildNumber": "24",
+      "buildNumber": "28",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Take photos of property assets for your inventory.",
@@ -24,7 +24,8 @@
       }
     },
     "android": {
-      "versionCode": 15,
+      "versionCode": 18,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#1f5fbf",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -61,7 +62,8 @@
           ]
         }
       ],
-      "expo-font"
+      "expo-font",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {

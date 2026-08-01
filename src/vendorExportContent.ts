@@ -1,5 +1,5 @@
 import type { AppState } from './types';
-import { photosForVendor } from './vendorPhotos';
+import { photosForVendor, vendorPhotoDisplayLabel } from './vendorPhotos';
 import {
   interactionsForVendor,
   photosForVendorInteraction,
@@ -9,11 +9,11 @@ import {
 } from './storage';
 import { vendorStatusLabel } from './vendorStatus';
 import { vendorContactMethodLabel } from './vendorContactMethod';
-import { formatDate, nowISO } from './utils';
+import { formatDate, formatDisplayDate, formatPhoneNumber, nowISO } from './utils';
 
 export type VendorExportRow = { label: string; value: string };
 export type VendorExportSection = { title: string; rows: VendorExportRow[] };
-export type VendorExportPhoto = { uri: string; label: string };
+export type VendorExportPhoto = { uri: string; label: string; notes?: string };
 export type VendorExportInteraction = {
   title: string;
   lines: string[];
@@ -32,7 +32,10 @@ export type VendorExportSnapshot = {
 
 function row(label: string, value?: string | null): VendorExportRow | null {
   const trimmed = value?.trim();
-  return trimmed ? { label, value: trimmed } : null;
+  if (!trimmed) return null;
+  const formatted =
+    /phone/i.test(label) ? formatPhoneNumber(trimmed) || trimmed : trimmed;
+  return { label, value: formatted };
 }
 
 function section(title: string, rows: (VendorExportRow | null)[]): VendorExportSection | null {
@@ -77,7 +80,8 @@ export function buildVendorExportSnapshot(
 
   const photos = photosForVendor(state, vendor.id).map((photo) => ({
     uri: photo.localUri,
-    label: photo.caption?.trim() || 'Photo',
+    label: vendorPhotoDisplayLabel(photo),
+    notes: photo.notes?.trim() || undefined,
   }));
 
   const interactions = interactionsForVendor(state, vendor.id).map((interaction) => {
@@ -87,11 +91,12 @@ export function buildVendorExportSnapshot(
     ].filter((line): line is string => Boolean(line));
 
     return {
-      title: `${formatDate(interaction.occurredAtISO)} · ${vendorContactMethodLabel(interaction.contactMethod)}`,
+      title: `${interaction.important === true ? '★ ' : ''}${formatDisplayDate(interaction.occurredAtISO)} · ${vendorContactMethodLabel(interaction.contactMethod)}`,
       lines,
       photos: photosForVendorInteraction(state, interaction.id).map((photo) => ({
         uri: photo.localUri,
         label: photo.caption?.trim() || 'Photo',
+        notes: photo.notes?.trim() || undefined,
       })),
     };
   });

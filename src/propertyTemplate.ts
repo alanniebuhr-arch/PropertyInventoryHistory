@@ -35,6 +35,14 @@ export const DEFAULT_PROPERTY_TEMPLATE: PropertyTemplateRoom[] = [
       { itemTypeId: 'furnace' },
       { itemTypeId: 'air_conditioner' },
       { itemTypeId: 'internet' },
+      { itemTypeId: 'security_system' },
+      { itemTypeId: 'radon_mitigation' },
+      { itemTypeId: 'well_pump' },
+      { itemTypeId: 'generator' },
+      { itemTypeId: 'sump_pump' },
+      { itemTypeId: 'ev_charger' },
+      { itemTypeId: 'solar' },
+      { itemTypeId: 'roof' },
     ],
   },
   {
@@ -58,7 +66,16 @@ export const DEFAULT_PROPERTY_TEMPLATE: PropertyTemplateRoom[] = [
   {
     houseName: 'Garage',
     sortOrder: 3,
-    items: [{ itemTypeId: 'automobile' }],
+    items: [{ itemTypeId: 'automobile' }, { itemTypeId: 'garage_door' }],
+  },
+  {
+    houseName: 'Yard',
+    sortOrder: 4,
+    items: [
+      { itemTypeId: 'pool' },
+      { itemTypeId: 'hot_tub' },
+      { itemTypeId: 'irrigation' },
+    ],
   },
 ];
 

@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
-import { Text } from '../textScale';
+import { Text, useTextScaleControls } from '../textScale';
 import type { ScrollView as RNScrollView } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import type { AppState, AirConditionerDetails, ApplianceDetails, AutomobileDetails, ElectricPanelDetails, FurnaceDetails, InventoryItem, ItemDetails, ItemPhoto, WasteWaterDetails, WaterMainDetails, WaterTreatmentDetails } from '../types';
+import type { AppState, AirConditionerDetails, ApplianceDetails, AutomobileDetails, ElectricPanelDetails, EvChargerDetails, FurnaceDetails, GarageDoorDetails, GeneratorDetails, HotTubDetails, InventoryItem, IrrigationDetails, ItemDetails, ItemPhoto, PoolDetails, RadonMitigationDetails, RoofDetails, SecuritySystemDetails, SolarDetails, SumpPumpDetails, WasteWaterDetails, WaterHeaterDetails, WaterMainDetails, WaterTreatmentDetails, WellPumpDetails } from '../types';
 import { EventListRow } from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { ItemDisplayView } from '../components/ItemDisplayView';
@@ -15,7 +15,8 @@ import {
   type ApplianceEditingSection,
 } from '../components/ApplianceDisplayView';
 import { sharedStyles, colors } from '../theme';
-import { formatCurrency, formatDate, uid, nowISO } from '../utils';
+import { withReorderedItemPhotoIds } from '../photoReorder';
+import { formatCurrency, formatDisplayDate, uid, nowISO } from '../utils';
 import {
   deleteItemCascade,
   eventsForItem,
@@ -34,6 +35,7 @@ import { isItemOverdue, serviceLastNextForItem } from '../itemMaintenance';
 import {
   EVENT_TYPE_LABELS,
   filterUpcomingByHorizon,
+  serviceListDateISO,
   upcomingHorizonLabel,
   upcomingServiceEvents,
   UPCOMING_HORIZON_OPTIONS,
@@ -53,26 +55,65 @@ import { updateFurnaceDetails, applyFurnaceDetailsChange } from '../furnacePhoto
 import { updateWasteWaterDetails, applyWasteWaterDetailsChange } from '../wasteWaterPhotos';
 import { updateElectricPanelDetails } from '../electricPanelPhotos';
 import { updateWaterTreatmentDetails } from '../waterTreatmentPhotos';
+import { updateWaterHeaterDetails } from '../waterHeaterPhotos';
 import { updateAirConditionerDetails } from '../airConditionerPhotos';
 import { updateAutomobileDetails } from '../automobilePhotos';
+import { updateSecuritySystemDetails } from '../securitySystemPhotos';
+import { updateRadonMitigationDetails } from '../radonMitigationPhotos';
+import { updateWellPumpDetails } from '../wellPumpPhotos';
+import { updateGeneratorDetails } from '../generatorPhotos';
+import { updateSumpPumpDetails } from '../sumpPumpPhotos';
+import { updateGarageDoorDetails } from '../garageDoorPhotos';
+import { updateRoofDetails } from '../roofPhotos';
+import { updatePoolDetails } from '../poolPhotos';
+import { updateIrrigationDetails } from '../irrigationPhotos';
+import { updateEvChargerDetails } from '../evChargerPhotos';
+import { updateSolarDetails } from '../solarPhotos';
+import { updateHotTubDetails } from '../hotTubPhotos';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
   removeItemExtraDocument,
 } from '../itemExtraDocuments';
 import { WaterMainDisplayView } from '../components/WaterMainDisplayView';
+import { WaterHeaterDisplayView } from '../components/WaterHeaterDisplayView';
 import { WaterTreatmentDisplayView } from '../components/WaterTreatmentDisplayView';
 import { ElectricPanelDisplayView } from '../components/ElectricPanelDisplayView';
 import { FurnaceDisplayView } from '../components/FurnaceDisplayView';
 import { AirConditionerDisplayView } from '../components/AirConditionerDisplayView';
 import { AutomobileDisplayView } from '../components/AutomobileDisplayView';
 import { WasteWaterDisplayView } from '../components/WasteWaterDisplayView';
+import { SecuritySystemDisplayView } from '../components/SecuritySystemDisplayView';
+import { RadonMitigationDisplayView } from '../components/RadonMitigationDisplayView';
+import { WellPumpDisplayView } from '../components/WellPumpDisplayView';
+import { GeneratorDisplayView } from '../components/GeneratorDisplayView';
+import { SumpPumpDisplayView } from '../components/SumpPumpDisplayView';
+import { GarageDoorDisplayView } from '../components/GarageDoorDisplayView';
+import { RoofDisplayView } from '../components/RoofDisplayView';
+import { PoolDisplayView } from '../components/PoolDisplayView';
+import { IrrigationDisplayView } from '../components/IrrigationDisplayView';
+import { EvChargerDisplayView } from '../components/EvChargerDisplayView';
+import { SolarDisplayView } from '../components/SolarDisplayView';
+import { HotTubDisplayView } from '../components/HotTubDisplayView';
 import { ItemExportSheet } from '../components/ItemExportSheet';
+import { SharePhotoModeModal } from '../components/SharePhotoModeModal';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { RoomNavigationDots } from '../components/RoomNavigationDots';
+import {
+  ToolbarNewSearchControls,
+  usePropertyGearNav,
+} from '../components/PropertyGearNavItems';
 import { ItemDetailScrollContext } from '../itemDetailScrollContext';
+import {
+  KeyboardDoneTextInputContext,
+  useKeyboardDoneAccessory,
+} from '../components/KeyboardDoneAccessory';
 import { buildItemExportSnapshot, type ItemExportSnapshot } from '../itemExportContent';
+import { hasFavoritePhotos, type SharePhotoMode } from '../sharePhotoMode';
+import { DEFAULT_SHARE_FORMAT, type ShareFormat } from '../shareFormat';
 import { shareViewAsPng } from '../shareViewImage';
+import { shareHtmlAsPdf } from '../shareViewPdf';
+import { buildExportPdfHtml, itemSnapshotToPdfDoc } from '../exportPdfHtml';
 import { setItemPhotoFavorite } from '../photoMeta';
 
 export function ItemDetailScreen(props: {
@@ -82,6 +123,14 @@ export function ItemDetailScreen(props: {
   onBack: () => void;
   onNavigateItem: (itemId: string) => void;
   onGoToProperty: () => void;
+  onAddInteraction: () => void;
+  onAddServiceEvent: () => void;
+  onSearchAssets: () => void;
+  onSearchInteractions: () => void;
+  onSearchServiceHistory: () => void;
+  onSearchActivity?: () => void;
+  onOpenProject: (projectId: string) => void;
+  onOpenItem: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
   onAddEvent: () => void;
   onEditEvent: (eventId: string) => void;
   onLogUpcomingService: (completeFromEventId: string) => void;
@@ -94,6 +143,14 @@ export function ItemDetailScreen(props: {
     onBack,
     onNavigateItem,
     onGoToProperty,
+    onAddInteraction,
+    onAddServiceEvent,
+    onSearchAssets,
+    onSearchInteractions,
+    onSearchServiceHistory,
+    onSearchActivity,
+    onOpenProject,
+    onOpenItem,
     onAddEvent,
     onEditEvent,
     onLogUpcomingService,
@@ -108,7 +165,17 @@ export function ItemDetailScreen(props: {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [exportSnapshot, setExportSnapshot] = useState<ItemExportSnapshot | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [shareOptionsOpen, setShareOptionsOpen] = useState(false);
+  const [sharePhotoMode, setSharePhotoMode] = useState<SharePhotoMode>('all');
+  const [shareFormat, setShareFormat] = useState<ShareFormat>(DEFAULT_SHARE_FORMAT);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showReorderArrows, setShowReorderArrows] = useState(false);
+  const textScaleControls = useTextScaleControls();
+  const keyboardDone = useKeyboardDoneAccessory({
+    id: 'itemDetailDone',
+    // Item detail uses gesture-handler ScrollView; native InputAccessoryView often does not appear.
+    variant: 'overlay',
+  });
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
@@ -175,15 +242,40 @@ export function ItemDetailScreen(props: {
     if (item) setDetails(item.details);
   }, [item?.id, item?.details]);
 
-  const runItemExport = useCallback(async () => {
-    const snapshot = buildItemExportSnapshot(state, itemId);
-    if (!snapshot) {
-      Alert.alert('Export failed', 'Could not build asset summary.');
-      return;
-    }
-    setExportSnapshot(snapshot);
-    setExporting(true);
-  }, [itemId, state]);
+  const itemHasFavoritePhotos = useMemo(
+    () => hasFavoritePhotos(photosForItem(state, itemId)),
+    [itemId, state]
+  );
+
+  const runItemExport = useCallback(
+    async (photoMode: SharePhotoMode = 'all', format: ShareFormat = DEFAULT_SHARE_FORMAT) => {
+      const snapshot = buildItemExportSnapshot(state, itemId, { photoMode });
+      if (!snapshot) {
+        Alert.alert('Export failed', 'Could not build asset summary.');
+        return;
+      }
+      setShareOptionsOpen(false);
+      if (format === 'pdf') {
+        setExporting(true);
+        try {
+          const html = await buildExportPdfHtml(itemSnapshotToPdfDoc(snapshot));
+          await shareHtmlAsPdf(html, `Share ${snapshot.title}`);
+        } finally {
+          setExporting(false);
+        }
+        return;
+      }
+      setExportSnapshot(snapshot);
+      setExporting(true);
+    },
+    [itemId, state]
+  );
+
+  const onSharePress = useCallback(() => {
+    setSharePhotoMode('all');
+    setShareFormat(DEFAULT_SHARE_FORMAT);
+    setShareOptionsOpen(true);
+  }, []);
 
   useEffect(() => {
     if (!exportSnapshot || !exporting) return;
@@ -208,9 +300,37 @@ export function ItemDetailScreen(props: {
 
   const room = item ? roomById(state, item.roomId) : undefined;
   const property = room ? propertyById(state, room.propertyId) : undefined;
+  const propertyId = room?.propertyId ?? '';
   const roomItems = room ? itemsForRoom(state, room.id) : [];
   const itemIndex = roomItems.findIndex((entry) => entry.id === itemId);
   const itemSwipeEnabled = roomItems.length > 1;
+
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    setTimeout(action, 50);
+  }
+
+  const {
+    newItems: propertyNewItems,
+    searchItems: propertySearchItems,
+    createModals: propertyGearCreateModals,
+  } = usePropertyGearNav({
+    state,
+    propertyId,
+    roomId: room?.id,
+    runMenuAction,
+    actions: {
+      onAddInteraction,
+      onAddServiceEvent,
+      onSearchAssets,
+      onSearchInteractions,
+      onSearchServiceHistory,
+      onSearchActivity,
+      onOpenProject,
+      onOpenItem,
+      onSave,
+    },
+  });
 
   const goToNextItem = useCallback(() => {
     if (itemIndex < 0) return;
@@ -268,7 +388,20 @@ export function ItemDetailScreen(props: {
   const isAirConditioner = inv.itemTypeId === 'air_conditioner';
   const isAutomobile = inv.itemTypeId === 'automobile';
   const isElectricPanel = inv.itemTypeId === 'electric_panel';
+  const isWaterHeater = inv.itemTypeId === 'water_heater';
   const isWaterTreatment = inv.itemTypeId === 'water_treatment';
+  const isSecuritySystem = inv.itemTypeId === 'security_system';
+  const isRadonMitigation = inv.itemTypeId === 'radon_mitigation';
+  const isWellPump = inv.itemTypeId === 'well_pump';
+  const isGenerator = inv.itemTypeId === 'generator';
+  const isSumpPump = inv.itemTypeId === 'sump_pump';
+  const isGarageDoor = inv.itemTypeId === 'garage_door';
+  const isRoof = inv.itemTypeId === 'roof';
+  const isPool = inv.itemTypeId === 'pool';
+  const isIrrigation = inv.itemTypeId === 'irrigation';
+  const isEvCharger = inv.itemTypeId === 'ev_charger';
+  const isSolar = inv.itemTypeId === 'solar';
+  const isHotTub = inv.itemTypeId === 'hot_tub';
   const applianceDetails = details.kind === 'appliance' ? details : null;
   const waterMainDetails = details.kind === 'water_main' ? details : null;
   const wasteWaterDetails = details.kind === 'waste_water' ? details : null;
@@ -276,7 +409,20 @@ export function ItemDetailScreen(props: {
   const airConditionerDetails = details.kind === 'air_conditioner' ? details : null;
   const automobileDetails = details.kind === 'automobile' ? details : null;
   const electricPanelDetails = details.kind === 'electric_panel' ? details : null;
+  const waterHeaterDetails = details.kind === 'water_heater' ? details : null;
   const waterTreatmentDetails = details.kind === 'water_treatment' ? details : null;
+  const securitySystemDetails = details.kind === 'security_system' ? details : null;
+  const radonMitigationDetails = details.kind === 'radon_mitigation' ? details : null;
+  const wellPumpDetails = details.kind === 'well_pump' ? details : null;
+  const generatorDetails = details.kind === 'generator' ? details : null;
+  const sumpPumpDetails = details.kind === 'sump_pump' ? details : null;
+  const garageDoorDetails = details.kind === 'garage_door' ? details : null;
+  const roofDetails = details.kind === 'roof' ? details : null;
+  const poolDetails = details.kind === 'pool' ? details : null;
+  const irrigationDetails = details.kind === 'irrigation' ? details : null;
+  const evChargerDetails = details.kind === 'ev_charger' ? details : null;
+  const solarDetails = details.kind === 'solar' ? details : null;
+  const hotTubDetails = details.kind === 'hot_tub' ? details : null;
   const photos = photosForItem(state, itemId);
   const events = eventsForItem(state, itemId);
   const historyEvents = serviceHistoryEventsForItem(state, itemId);
@@ -418,6 +564,11 @@ export function ItemDetailScreen(props: {
     onSave(updateElectricPanelDetails(state, itemId, next));
   }
 
+  function handleWaterHeaterDetailsChange(next: WaterHeaterDetails) {
+    setDetails(next);
+    onSave(updateWaterHeaterDetails(state, itemId, next));
+  }
+
   function handleWaterTreatmentDetailsChange(next: WaterTreatmentDetails) {
     setDetails(next);
     onSave(updateWaterTreatmentDetails(state, itemId, next));
@@ -431,6 +582,66 @@ export function ItemDetailScreen(props: {
   function handleAutomobileDetailsChange(next: AutomobileDetails) {
     setDetails(next);
     onSave(updateAutomobileDetails(state, itemId, next));
+  }
+
+  function handleSecuritySystemDetailsChange(next: SecuritySystemDetails) {
+    setDetails(next);
+    onSave(updateSecuritySystemDetails(state, itemId, next));
+  }
+
+  function handleRadonMitigationDetailsChange(next: RadonMitigationDetails) {
+    setDetails(next);
+    onSave(updateRadonMitigationDetails(state, itemId, next));
+  }
+
+  function handleWellPumpDetailsChange(next: WellPumpDetails) {
+    setDetails(next);
+    onSave(updateWellPumpDetails(state, itemId, next));
+  }
+
+  function handleGeneratorDetailsChange(next: GeneratorDetails) {
+    setDetails(next);
+    onSave(updateGeneratorDetails(state, itemId, next));
+  }
+
+  function handleSumpPumpDetailsChange(next: SumpPumpDetails) {
+    setDetails(next);
+    onSave(updateSumpPumpDetails(state, itemId, next));
+  }
+
+  function handleGarageDoorDetailsChange(next: GarageDoorDetails) {
+    setDetails(next);
+    onSave(updateGarageDoorDetails(state, itemId, next));
+  }
+
+  function handleRoofDetailsChange(next: RoofDetails) {
+    setDetails(next);
+    onSave(updateRoofDetails(state, itemId, next));
+  }
+
+  function handlePoolDetailsChange(next: PoolDetails) {
+    setDetails(next);
+    onSave(updatePoolDetails(state, itemId, next));
+  }
+
+  function handleIrrigationDetailsChange(next: IrrigationDetails) {
+    setDetails(next);
+    onSave(updateIrrigationDetails(state, itemId, next));
+  }
+
+  function handleEvChargerDetailsChange(next: EvChargerDetails) {
+    setDetails(next);
+    onSave(updateEvChargerDetails(state, itemId, next));
+  }
+
+  function handleSolarDetailsChange(next: SolarDetails) {
+    setDetails(next);
+    onSave(updateSolarDetails(state, itemId, next));
+  }
+
+  function handleHotTubDetailsChange(next: HotTubDetails) {
+    setDetails(next);
+    onSave(updateHotTubDetails(state, itemId, next));
   }
 
   async function addPhoto(sourceUri: string) {
@@ -476,6 +687,18 @@ export function ItemDetailScreen(props: {
       photos: state.photos.filter((p) => p.id !== photoId),
       items: state.items.map((i) => (i.id === itemId ? updatedItem : i)),
     });
+  }
+
+  function reorderPhoto(photoId: string, direction: 'left' | 'right') {
+    onSave(
+      withReorderedItemPhotoIds(
+        state,
+        itemId,
+        photoId,
+        direction,
+        inv.photoIds
+      )
+    );
   }
 
   function handlePhotoCaptionChange(photoId: string, caption: string, notes: string) {
@@ -545,7 +768,7 @@ export function ItemDetailScreen(props: {
           }}
         >
           <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-            Service schedule
+            Reminders
           </Text>
           <Pressable
             onPress={() => {
@@ -566,7 +789,7 @@ export function ItemDetailScreen(props: {
             }}
             accessibilityRole="button"
             accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
-            accessibilityHint="Opens a list of time ranges for upcoming service."
+            accessibilityHint="Opens a list of time ranges for upcoming reminders."
             style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
@@ -583,7 +806,7 @@ export function ItemDetailScreen(props: {
           </Pressable>
         </View>
         {upcomingEvents.length === 0 ? (
-          <Text style={sharedStyles.cardMeta}>No upcoming service scheduled.</Text>
+          <Text style={sharedStyles.cardMeta}>No upcoming reminders.</Text>
         ) : (
           <View>
             {upcomingEvents.map((e) => {
@@ -640,7 +863,7 @@ export function ItemDetailScreen(props: {
                   key={e.id}
                   title={e.title}
                   eventTypeLabel={EVENT_TYPE_LABELS[e.eventType]}
-                  dateLabel={formatDate(e.occurredAtISO)}
+                  dateLabel={formatDisplayDate(serviceListDateISO(e))}
                   costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
                   notes={e.notes}
                   thumbnailUri={eventPhotos[0]?.localUri}
@@ -655,13 +878,9 @@ export function ItemDetailScreen(props: {
     </View>
   );
 
-  function runMenuAction(action: () => void) {
-    setMenuOpen(false);
-    setTimeout(action, 50);
-  }
-
   return (
     <ItemDetailScrollContext.Provider value={handleFieldFocus}>
+      <KeyboardDoneTextInputContext.Provider value={keyboardDone.contextValue}>
       <KeyboardAvoidingView
         style={[sharedStyles.screen, { paddingTop: insets.top }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -701,7 +920,7 @@ export function ItemDetailScreen(props: {
               <MaterialIcons name="home" size={22} color={colors.primary} />
             </Pressable>
             <Pressable
-              onPress={() => void runItemExport()}
+              onPress={onSharePress}
               disabled={exporting}
               accessibilityRole="button"
               accessibilityLabel="Share asset"
@@ -728,6 +947,14 @@ export function ItemDetailScreen(props: {
                 <MaterialIcons name="ios-share" size={22} color={colors.primary} />
               )}
             </Pressable>
+            {propertyId ? (
+              <ToolbarNewSearchControls
+                title={itemDisplayLabel(inv)}
+                newItems={propertyNewItems}
+                searchItems={propertySearchItems}
+                disabled={exporting}
+              />
+            ) : null}
             <Pressable
               onPress={() => setMenuOpen(true)}
               accessibilityRole="button"
@@ -767,6 +994,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleApplianceDetailsChange}
             initialEditingSection={startEditingSection}
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         ) : isWaterMain && waterMainDetails ? (
           <WaterMainDisplayView
@@ -776,6 +1004,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWaterMainDetailsChange}
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         ) : isFurnace && furnaceDetails ? (
           <FurnaceDisplayView
@@ -785,6 +1014,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleFurnaceDetailsChange}
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         ) : isAirConditioner && airConditionerDetails ? (
           <AirConditionerDisplayView
@@ -794,6 +1024,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleAirConditionerDetailsChange}
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         ) : isAutomobile && automobileDetails ? (
           <AutomobileDisplayView
@@ -803,6 +1034,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleAutomobileDetailsChange}
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         ) : isWasteWater && wasteWaterDetails ? (
           <WasteWaterDisplayView
@@ -812,6 +1044,7 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWasteWaterDetailsChange}
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         ) : isElectricPanel && electricPanelDetails ? (
           <ElectricPanelDisplayView
@@ -821,6 +1054,17 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleElectricPanelDetailsChange}
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isWaterHeater && waterHeaterDetails ? (
+          <WaterHeaterDisplayView
+            state={state}
+            details={waterHeaterDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleWaterHeaterDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         ) : isWaterTreatment && waterTreatmentDetails ? (
           <WaterTreatmentDisplayView
@@ -830,6 +1074,127 @@ export function ItemDetailScreen(props: {
             onSave={onSave}
             onDetailsChange={handleWaterTreatmentDetailsChange}
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isSecuritySystem && securitySystemDetails ? (
+          <SecuritySystemDisplayView
+            state={state}
+            details={securitySystemDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleSecuritySystemDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isRadonMitigation && radonMitigationDetails ? (
+          <RadonMitigationDisplayView
+            state={state}
+            details={radonMitigationDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleRadonMitigationDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isWellPump && wellPumpDetails ? (
+          <WellPumpDisplayView
+            state={state}
+            details={wellPumpDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleWellPumpDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isGenerator && generatorDetails ? (
+          <GeneratorDisplayView
+            state={state}
+            details={generatorDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleGeneratorDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isSumpPump && sumpPumpDetails ? (
+          <SumpPumpDisplayView
+            state={state}
+            details={sumpPumpDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleSumpPumpDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isGarageDoor && garageDoorDetails ? (
+          <GarageDoorDisplayView
+            state={state}
+            details={garageDoorDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleGarageDoorDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isRoof && roofDetails ? (
+          <RoofDisplayView
+            state={state}
+            details={roofDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleRoofDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isPool && poolDetails ? (
+          <PoolDisplayView
+            state={state}
+            details={poolDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handlePoolDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isIrrigation && irrigationDetails ? (
+          <IrrigationDisplayView
+            state={state}
+            details={irrigationDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleIrrigationDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isEvCharger && evChargerDetails ? (
+          <EvChargerDisplayView
+            state={state}
+            details={evChargerDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleEvChargerDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isSolar && solarDetails ? (
+          <SolarDisplayView
+            state={state}
+            details={solarDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleSolarDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+          />
+        ) : isHotTub && hotTubDetails ? (
+          <HotTubDisplayView
+            state={state}
+            details={hotTubDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleHotTubDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         ) : (
           <ItemDisplayView
@@ -842,6 +1207,7 @@ export function ItemDetailScreen(props: {
             onAddDocuments={handleAddDocuments}
             extraDocumentRows={extraDocumentRows}
             onDeletePhoto={removePhoto}
+            onReorderPhoto={reorderPhoto}
             onPhotoCaptionChange={handlePhotoCaptionChange}
             onPhotoFavoriteChange={handlePhotoFavoriteChange}
             onDetailsChange={handleDetailsChange}
@@ -849,6 +1215,7 @@ export function ItemDetailScreen(props: {
               inv.itemTypeId === 'other' ? handleDisplayNameChange : undefined
             }
             photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
           />
         )}
 
@@ -860,6 +1227,7 @@ export function ItemDetailScreen(props: {
           serviceSections
         )}
         </ScrollView>
+        {keyboardDone.accessory}
       </KeyboardAvoidingView>
 
       <Modal
@@ -894,6 +1262,65 @@ export function ItemDetailScreen(props: {
               </Text>
             </View>
             <Pressable
+              onPress={() =>
+                runMenuAction(() => setShowReorderArrows((prev) => !prev))
+              }
+              accessibilityRole="button"
+              accessibilityLabel={
+                showReorderArrows ? 'Reorder Photo: On' : 'Reorder Photo: Off'
+              }
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                {showReorderArrows ? 'Reorder Photo: On' : 'Reorder Photo: Off'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!textScaleControls.canMakeLarger) return;
+                textScaleControls.makeLarger();
+              }}
+              disabled={!textScaleControls.canMakeLarger}
+              accessibilityRole="button"
+              accessibilityLabel="Text larger"
+              accessibilityState={{ disabled: !textScaleControls.canMakeLarger }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: !textScaleControls.canMakeLarger ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Text larger
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!textScaleControls.canMakeSmaller) return;
+                textScaleControls.makeSmaller();
+              }}
+              disabled={!textScaleControls.canMakeSmaller}
+              accessibilityRole="button"
+              accessibilityLabel="Text smaller"
+              accessibilityState={{ disabled: !textScaleControls.canMakeSmaller }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: !textScaleControls.canMakeSmaller ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Text smaller
+              </Text>
+            </Pressable>
+            <Pressable
               onPress={() => runMenuAction(confirmDeleteItem)}
               accessibilityRole="button"
               accessibilityLabel="Delete asset"
@@ -916,11 +1343,25 @@ export function ItemDetailScreen(props: {
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+              <Text style={sharedStyles.secondaryBtnText}>Done</Text>
             </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
+
+      {propertyId ? propertyGearCreateModals : null}
+
+      <SharePhotoModeModal
+        visible={shareOptionsOpen}
+        title="Share asset"
+        photoMode={sharePhotoMode}
+        onChangePhotoMode={setSharePhotoMode}
+        showPhotoMode={itemHasFavoritePhotos}
+        shareFormat={shareFormat}
+        onChangeShareFormat={setShareFormat}
+        onShare={() => void runItemExport(sharePhotoMode, shareFormat)}
+        onClose={() => setShareOptionsOpen(false)}
+      />
 
       {exportSnapshot ? (
         <View
@@ -957,6 +1398,7 @@ export function ItemDetailScreen(props: {
           <ActivityIndicator size="large" color="#fff" />
         </View>
       ) : null}
+      </KeyboardDoneTextInputContext.Provider>
     </ItemDetailScrollContext.Provider>
   );
 }

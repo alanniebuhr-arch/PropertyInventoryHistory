@@ -43,6 +43,21 @@ export function InternetAccountFields(props: {
   );
 }
 
+export function InternetNotesFields(props: {
+  details: InternetDetails;
+  onChange: (d: InternetDetails) => void;
+}) {
+  const { details, onChange } = props;
+  return (
+    <FormField
+      label="Notes"
+      value={details.notes ?? ''}
+      onChangeText={(notes) => onChange({ ...details, notes })}
+      multiline
+    />
+  );
+}
+
 export function InternetForm(props: {
   details: InternetDetails;
   onChange: (d: InternetDetails) => void;
@@ -52,6 +67,7 @@ export function InternetForm(props: {
     <>
       <InternetServiceFields details={details} onChange={onChange} />
       <InternetAccountFields details={details} onChange={onChange} />
+      <InternetNotesFields details={details} onChange={onChange} />
     </>
   );
 }

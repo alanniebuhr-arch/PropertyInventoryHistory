@@ -2,6 +2,13 @@ import type { AppState, ProjectVendor, VendorPhoto } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
 import { uid, nowISO } from './utils';
 
+/** Stable caption marking the reserved Vendor image slot. */
+export const VENDOR_IMAGE_CAPTION = 'vendor_image';
+
+export function isVendorImagePhoto(photo: Pick<VendorPhoto, 'caption'>): boolean {
+  return photo.caption?.trim() === VENDOR_IMAGE_CAPTION;
+}
+
 export function photosForVendor(state: AppState, vendorId: string): VendorPhoto[] {
   const vendor = state.projectVendors.find((v) => v.id === vendorId);
   if (!vendor) return [];
@@ -10,8 +17,60 @@ export function photosForVendor(state: AppState, vendorId: string): VendorPhoto[
     .filter((p): p is VendorPhoto => p != null);
 }
 
+export function vendorImagePhoto(state: AppState, vendorId: string): VendorPhoto | undefined {
+  return photosForVendor(state, vendorId).find(isVendorImagePhoto);
+}
+
+export function extraPhotosForVendor(state: AppState, vendorId: string): VendorPhoto[] {
+  return photosForVendor(state, vendorId).filter((photo) => !isVendorImagePhoto(photo));
+}
+
+export function vendorPhotoDisplayLabel(photo: Pick<VendorPhoto, 'caption'>): string {
+  if (isVendorImagePhoto(photo)) return 'Vendor image';
+  return photo.caption?.trim() || 'Photo';
+}
+
 export function firstPhotoUriForVendor(state: AppState, vendor: ProjectVendor): string | undefined {
-  return photosForVendor(state, vendor.id)[0]?.localUri;
+  const photos = photosForVendor(state, vendor.id);
+  return (photos.find(isVendorImagePhoto) ?? photos[0])?.localUri;
+}
+
+export async function setVendorImagePhoto(
+  state: AppState,
+  vendorId: string,
+  sourceUri: string
+): Promise<AppState> {
+  const vendor = state.projectVendors.find((v) => v.id === vendorId);
+  if (!vendor) return state;
+
+  let nextState = state;
+  const existing = vendorImagePhoto(nextState, vendorId);
+  if (existing) {
+    nextState = await removeVendorPhoto(nextState, vendorId, existing.id);
+  }
+
+  const photoId = uid('photo');
+  const localUri = await persistPhotoFromUri(sourceUri, photoId);
+  const newPhoto: VendorPhoto = {
+    id: photoId,
+    vendorId,
+    localUri,
+    caption: VENDOR_IMAGE_CAPTION,
+    createdAtISO: nowISO(),
+  };
+
+  const currentVendor = nextState.projectVendors.find((v) => v.id === vendorId);
+  if (!currentVendor) return nextState;
+
+  return {
+    ...nextState,
+    vendorPhotos: [...nextState.vendorPhotos, newPhoto],
+    projectVendors: nextState.projectVendors.map((v) =>
+      v.id === vendorId
+        ? { ...v, photoIds: [photoId, ...v.photoIds.filter((id) => id !== photoId)] }
+        : v
+    ),
+  };
 }
 
 export async function addVendorPhotos(

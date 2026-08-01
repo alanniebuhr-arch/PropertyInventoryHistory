@@ -57,5 +57,10 @@ export function stampChangedRecords(prev: AppState, next: AppState, now: string)
     vendorPhotos: stampCollection(prev.vendorPhotos, next.vendorPhotos, now),
     vendorInteractions: stampCollection(prev.vendorInteractions, next.vendorInteractions, now),
     propertyTodos: stampCollection(prev.propertyTodos ?? [], next.propertyTodos ?? [], now),
+    projectPunchItems: stampCollection(
+      prev.projectPunchItems ?? [],
+      next.projectPunchItems ?? [],
+      now
+    ),
   };
 }

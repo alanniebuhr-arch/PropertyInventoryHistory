@@ -8,6 +8,7 @@ export const VENDOR_STATUS_OPTIONS: { id: VendorStatus; label: string }[] = [
   { id: 'vendor_onsite', label: 'Vendor onsite' },
   { id: 'waiting_for_quote', label: 'Waiting for quote' },
   { id: 'quote_received', label: 'Quote received' },
+  { id: 'accepted', label: 'Accepted' },
   { id: 'rejected', label: 'Rejected' },
 ];
 
@@ -21,6 +22,7 @@ export function vendorStatusColor(status: VendorStatus): string {
     case 'meeting_setup':
       return colors.dueSoon;
     case 'quote_received':
+    case 'accepted':
       return colors.lastService;
     case 'rejected':
       return colors.overdue;

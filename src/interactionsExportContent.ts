@@ -3,12 +3,13 @@ import {
   photosForVendorInteraction,
   projectById,
   propertyById,
+  propertyIdForInteraction,
   vendorById,
 } from './storage';
 import { vendorContactMethodLabel } from './vendorContactMethod';
-import { formatDate, nowISO } from './utils';
+import { formatDate, formatDisplayDate, nowISO } from './utils';
 
-export type InteractionsExportPhoto = { uri: string; label: string };
+export type InteractionsExportPhoto = { uri: string; label: string; notes?: string };
 export type InteractionsExportEntry = {
   title: string;
   lines: string[];
@@ -40,28 +41,28 @@ export function buildInteractionsExportSnapshot(args: {
     .filter(Boolean);
 
   const entries = interactions.flatMap((interaction) => {
-    const vendor = vendorById(state, interaction.vendorId);
-    if (!vendor) return [];
-
-    const vendorProject = projectById(state, vendor.projectId);
-    const property = vendorProject
-      ? propertyById(state, vendorProject.propertyId)
-      : undefined;
+    const vendor = interaction.vendorId ? vendorById(state, interaction.vendorId) : undefined;
+    const vendorProject = vendor ? projectById(state, vendor.projectId) : undefined;
+    const propertyId = propertyIdForInteraction(state, interaction);
+    const property = propertyId ? propertyById(state, propertyId) : undefined;
+    if (!vendor && !property) return [];
 
     const lines = [
-      vendor.name,
+      vendor?.name || undefined,
       interaction.contactName?.trim() || undefined,
       vendorProject?.name && property?.name !== scopeTitle ? vendorProject.name : undefined,
+      !vendor && property?.name && property.name !== scopeTitle ? property.name : undefined,
       interaction.notes?.trim() || undefined,
     ].filter((line): line is string => Boolean(line));
 
     return [
       {
-        title: `${formatDate(interaction.occurredAtISO)} · ${vendorContactMethodLabel(interaction.contactMethod)}`,
+        title: `${interaction.important === true ? '★ ' : ''}${formatDisplayDate(interaction.occurredAtISO)} · ${vendorContactMethodLabel(interaction.contactMethod)}`,
         lines,
         photos: photosForVendorInteraction(state, interaction.id).map((photo) => ({
           uri: photo.localUri,
           label: photo.caption?.trim() || 'Photo',
+          notes: photo.notes?.trim() || undefined,
         })),
       },
     ];

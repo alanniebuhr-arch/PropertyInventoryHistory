@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../textScale';
 import { colors } from '../theme';
 
-export function SectionHelpTip(props: { children: string }) {
+export function SectionHelpTip(props: { children: ReactNode }) {
   return (
     <View
       style={{

@@ -33,8 +33,14 @@ export function ElectricPanelForm(props: {
         onChangeText={(locationNotes) => onChange({ ...details, locationNotes })}
         multiline
       />
+      <FormField
+        label="Notes"
+        value={details.notes ?? ''}
+        onChangeText={(notes) => onChange({ ...details, notes })}
+        multiline
+      />
       <DateFormField
-        label="Last inspected (MM/DD/YYYY)"
+        label="Last inspected"
         value={details.lastInspectedAtISO}
         parseStored={parseDateInputToISO}
         onChangeStored={(lastInspectedAtISO) =>

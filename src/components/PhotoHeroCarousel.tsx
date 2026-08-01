@@ -17,8 +17,17 @@ export function PhotoHeroCarousel(props: {
   onOpenViewer: () => void;
   /** Where to show page indicator dots. Default: below the image. */
   dotsPosition?: 'above' | 'below';
+  /** How the hero image fills its frame. Default: cover (may crop). */
+  resizeMode?: 'cover' | 'contain';
 }) {
-  const { photos, activeId, onActiveIdChange, onOpenViewer, dotsPosition = 'below' } = props;
+  const {
+    photos,
+    activeId,
+    onActiveIdChange,
+    onOpenViewer,
+    dotsPosition = 'below',
+    resizeMode = 'cover',
+  } = props;
   const { width: windowWidth } = useWindowDimensions();
   const heroScrollRef = useRef<ScrollView>(null);
   const skipNextHeroScroll = useRef(false);
@@ -175,7 +184,7 @@ export function PhotoHeroCarousel(props: {
                 borderRadius: 12,
                 backgroundColor: colors.photoPlaceholder,
               }}
-              resizeMode="cover"
+              resizeMode={resizeMode}
             />
           </Pressable>
         ))}

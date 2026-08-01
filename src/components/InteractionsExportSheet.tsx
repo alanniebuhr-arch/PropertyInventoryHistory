@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
 import type { InteractionsExportSnapshot } from '../interactionsExportContent';
+import { ExportPhotoGrid, ExportPhotoNoteText } from './ExportPhotoLayout';
 
 export const INTERACTIONS_EXPORT_WIDTH = 390;
 const EXPORT_INTERACTION_THUMB_SIZE = 72;
@@ -11,42 +12,7 @@ const exportColors = {
   text: '#1a1814',
   muted: '#6b6560',
   border: '#d4cfc6',
-  section: '#2c2824',
 };
-
-function ExportPhotoGrid(props: { photos: { uri: string; label: string }[] }) {
-  const { photos } = props;
-  if (photos.length === 0) return null;
-
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-      {photos.map((photo, index) => (
-        <View key={`${photo.uri}-${index}`} style={{ width: EXPORT_PHOTO_SIZE, alignItems: 'center' }}>
-          <Image
-            source={{ uri: photo.uri }}
-            style={{
-              width: EXPORT_PHOTO_SIZE,
-              height: EXPORT_PHOTO_SIZE,
-              borderRadius: 8,
-              backgroundColor: exportColors.border,
-            }}
-          />
-          <Text
-            style={{
-              fontSize: 11,
-              color: exportColors.muted,
-              marginTop: 4,
-              textAlign: 'center',
-            }}
-            numberOfLines={2}
-          >
-            {photo.label}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
 
 export function InteractionsExportSheet(props: { snapshot: InteractionsExportSnapshot }) {
   const { snapshot } = props;
@@ -121,9 +87,18 @@ export function InteractionsExportSheet(props: { snapshot: InteractionsExportSna
                         {line}
                       </Text>
                     ))}
+                    <ExportPhotoNoteText notes={firstPhoto?.notes} color={exportColors.text} />
                   </View>
                 </View>
-                {morePhotos.length > 0 ? <ExportPhotoGrid photos={morePhotos} /> : null}
+                {morePhotos.length > 0 ? (
+                  <ExportPhotoGrid
+                    photos={morePhotos}
+                    photoSize={EXPORT_PHOTO_SIZE}
+                    mutedColor={exportColors.muted}
+                    borderColor={exportColors.border}
+                    textColor={exportColors.text}
+                  />
+                ) : null}
               </View>
             );
           })}

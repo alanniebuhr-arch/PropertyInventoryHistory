@@ -1,7 +1,24 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { InputAccessoryView, Keyboard, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  InputAccessoryView,
+  Keyboard,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  type NativeSyntheticEvent,
+  type TextInputFocusEventData,
+} from 'react-native';
 import { Text } from '../textScale';
 import { colors } from '../theme';
+
+type FocusEvent = NativeSyntheticEvent<TextInputFocusEventData>;
+
+export type KeyboardDoneTextInputExtra = {
+  onFocus?: (e: FocusEvent) => void;
+  onBlur?: (e: FocusEvent) => void;
+};
 
 function sanitizeAccessoryId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_]/g, '_');
@@ -21,6 +38,32 @@ function DoneAccessoryBar(props: { onPress: () => void; label?: string }) {
       </Pressable>
     </View>
   );
+}
+
+type KeyboardDoneContextValue = {
+  getTextInputProps: (extra?: KeyboardDoneTextInputExtra) => {
+    inputAccessoryViewID?: string;
+    onFocus: (e: FocusEvent) => void;
+    onBlur: (e: FocusEvent) => void;
+  };
+};
+
+export const KeyboardDoneTextInputContext = React.createContext<KeyboardDoneContextValue | null>(
+  null
+);
+
+/** Merge Enter-dismiss handlers with a field's own focus/blur logic. */
+export function useOptionalKeyboardDoneTextInputProps(extra?: KeyboardDoneTextInputExtra) {
+  const ctx = useContext(KeyboardDoneTextInputContext);
+  return useMemo(() => {
+    if (!ctx) {
+      return {
+        onFocus: extra?.onFocus,
+        onBlur: extra?.onBlur,
+      };
+    }
+    return ctx.getTextInputProps(extra);
+  }, [ctx, extra?.onFocus, extra?.onBlur]);
 }
 
 /**
@@ -100,12 +143,25 @@ export function useKeyboardDoneAccessory(options?: {
     onDoneRef.current?.();
   }, []);
 
-  const textInputProps = {
-    inputAccessoryViewID:
-      !useOverlay && Platform.OS === 'ios' ? accessoryNativeId : undefined,
-    onFocus: showBar,
-    onBlur: scheduleHideBar,
-  };
+  const getTextInputProps = useCallback(
+    (extra?: KeyboardDoneTextInputExtra) => ({
+      inputAccessoryViewID:
+        !useOverlay && Platform.OS === 'ios' ? accessoryNativeId : undefined,
+      onFocus: (e: FocusEvent) => {
+        showBar();
+        extra?.onFocus?.(e);
+      },
+      onBlur: (e: FocusEvent) => {
+        scheduleHideBar();
+        extra?.onBlur?.(e);
+      },
+    }),
+    [accessoryNativeId, scheduleHideBar, showBar, useOverlay]
+  );
+
+  const textInputProps = useMemo(() => getTextInputProps(), [getTextInputProps]);
+
+  const contextValue = useMemo(() => ({ getTextInputProps }), [getTextInputProps]);
 
   const overlayBar =
     barVisible && keyboardHeight > 0 ? (
@@ -140,7 +196,14 @@ export function useKeyboardDoneAccessory(options?: {
     </>
   );
 
-  return { textInputProps, accessory, dismiss, accessoryNativeId };
+  return {
+    textInputProps,
+    getTextInputProps,
+    contextValue,
+    accessory,
+    dismiss,
+    accessoryNativeId,
+  };
 }
 
 const styles = StyleSheet.create({

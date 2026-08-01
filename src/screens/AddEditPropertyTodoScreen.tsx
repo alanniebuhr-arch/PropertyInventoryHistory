@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,6 +11,7 @@ import {
   Switch,
   View,
 } from 'react-native';
+import type { ScrollView as RNScrollView, TextInput as RNTextInput } from 'react-native';
 import { Text, TextInput } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -16,15 +19,18 @@ import type { AppState, PropertyPhoto, PropertyTodo } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { InteractionPhotoSection } from '../components/InteractionPhotoSection';
 import { DetailDisplayRow } from '../components/DetailDisplayRow';
+import { DateInputField } from '../components/DateInputField';
 import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
 import { sharedStyles, colors } from '../theme';
 import {
+  dateInputPlaceholder,
   dateInputValue,
-  formatDate,
+  formatDisplayDate,
   nowISO,
   parseDateInputToISO,
   uid,
 } from '../utils';
+import { applyTodoDoneToggle } from '../eventRecurrence';
 import {
   deletePropertyTodoCascade,
   photosForPropertyTodo,
@@ -32,6 +38,14 @@ import {
   propertyTodoById,
 } from '../storage';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { reorderItemsById, type PhotoReorderDirection } from '../photoReorder';
+
+const REPEAT_MONTH_OPTIONS = [
+  { months: 1, label: '1 Month' },
+  { months: 3, label: '3 Month' },
+  { months: 6, label: '6 Month' },
+  { months: 12, label: '1 Year' },
+] as const;
 
 const headerIconBtn = {
   width: 42,
@@ -68,14 +82,81 @@ export function AddEditPropertyTodoScreen(props: {
   );
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [done, setDone] = useState(existing?.done ?? false);
+  const [repeatMonths, setRepeatMonths] = useState<number | undefined>(
+    () => existing?.repeatMonths
+  );
   const [todoPhotos, setTodoPhotos] = useState<PropertyPhoto[]>(() =>
     existing ? photosForPropertyTodo(state, existing.id) : []
   );
+  const scrollRef = useRef<RNScrollView>(null);
+  const scrollYRef = useRef(0);
+  const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
+  const notesInputRef = useRef<RNTextInput>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'propertyTodoNotesDone',
-    label: 'Done',
+    label: 'Enter',
+    variant: 'overlay',
   });
+
+  const scrollFieldIntoView = useCallback(
+    (windowY: number, height: number, kbHeight: number) => {
+      const visibleBottom = Dimensions.get('window').height - kbHeight - insets.bottom - 24;
+      const fieldBottom = windowY + height;
+      if (fieldBottom > visibleBottom) {
+        scrollRef.current?.scrollTo({
+          y: scrollYRef.current + (fieldBottom - visibleBottom),
+          animated: true,
+        });
+      }
+    },
+    [insets.bottom]
+  );
+
+  const handleFieldFocus = useCallback(
+    (windowY: number, height: number) => {
+      pendingFocusRef.current = { y: windowY, height };
+      scrollFieldIntoView(windowY, height, keyboardHeight || 320);
+    },
+    [keyboardHeight, scrollFieldIntoView]
+  );
+
+  const measureAndScroll = useCallback(
+    (input: RNTextInput | null) => {
+      requestAnimationFrame(() => {
+        input?.measureInWindow((_x: number, y: number, _w: number, height: number) => {
+          handleFieldFocus(y, height);
+        });
+      });
+    },
+    [handleFieldFocus]
+  );
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        const kbHeight = e.endCoordinates.height;
+        setKeyboardHeight(kbHeight);
+        const pending = pendingFocusRef.current;
+        if (pending) {
+          scrollFieldIntoView(pending.y, pending.height, kbHeight);
+        }
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+        pendingFocusRef.current = null;
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scrollFieldIntoView]);
 
   // Seed drafts when the to-do record becomes available (e.g. after Create → open).
   // startEditing can be true on first paint before `existing` exists in state.
@@ -85,6 +166,7 @@ export function AddEditPropertyTodoScreen(props: {
     setDueStr(existing.dueAtISO ? dateInputValue(existing.dueAtISO) : '');
     setNotes(existing.notes ?? '');
     setDone(existing.done);
+    setRepeatMonths(existing.repeatMonths);
     setTodoPhotos(photosForPropertyTodo(state, existing.id));
   }, [existing?.id]);
 
@@ -95,6 +177,7 @@ export function AddEditPropertyTodoScreen(props: {
     setDueStr(existing.dueAtISO ? dateInputValue(existing.dueAtISO) : '');
     setNotes(existing.notes ?? '');
     setDone(existing.done);
+    setRepeatMonths(existing.repeatMonths);
     setTodoPhotos(photosForPropertyTodo(state, existing.id));
   }, [
     existing?.id,
@@ -102,6 +185,7 @@ export function AddEditPropertyTodoScreen(props: {
     existing?.dueAtISO,
     existing?.notes,
     existing?.done,
+    existing?.repeatMonths,
     existing?.photoIds,
     isEditing,
     state,
@@ -130,6 +214,7 @@ export function AddEditPropertyTodoScreen(props: {
     dueStr.trim() !== savedDueStr ||
     notes.trim() !== (todo.notes ?? '') ||
     done !== todo.done ||
+    (repeatMonths ?? undefined) !== (todo.repeatMonths ?? undefined) ||
     draftPhotoIds !== savedPhotoIds ||
     todoPhotos.some((photo) => {
       const saved = state.propertyPhotos.find((p) => p.id === photo.id);
@@ -145,6 +230,7 @@ export function AddEditPropertyTodoScreen(props: {
     setDueStr(todo.dueAtISO ? dateInputValue(todo.dueAtISO) : '');
     setNotes(todo.notes ?? '');
     setDone(todo.done);
+    setRepeatMonths(todo.repeatMonths);
     setTodoPhotos(photosForPropertyTodo(state, todo.id));
   }
 
@@ -190,7 +276,36 @@ export function AddEditPropertyTodoScreen(props: {
         };
       })
     );
-    setTodoPhotos((prev) => [...prev, ...newPhotos]);
+    const nextPhotos = [...todoPhotos, ...newPhotos];
+    setTodoPhotos(nextPhotos);
+    // View mode: persist immediately (edit mode keeps draft until Save).
+    if (!isEditing) {
+      const photoIds = nextPhotos.map((p) => p.id);
+      const removedPhotoIds = new Set(
+        photosForPropertyTodo(state, todo.id)
+          .map((p) => p.id)
+          .filter((id) => !photoIds.includes(id))
+      );
+      const updatedPhotos = nextPhotos.map((p) => ({
+        ...p,
+        todoId: todo.id,
+      }));
+      const keptPhotos = state.propertyPhotos.filter(
+        (p) => p.todoId !== todo.id || !removedPhotoIds.has(p.id)
+      );
+      const brandNew = updatedPhotos.filter((p) => !state.propertyPhotos.some((x) => x.id === p.id));
+      const mergedPhotos = keptPhotos.map((p) => {
+        if (p.todoId !== todo.id) return p;
+        return updatedPhotos.find((d) => d.id === p.id) ?? p;
+      });
+      onSave({
+        ...state,
+        propertyTodos: state.propertyTodos.map((t) =>
+          t.id === todo.id ? { ...t, photoIds } : t
+        ),
+        propertyPhotos: [...mergedPhotos, ...brandNew],
+      });
+    }
     return newPhotos.map((photo) => photo.id);
   }
 
@@ -216,6 +331,19 @@ export function AddEditPropertyTodoScreen(props: {
     setTodoPhotos((prev) => prev.filter((p) => p.id !== photoId));
   }
 
+  function reorderTodoPhoto(photoId: string, direction: PhotoReorderDirection) {
+    setTodoPhotos((prev) => reorderItemsById(prev, photoId, direction));
+  }
+
+  function handleDoneChange(wantDone: boolean) {
+    if (!wantDone) {
+      setDone(false);
+      setRepeatMonths(undefined);
+      return;
+    }
+    setDone(true);
+  }
+
   function saveTodo(): boolean {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
@@ -223,19 +351,37 @@ export function AddEditPropertyTodoScreen(props: {
       return false;
     }
 
+    const effectiveRepeat = isIdea ? undefined : repeatMonths;
     const trimmedDue = dueStr.trim();
     let dueAtISO: string | undefined;
     if (trimmedDue) {
       dueAtISO = parseDateInputToISO(trimmedDue);
       if (!dueAtISO) {
-        Alert.alert('Invalid date', 'Enter a due date as MM/DD/YYYY, or leave it blank.');
+        Alert.alert(
+          'Invalid date',
+          `Enter a due date as ${dateInputPlaceholder()}, or leave it blank.`
+        );
         return false;
       }
+    }
+    if (effectiveRepeat != null && effectiveRepeat >= 1 && !dueAtISO) {
+      Alert.alert('Due date required', 'Set a due date when Repeat is enabled.');
+      return false;
     }
 
     const trimmedNotes = notes.trim();
     const photoIds = todoPhotos.map((p) => p.id);
-    const completedAtISO = done ? todo.completedAtISO ?? nowISO() : undefined;
+
+    const draftForDone: PropertyTodo = {
+      ...todo,
+      title: trimmedTitle,
+      dueAtISO,
+      repeatMonths: effectiveRepeat,
+      notes: trimmedNotes || undefined,
+      done,
+      photoIds,
+    };
+    const afterDone = applyTodoDoneToggle(draftForDone, done, nowISO());
 
     const removedPhotoIds = new Set(
       photosForPropertyTodo(state, todo.id)
@@ -256,14 +402,18 @@ export function AddEditPropertyTodoScreen(props: {
     });
 
     const updated: PropertyTodo = {
-      ...todo,
+      ...afterDone,
       title: trimmedTitle,
-      dueAtISO,
       notes: trimmedNotes || undefined,
-      done,
-      completedAtISO,
+      repeatMonths: effectiveRepeat,
       photoIds,
     };
+    // Sync local draft if roll-forward happened on save.
+    if (updated.dueAtISO !== dueAtISO || updated.done !== done) {
+      setDueStr(updated.dueAtISO ? dateInputValue(updated.dueAtISO) : '');
+      setDone(updated.done);
+    }
+
     onSave({
       ...state,
       propertyTodos: state.propertyTodos.map((t) => (t.id === todo.id ? updated : t)),
@@ -297,7 +447,6 @@ export function AddEditPropertyTodoScreen(props: {
     ]);
   }
 
-  const parsedDue = dueStr.trim() ? parseDateInputToISO(dueStr) : undefined;
   const headerLabel = isEditing && isDirty ? '← Cancel' : '← Back';
 
   return (
@@ -361,14 +510,25 @@ export function AddEditPropertyTodoScreen(props: {
       </ScreenBackHeader>
 
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={[sharedStyles.content, { paddingTop: 0, paddingBottom: 120 }]}
+        contentContainerStyle={[
+          sharedStyles.content,
+          {
+            paddingTop: 0,
+            paddingBottom: keyboardHeight > 0 ? keyboardHeight + 24 : 120,
+          },
+        ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
+        onScroll={(e) => {
+          scrollYRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         <InteractionPhotoSection
           photos={todoPhotos}
-          onAddPhotos={isEditing ? addTodoPhotos : undefined}
+          onAddPhotos={addTodoPhotos}
           onDeletePhoto={
             isEditing
               ? (photoId) => {
@@ -376,6 +536,7 @@ export function AddEditPropertyTodoScreen(props: {
                 }
               : undefined
           }
+          onReorderPhoto={isEditing ? reorderTodoPhoto : undefined}
           onLabelPhoto={isEditing ? handleTodoPhotoLabel : undefined}
           hint={isEditing ? `Attach photos related to this ${noun}.` : undefined}
         >
@@ -395,44 +556,103 @@ export function AddEditPropertyTodoScreen(props: {
               {...keyboardDone.textInputProps}
             />
 
-            <Text style={sharedStyles.fieldLabel}>Due date</Text>
-            <TextInput
-              style={sharedStyles.input}
+            <DateInputField
+              label="Due date"
               value={dueStr}
               onChangeText={setDueStr}
-              placeholder="MM/DD/YYYY (optional)"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="numbers-and-punctuation"
-              {...keyboardDone.textInputProps}
+              optional={!(repeatMonths != null && repeatMonths >= 1)}
             />
-            {parsedDue ? (
-              <Text style={[sharedStyles.cardMeta, { marginTop: 4 }]}>{formatDate(parsedDue)}</Text>
-            ) : null}
 
             {isIdea ? null : (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginTop: 12,
-                  marginBottom: 4,
-                }}
-              >
-                <Text style={[sharedStyles.fieldLabel, { marginBottom: 0 }]}>Done</Text>
-                <Switch value={done} onValueChange={setDone} />
-              </View>
+              <>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: 4,
+                    marginBottom: 4,
+                  }}
+                >
+                  <Text style={[sharedStyles.fieldLabel, { marginBottom: 0 }]}>Done</Text>
+                  <Switch value={done} onValueChange={handleDoneChange} />
+                </View>
+
+                {done ? (
+                  <>
+                    <Text style={[sharedStyles.fieldLabel, { marginTop: 8 }]}>Repeat</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                      <Pressable
+                        onPress={() => setRepeatMonths(undefined)}
+                        accessibilityState={{ selected: repeatMonths == null }}
+                        style={[
+                          sharedStyles.secondaryBtn,
+                          { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
+                          repeatMonths == null && {
+                            borderColor: colors.primary,
+                            backgroundColor: colors.upcomingCardBg,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            sharedStyles.secondaryBtnText,
+                            repeatMonths == null && { fontWeight: '700' },
+                          ]}
+                        >
+                          Off
+                        </Text>
+                      </Pressable>
+                      {REPEAT_MONTH_OPTIONS.map((opt) => {
+                        const selected = repeatMonths === opt.months;
+                        return (
+                          <Pressable
+                            key={opt.months}
+                            onPress={() => setRepeatMonths(opt.months)}
+                            accessibilityState={{ selected }}
+                            style={[
+                              sharedStyles.secondaryBtn,
+                              { marginTop: 0, paddingVertical: 8, paddingHorizontal: 12 },
+                              selected && {
+                                borderColor: colors.primary,
+                                backgroundColor: colors.upcomingCardBg,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                sharedStyles.secondaryBtnText,
+                                selected && { fontWeight: '700' },
+                              ]}
+                            >
+                              {opt.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {repeatMonths != null ? (
+                      <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
+                        Saving advances the due date by this interval and keeps the to-do open.
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </>
             )}
 
             <Text style={sharedStyles.fieldLabel}>Notes</Text>
             <TextInput
+              ref={notesInputRef}
               style={[sharedStyles.input, sharedStyles.inputMultiline, { minHeight: 120 }]}
               value={notes}
               onChangeText={setNotes}
               placeholder="Details, location, or reminders"
               placeholderTextColor={colors.textMuted}
               multiline
-              {...keyboardDone.textInputProps}
+              {...keyboardDone.getTextInputProps({
+                onFocus: () => measureAndScroll(notesInputRef.current),
+              })}
             />
           </>
         ) : (
@@ -440,10 +660,30 @@ export function AddEditPropertyTodoScreen(props: {
             <DetailDisplayRow label="Title" value={todo.title} />
             <DetailDisplayRow
               label="Due date"
-              value={todo.dueAtISO ? formatDate(todo.dueAtISO) : undefined}
+              value={todo.dueAtISO ? formatDisplayDate(todo.dueAtISO) : undefined}
             />
             {isIdea ? null : (
-              <DetailDisplayRow label="Done" value={todo.done ? 'Yes' : 'No'} />
+              <>
+                <DetailDisplayRow label="Done" value={todo.done ? 'Yes' : 'No'} />
+                {todo.done || todo.repeatMonths != null ? (
+                  <DetailDisplayRow
+                    label="Repeat"
+                    value={
+                      todo.repeatMonths === 1
+                        ? 'Every month'
+                        : todo.repeatMonths === 3
+                          ? 'Every 3 months'
+                          : todo.repeatMonths === 6
+                            ? 'Every 6 months'
+                            : todo.repeatMonths === 12
+                              ? 'Every year'
+                              : todo.repeatMonths
+                                ? `Every ${todo.repeatMonths} months`
+                                : 'Off'
+                    }
+                  />
+                ) : null}
+              </>
             )}
             <DetailDisplayRow label="Notes" value={todo.notes} stacked />
           </View>

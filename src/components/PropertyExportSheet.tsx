@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
 import type { PropertyExportListItem, PropertyExportSnapshot } from '../propertyExportContent';
+import { ExportPhotoGrid } from './ExportPhotoLayout';
 
 export const PROPERTY_EXPORT_WIDTH = 390;
 const EXPORT_LIST_THUMB_SIZE = 72;
@@ -13,40 +14,6 @@ const exportColors = {
   border: '#d4cfc6',
   section: '#2c2824',
 };
-
-function ExportPhotoGrid(props: { photos: { uri: string; label: string }[] }) {
-  const { photos } = props;
-  if (photos.length === 0) return null;
-
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-      {photos.map((photo, index) => (
-        <View key={`${photo.uri}-${index}`} style={{ width: EXPORT_PHOTO_SIZE, alignItems: 'center' }}>
-          <Image
-            source={{ uri: photo.uri }}
-            style={{
-              width: EXPORT_PHOTO_SIZE,
-              height: EXPORT_PHOTO_SIZE,
-              borderRadius: 8,
-              backgroundColor: exportColors.border,
-            }}
-          />
-          <Text
-            style={{
-              fontSize: 11,
-              color: exportColors.muted,
-              marginTop: 4,
-              textAlign: 'center',
-            }}
-            numberOfLines={2}
-          >
-            {photo.label}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
 
 function ExportListSection(props: {
   title: string;
@@ -158,13 +125,21 @@ export function PropertyExportSheet(props: { snapshot: PropertyExportSnapshot })
           >
             Favorite photos
           </Text>
-          <ExportPhotoGrid photos={snapshot.photos} />
+          <ExportPhotoGrid
+            photos={snapshot.photos}
+            photoSize={EXPORT_PHOTO_SIZE}
+            mutedColor={exportColors.muted}
+            borderColor={exportColors.border}
+            textColor={exportColors.text}
+          />
         </View>
       ) : null}
 
-      <ExportListSection title="Service schedule" items={snapshot.services} />
+      <ExportListSection title="Reminders" items={snapshot.services} />
       <ExportListSection title="Rooms" items={snapshot.rooms} />
       <ExportListSection title="Projects" items={snapshot.projects} />
+      <ExportListSection title="To do" items={snapshot.todos} />
+      <ExportListSection title="Ideas" items={snapshot.ideas} />
 
       <Text style={{ fontSize: 12, color: exportColors.muted, marginTop: 24, textAlign: 'center' }}>
         {snapshot.exportedAtLabel}

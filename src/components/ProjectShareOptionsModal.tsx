@@ -8,15 +8,38 @@ import {
   type ProjectExportInclude,
   type ProjectExportSectionKey,
 } from '../projectExportContent';
+import type { ShareFormat } from '../shareFormat';
+import type { SharePhotoMode } from '../sharePhotoMode';
+import { ShareFormatOptions } from './ShareFormatOptions';
+import { SharePhotoModeOptions } from './SharePhotoModeOptions';
 
 export function ProjectShareOptionsModal(props: {
   visible: boolean;
+  projectName: string;
   include: ProjectExportInclude;
   onChangeInclude: (next: ProjectExportInclude) => void;
+  photoMode: SharePhotoMode;
+  onChangePhotoMode: (mode: SharePhotoMode) => void;
+  /** When Photos is on and the project gallery has at least one favorite. */
+  showPhotoMode: boolean;
+  shareFormat: ShareFormat;
+  onChangeShareFormat: (format: ShareFormat) => void;
   onShare: () => void;
   onClose: () => void;
 }) {
-  const { visible, include, onChangeInclude, onShare, onClose } = props;
+  const {
+    visible,
+    projectName,
+    include,
+    onChangeInclude,
+    photoMode,
+    onChangePhotoMode,
+    showPhotoMode,
+    shareFormat,
+    onChangeShareFormat,
+    onShare,
+    onClose,
+  } = props;
   const insets = useSafeAreaInsets();
   const anySelected = PROJECT_SHARE_SECTION_OPTIONS.some((opt) => include[opt.key]);
 
@@ -46,7 +69,7 @@ export function ProjectShareOptionsModal(props: {
         >
           <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>Share project</Text>
           <Text style={[sharedStyles.cardMeta, { marginBottom: 12 }]}>
-            Choose which sections to include in the shared image.
+            Share Project details of {projectName}
           </Text>
 
           {PROJECT_SHARE_SECTION_OPTIONS.map((opt) => (
@@ -70,6 +93,12 @@ export function ProjectShareOptionsModal(props: {
               />
             </View>
           ))}
+
+          {showPhotoMode && include.photos ? (
+            <SharePhotoModeOptions value={photoMode} onChange={onChangePhotoMode} />
+          ) : null}
+
+          <ShareFormatOptions value={shareFormat} onChange={onChangeShareFormat} />
 
           <Pressable
             onPress={onShare}

@@ -71,7 +71,7 @@ export function AutomobilePurchaseFields(props: {
   return (
     <>
       <DateFormField
-        label="Purchase date (MM/DD/YYYY)"
+        label="Purchase date"
         value={details.purchaseDateAtISO}
         parseStored={parseDateInputValue}
         onChangeStored={(purchaseDateAtISO) => onChange({ ...details, purchaseDateAtISO })}

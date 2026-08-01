@@ -60,7 +60,7 @@ export function AppliancePurchaseFields(props: ApplianceFieldsProps) {
         placeholder="Store name or website"
       />
       <DateFormField
-        label="Date purchased (MM/DD/YYYY)"
+        label="Date purchased"
         value={details.purchaseDateAtISO}
         parseStored={parseDateInputValue}
         onChangeStored={(purchaseDateAtISO) =>

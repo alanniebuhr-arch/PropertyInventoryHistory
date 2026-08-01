@@ -1,7 +1,7 @@
 import type { AppState } from './types';
-import { formatDate } from './utils';
+import { formatDisplayDate } from './utils';
 import { eventsForItem, itemsForProperty, itemsForRoom, serviceHistoryEventsForItem } from './storage';
-import { getNextDueForItem, isOverdue } from './eventRecurrence';
+import { getNextDueForItem, isOverdue, overdueTodoCountForProperty } from './eventRecurrence';
 
 export function overdueCountForItem(state: AppState, itemId: string): number {
   const events = eventsForItem(state, itemId);
@@ -12,7 +12,7 @@ export function overdueCountForItem(state: AppState, itemId: string): number {
 export function nextDueLabelForItem(state: AppState, itemId: string): string | null {
   const nextDue = getNextDueForItem(eventsForItem(state, itemId));
   if (!nextDue) return null;
-  return formatDate(nextDue);
+  return formatDisplayDate(nextDue);
 }
 
 /** Last / next service dates for the item header; null if neither exists. */
@@ -21,7 +21,7 @@ export function serviceLastNextForItem(
   itemId: string
 ): { last: string | null; next: string | null } | null {
   const lastEvent = serviceHistoryEventsForItem(state, itemId)[0];
-  const last = lastEvent ? formatDate(lastEvent.occurredAtISO) : null;
+  const last = lastEvent ? formatDisplayDate(lastEvent.occurredAtISO) : null;
   const next = nextDueLabelForItem(state, itemId);
   if (!last && !next) return null;
   return { last, next };
@@ -35,10 +35,11 @@ export function overdueCountForRoom(state: AppState, roomId: string): number {
 }
 
 export function overdueCountForProperty(state: AppState, propertyId: string): number {
-  return itemsForProperty(state, propertyId).reduce(
+  const eventOverdue = itemsForProperty(state, propertyId).reduce(
     (sum, item) => sum + overdueCountForItem(state, item.id),
     0
   );
+  return eventOverdue + overdueTodoCountForProperty(state, propertyId);
 }
 
 export function isItemOverdue(state: AppState, itemId: string): boolean {

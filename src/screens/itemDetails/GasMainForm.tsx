@@ -25,6 +25,12 @@ export function GasMainForm(props: {
         value={details.meterNumber ?? ''}
         onChangeText={(meterNumber) => onChange({ ...details, meterNumber })}
       />
+      <FormField
+        label="Notes"
+        value={details.notes ?? ''}
+        onChangeText={(notes) => onChange({ ...details, notes })}
+        multiline
+      />
     </>
   );
 }

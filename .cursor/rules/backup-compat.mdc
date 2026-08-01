@@ -1,0 +1,27 @@
+---
+description: Flag changes that would break restoring older backups/exports
+alwaysApply: true
+---
+
+# Backup / export restore compatibility
+
+Users rely on restoring backups and exports made with older app builds.
+
+## When proposing or making changes, call out restore risk explicitly if you:
+
+- Bump or tighten `TRANSFER_FORMAT_VERSION`, `ZIP_TRANSFER_FORMAT_VERSION`, or `UPDATE_FORMAT_VERSION` without a migration path for older files
+- Change `kind` values (`property-inventory`, `property-update`) or require new top-level fields that `parseTransferBundle` / ZIP import reject
+- Change `AppState.version` or make `normalizeState` / `coerceAppState` drop or empty older payloads
+- Rename/remove persisted fields without reading legacy keys in `storage.ts` normalize helpers
+- Change ZIP layout (`state.json`, `photos/`, `documents/`) or how media ids map to files
+- Make import UI or merge/replace logic unable to apply a previously valid package
+
+## Usually safe (no restore-break warning needed):
+
+- New optional fields, arrays defaulting to `[]`, new item types
+- UI-only changes, prefs, help text
+- Additive normalize/migrate logic that still accepts old shapes
+
+## If a breaking change is intentional
+
+Say so up front, explain what old backups will fail with, and prefer a migration or dual-read over a hard version bump unless the user asks for a break.

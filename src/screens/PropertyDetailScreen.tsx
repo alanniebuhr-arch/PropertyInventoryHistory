@@ -1,51 +1,77 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import type { ScrollView as RNScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
-import type { AppState, Project, PropertyTodo, Room, SyncDeletedIds } from '../types';
+import type { AppState, PropertyTodo } from '../types';
 import {
   ProjectGalleryTile,
   ProjectListRow,
+  PropertyInteractionListRow,
+  PropertyServiceListRow,
   PropertyTodoListRow,
   RoomGalleryTile,
   RoomListRow,
 } from '../components/ListRows';
-import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
+import { UpcomingReminderCard, UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
+import {
+  ToolbarNewSearchControls,
+  usePropertyGearNav,
+} from '../components/PropertyGearNavItems';
 import { RenameModal } from '../components/RenameModal';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { CollapsibleSectionTitle } from '../components/CollapsibleSectionTitle';
 import { sharedStyles, colors } from '../theme';
-import { formatDate, nowISO, uid } from '../utils';
+import { formatCurrency, formatDisplayDate, nowISO, uid } from '../utils';
 import {
   deletePropertyCascade,
+  eventsForProperty,
+  firstPhotoUriForItem,
   itemById,
-  nextProjectSortOrder,
-  nextRoomSortOrder,
   photosForEvent,
   ideasForProperty,
+  interactionsForProperty,
   photosForPropertyTodo,
   projectsForProperty,
   propertyById,
+  roomById,
   roomsForProperty,
   todosForProperty,
   vendorsForProject,
-  interactionsForProperty,
+  vendorById,
+  photosForVendorInteraction,
 } from '../storage';
 import { overdueCountForRoom } from '../itemMaintenance';
 import { itemDisplayLabel } from '../itemCatalog';
 import { firstPhotoUriForRoom } from '../roomPhotos';
+import { projectStatusColor, projectStatusLabel } from '../projectStatus';
 import { firstPhotoUriForProject } from '../projectPhotos';
+import { firstPhotoUriForVendor } from '../vendorPhotos';
+import { vendorContactMethodLabel } from '../vendorContactMethod';
+import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
 import { slideshowPhotosForProperty } from '../propertyFavoritePhotos';
 import { PhotoViewerModal, type ViewerPhoto } from '../components/PhotoViewerModal';
 import { SlideshowEditorModal } from '../components/SlideshowEditorModal';
 import {
+  filterInteractionsByHorizon,
+  filterTodosByHorizon,
   filterUpcomingByHorizon,
+  serviceListDateISO,
+  upcomingDueAtISO,
   upcomingHorizonLabel,
+  upcomingInteractionsForProperty,
   upcomingNotOverdueCountForRoom,
   upcomingServiceEventsForProperty,
+  upcomingTodosForProperty,
   UPCOMING_HORIZON_OPTIONS,
   type UpcomingHorizon,
 } from '../eventRecurrence';
@@ -54,6 +80,10 @@ import {
   loadPropertyUpcomingHorizon,
   setPropertyUpcomingHorizon,
 } from '../upcomingHorizonPrefs';
+import {
+  getPropertyScrollPrefs,
+  setPropertyScrollPrefs,
+} from '../propertyScrollPrefs';
 import {
   getPropertyRoomViewMode,
   loadPropertyRoomViewMode,
@@ -66,37 +96,30 @@ import {
   setPropertyProjectViewMode,
   type PropertyProjectViewMode,
 } from '../propertyProjectViewPrefs';
-import { Text, useTextScaleControls, TextInput } from '../textScale';
-import {
-  buildTransferBundle,
-  buildPropertyUpdateBundle,
-  mergeCollaborativeState,
-  sliceAppStateForProperty,
-  summarizeChanges,
-  transferBundleToJson,
-} from '../transfer';
-import {
-  cleanupExtractRoot,
-  exportBackupToZip,
-  exportPropertyUpdateToZip,
-  importBackupFromUri,
-  materializeZipMedia,
-} from '../transferPackage';
-import { clearPendingDeletedIds, getPendingDeletedIds } from '../syncMeta';
-import { writePhotoFromBase64 } from '../photoStorage';
-import { writeDocumentFromBase64 } from '../documentStorage';
+import { Text, useTextScaleControls } from '../textScale';
 import {
   buildPropertyExportSnapshot,
+  PROPERTY_SHARE_PRESET_ALL,
+  type PropertyExportInclude,
   type PropertyExportSnapshot,
 } from '../propertyExportContent';
 import { PropertyExportSheet } from '../components/PropertyExportSheet';
+import { PropertyShareOptionsModal } from '../components/PropertyShareOptionsModal';
 import { SectionHelpTip } from '../components/SectionHelpTip';
+import { DEFAULT_SHARE_FORMAT, type ShareFormat } from '../shareFormat';
 import { shareViewAsPng } from '../shareViewImage';
+import { shareHtmlAsPdf } from '../shareViewPdf';
+import { buildExportPdfHtml, propertySnapshotToPdfDoc } from '../exportPdfHtml';
 import {
   getSectionHelpVisible,
   loadSectionHelpVisible,
   setSectionHelpVisible,
 } from '../sectionHelpPrefs';
+import {
+  getPropertySectionExpand,
+  loadPropertySectionExpand,
+  setPropertySectionExpand,
+} from '../propertySectionExpandPrefs';
 
 export function PropertyDetailScreen(props: {
   state: AppState;
@@ -105,10 +128,20 @@ export function PropertyDetailScreen(props: {
   onOpenRoom: (roomId: string) => void;
   onOpenProject: (projectId: string) => void;
   onOpenInteractions: () => void;
+  onSearchInteractions: () => void;
+  onOpenServices: () => void;
+  onSearchServiceHistory: () => void;
+  onSearchActivity: () => void;
+  onOpenAssets: () => void;
+  onSearchAssets: () => void;
   onOpenTodo: (
     todoId: string,
     options?: { startEditing?: boolean; kind?: 'todo' | 'idea' }
   ) => void;
+  onOpenInteraction: (vendorId: string | undefined, interactionId: string) => void;
+  onAddInteraction: () => void;
+  onAddServiceEvent: () => void;
+  onOpenItem: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
   onEditEvent: (itemId: string, eventId: string) => void;
   onLogUpcomingService: (itemId: string, completeFromEventId: string) => void;
   onSave: (state: AppState) => void;
@@ -120,7 +153,16 @@ export function PropertyDetailScreen(props: {
     onOpenRoom,
     onOpenProject,
     onOpenInteractions,
+    onSearchInteractions,
+    onOpenServices,
+    onSearchServiceHistory,
+    onSearchActivity,
+    onSearchAssets,
     onOpenTodo,
+    onOpenInteraction,
+    onAddInteraction,
+    onAddServiceEvent,
+    onOpenItem,
     onEditEvent,
     onLogUpcomingService,
     onSave,
@@ -131,23 +173,27 @@ export function PropertyDetailScreen(props: {
   const projects = projectsForProperty(state, propertyId);
   const todos = todosForProperty(state, propertyId);
   const ideas = ideasForProperty(state, propertyId);
-  const hasInteractions = interactionsForProperty(state, propertyId).length > 0;
-  const [modalOpen, setModalOpen] = useState(false);
-  const [roomName, setRoomName] = useState('');
-  const [projectModalOpen, setProjectModalOpen] = useState(false);
-  const [projectName, setProjectName] = useState('');
-  const [projectDescription, setProjectDescription] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [addTodoOpen, setAddTodoOpen] = useState(false);
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [addIdeaOpen, setAddIdeaOpen] = useState(false);
   const [newIdeaTitle, setNewIdeaTitle] = useState('');
-  const [exporting, setExporting] = useState(false);
   const [exportSnapshot, setExportSnapshot] = useState<PropertyExportSnapshot | null>(null);
   const [sharingPng, setSharingPng] = useState(false);
+  const [shareOptionsOpen, setShareOptionsOpen] = useState(false);
+  const [shareInclude, setShareInclude] = useState<PropertyExportInclude>(PROPERTY_SHARE_PRESET_ALL);
+  const [shareFormat, setShareFormat] = useState<ShareFormat>(DEFAULT_SHARE_FORMAT);
   const exportRef = useRef<View>(null);
+  const savedScrollPrefs = getPropertyScrollPrefs(propertyId);
+  const scrollRef = useRef<RNScrollView>(null);
+  const scrollYRef = useRef(savedScrollPrefs.scrollY);
+  const pendingRestoreScrollYRef = useRef<number | null>(
+    savedScrollPrefs.scrollY > 0 ? savedScrollPrefs.scrollY : null
+  );
+  const didRestoreScrollRef = useRef(savedScrollPrefs.scrollY <= 0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showReorderArrows, setShowReorderArrows] = useState(false);
   const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null);
   const [slideshowEditorOpen, setSlideshowEditorOpen] = useState(false);
   /** Snapshot used while the viewer is open so Play uses the order just committed. */
@@ -160,7 +206,80 @@ export function PropertyDetailScreen(props: {
     getPropertyProjectViewMode
   );
   const [helpVisible, setHelpVisible] = useState(getSectionHelpVisible);
+  const [photosExpanded, setPhotosExpanded] = useState(() => getPropertySectionExpand().photos);
+  const [remindersExpanded, setRemindersExpanded] = useState(
+    () => getPropertySectionExpand().reminders
+  );
+  const [projectsExpanded, setProjectsExpanded] = useState(
+    () => getPropertySectionExpand().projects
+  );
+  const [roomsExpanded, setRoomsExpanded] = useState(() => getPropertySectionExpand().rooms);
+  const [todosExpanded, setTodosExpanded] = useState(() => getPropertySectionExpand().todos);
+  const [ideasExpanded, setIdeasExpanded] = useState(() => getPropertySectionExpand().ideas);
+  const [recentActivityExpanded, setRecentActivityExpanded] = useState(
+    () => getPropertySectionExpand().recentActivity
+  );
   const textScaleControls = useTextScaleControls();
+
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    // Let the menu dismiss before opening another alert/modal.
+    setTimeout(action, 50);
+  }
+
+  const {
+    newItems: propertyNewItems,
+    searchItems: propertySearchItems,
+    createModals: propertyGearCreateModals,
+    openAddRoom,
+    openAddProject,
+  } = usePropertyGearNav({
+    state,
+    propertyId,
+    runMenuAction,
+    actions: {
+      onAddInteraction,
+      onAddServiceEvent,
+      onSearchAssets,
+      onSearchInteractions,
+      onSearchServiceHistory,
+      onSearchActivity,
+      onOpenProject,
+      onOpenItem,
+      onSave,
+    },
+  });
+
+  useEffect(() => {
+    const prefs = getPropertyScrollPrefs(propertyId);
+    scrollYRef.current = prefs.scrollY;
+    pendingRestoreScrollYRef.current = prefs.scrollY > 0 ? prefs.scrollY : null;
+    didRestoreScrollRef.current = prefs.scrollY <= 0;
+  }, [propertyId]);
+
+  useEffect(() => {
+    return () => {
+      setPropertyScrollPrefs(propertyId, { scrollY: scrollYRef.current });
+    };
+  }, [propertyId]);
+
+  // Fallback if content never grows past saved y (shorter page after edits).
+  useEffect(() => {
+    if (didRestoreScrollRef.current) return;
+    const y = pendingRestoreScrollYRef.current;
+    if (y == null || y <= 0) {
+      didRestoreScrollRef.current = true;
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (didRestoreScrollRef.current) return;
+      didRestoreScrollRef.current = true;
+      pendingRestoreScrollYRef.current = null;
+      scrollRef.current?.scrollTo({ y, animated: false });
+      scrollYRef.current = y;
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [propertyId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,20 +295,54 @@ export function PropertyDetailScreen(props: {
     void loadSectionHelpVisible().then((visible) => {
       if (!cancelled) setHelpVisible(visible);
     });
+    void loadPropertySectionExpand().then((expand) => {
+      if (cancelled) return;
+      setPhotosExpanded(expand.photos);
+      setRemindersExpanded(expand.reminders);
+      setProjectsExpanded(expand.projects);
+      setRoomsExpanded(expand.rooms);
+      setTodosExpanded(expand.todos);
+      setIdeasExpanded(expand.ideas);
+      setRecentActivityExpanded(expand.recentActivity);
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const runPropertyImageExport = useCallback(async () => {
-    const snapshot = buildPropertyExportSnapshot(state, propertyId);
-    if (!snapshot) {
-      Alert.alert('Export failed', 'Could not build property summary.');
-      return;
-    }
-    setExportSnapshot(snapshot);
-    setSharingPng(true);
-  }, [propertyId, state]);
+  const openShareOptions = useCallback(() => {
+    setShareInclude({ ...PROPERTY_SHARE_PRESET_ALL });
+    setShareFormat(DEFAULT_SHARE_FORMAT);
+    setShareOptionsOpen(true);
+  }, []);
+
+  const runPropertyImageExport = useCallback(
+    async (include: PropertyExportInclude, format: ShareFormat) => {
+      if (!Object.values(include).some(Boolean)) {
+        Alert.alert('Nothing selected', 'Choose at least one section to include.');
+        return;
+      }
+      const snapshot = buildPropertyExportSnapshot(state, propertyId, { include });
+      if (!snapshot) {
+        Alert.alert('Export failed', 'Could not build property summary.');
+        return;
+      }
+      setShareOptionsOpen(false);
+      if (format === 'pdf') {
+        setSharingPng(true);
+        try {
+          const html = await buildExportPdfHtml(propertySnapshotToPdfDoc(snapshot));
+          await shareHtmlAsPdf(html, `Share ${snapshot.title}`);
+        } finally {
+          setSharingPng(false);
+        }
+        return;
+      }
+      setExportSnapshot(snapshot);
+      setSharingPng(true);
+    },
+    [propertyId, state]
+  );
 
   useEffect(() => {
     if (!exportSnapshot || !sharingPng) return;
@@ -268,6 +421,74 @@ export function PropertyDetailScreen(props: {
     upcomingServiceEventsForProperty(state, propertyId),
     upcomingHorizon
   );
+  const upcomingTodos = filterTodosByHorizon(
+    upcomingTodosForProperty(state, propertyId),
+    upcomingHorizon
+  );
+  const upcomingInteractions = filterInteractionsByHorizon(
+    upcomingInteractionsForProperty(state, propertyId),
+    upcomingHorizon
+  );
+  type ReminderEntry =
+    | { kind: 'event'; id: string; dueAt: string; event: (typeof upcomingEvents)[number] }
+    | { kind: 'todo'; id: string; dueAt: string; todo: (typeof upcomingTodos)[number] }
+    | {
+        kind: 'interaction';
+        id: string;
+        dueAt: string;
+        interaction: (typeof upcomingInteractions)[number];
+      };
+  const upcomingReminders: ReminderEntry[] = [
+    ...upcomingEvents.map((event) => ({
+      kind: 'event' as const,
+      id: event.id,
+      dueAt: upcomingDueAtISO(event)!,
+      event,
+    })),
+    ...upcomingTodos.map((todo) => ({
+      kind: 'todo' as const,
+      id: todo.id,
+      dueAt: todo.dueAtISO!,
+      todo,
+    })),
+    ...upcomingInteractions.map((interaction) => ({
+      kind: 'interaction' as const,
+      id: interaction.id,
+      dueAt: interaction.occurredAtISO,
+      interaction,
+    })),
+  ].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+
+  type ActivityEntry =
+    | {
+        kind: 'interaction';
+        id: string;
+        at: string;
+        interaction: ReturnType<typeof interactionsForProperty>[number];
+      }
+    | {
+        kind: 'event';
+        id: string;
+        at: string;
+        event: ReturnType<typeof eventsForProperty>[number];
+      };
+  const propertyInteractions = interactionsForProperty(state, propertyId);
+  const propertyEvents = eventsForProperty(state, propertyId);
+  const recentActivityAll: ActivityEntry[] = [
+    ...propertyInteractions.map((interaction) => ({
+      kind: 'interaction' as const,
+      id: interaction.id,
+      at: interaction.occurredAtISO,
+      interaction,
+    })),
+    ...propertyEvents.map((event) => ({
+      kind: 'event' as const,
+      id: event.id,
+      at: serviceListDateISO(event),
+      event,
+    })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
+  const recentActivity = recentActivityAll.slice(0, 10);
 
   function selectUpcomingHorizon(horizon: UpcomingHorizon) {
     setUpcomingHorizon(horizon);
@@ -288,45 +509,21 @@ export function PropertyDetailScreen(props: {
     );
   }
 
-  function addRoom() {
-    const trimmed = roomName.trim();
-    if (!trimmed) {
-      Alert.alert('Name required', 'Enter a room name (e.g. Utilities).');
-      return;
-    }
-    const room: Room = {
-      id: uid('room'),
-      propertyId,
-      name: trimmed,
-      sortOrder: nextRoomSortOrder(state, propertyId),
-      photoIds: [],
-    };
-    onSave({ ...state, rooms: [...state.rooms, room] });
-    setModalOpen(false);
-    setRoomName('');
+  function openShowAllRecentActivity() {
+    Alert.alert('Show all', undefined, [
+      { text: 'Interactions', onPress: () => onOpenInteractions() },
+      { text: 'Service Events', onPress: () => onOpenServices() },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
-  function addProject() {
-    const trimmed = projectName.trim();
-    if (!trimmed) {
-      Alert.alert('Name required', 'Enter a project name (e.g. Pool renovation).');
-      return;
-    }
-    const description = projectDescription.trim();
-    const project: Project = {
-      id: uid('project'),
-      propertyId,
-      name: trimmed,
-      description: description || undefined,
-      photoIds: [],
-      sortOrder: nextProjectSortOrder(state, propertyId),
-      createdAtISO: nowISO(),
-    };
-    onSave({ ...state, projects: [...state.projects, project] });
-    setProjectModalOpen(false);
-    setProjectName('');
-    setProjectDescription('');
-    onOpenProject(project.id);
+  function openAddReminderPicker() {
+    Alert.alert('New reminder', undefined, [
+      { text: 'Service Event', onPress: () => onAddServiceEvent() },
+      { text: 'To-do', onPress: () => openAddTodo() },
+      { text: 'Interaction', onPress: () => onAddInteraction() },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   function openRenameProperty() {
@@ -411,370 +608,25 @@ export function PropertyDetailScreen(props: {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            onSave(deletePropertyCascade(state, propertyId));
-            onBack();
+            Alert.alert(
+              'Are you sure?',
+              'This cannot be undone.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete permanently',
+                  style: 'destructive',
+                  onPress: () => {
+                    onSave(deletePropertyCascade(state, propertyId));
+                    onBack();
+                  },
+                },
+              ]
+            );
           },
         },
       ]
     );
-  }
-
-  function promptExportProperty() {
-    Alert.alert(
-      'Export property',
-      `Share a full copy of "${prop.name}" for first-time setup on another device (Backup → Import → Merge). For ongoing collaboration on this property, use Save updates / Load updates.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Data only', onPress: () => void exportProperty(false) },
-        { text: 'Include photos', onPress: () => void exportProperty(true) },
-      ]
-    );
-  }
-
-  function promptSaveUpdates() {
-    Alert.alert(
-      'Save updates',
-      `Save a complete update package for "${prop.name}" (including vendors and interactions) to send to a collaborator. They use Load updates on the same property.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Data only', onPress: () => void savePropertyUpdates(false) },
-        { text: 'Include photos', onPress: () => void savePropertyUpdates(true) },
-      ]
-    );
-  }
-
-  async function markPropertyShared() {
-    const sharedAt = nowISO();
-    await clearPendingDeletedIds(propertyId);
-    onSave({
-      ...state,
-      properties: state.properties.map((p) =>
-        p.id === propertyId ? { ...p, lastSharedAtISO: sharedAt, updatedAtISO: sharedAt } : p
-      ),
-    });
-  }
-
-  async function exportProperty(includePhotos: boolean) {
-    const sliced = sliceAppStateForProperty(state, propertyId);
-    if (!sliced) {
-      Alert.alert('Export failed', 'Property not found.');
-      return;
-    }
-    setExporting(true);
-    try {
-      const safeName = prop.name.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '') || 'property';
-      const sourceLabel = `Property: ${prop.name}`;
-      if (includePhotos) {
-        const path = await exportBackupToZip(sliced, {
-          fileNamePrefix: safeName,
-          sourceLabel,
-        });
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(path, {
-            mimeType: 'application/zip',
-            UTI: 'public.zip-archive',
-            dialogTitle: `Export ${prop.name}`,
-          });
-        } else {
-          Alert.alert('Exported', `Backup saved to ${path}`);
-        }
-        await markPropertyShared();
-        return;
-      }
-
-      const bundle = buildTransferBundle({ state: sliced, sourceLabel });
-      const json = transferBundleToJson(bundle);
-      const fileName = `${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
-      const path = `${FileSystem.cacheDirectory ?? ''}${fileName}`;
-      await FileSystem.writeAsStringAsync(path, json);
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(path, {
-          mimeType: 'application/json',
-          dialogTitle: `Export ${prop.name}`,
-        });
-      } else {
-        Alert.alert('Exported', `Backup saved to ${path}`);
-      }
-      await markPropertyShared();
-    } catch (e) {
-      Alert.alert('Export failed', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function savePropertyUpdates(includePhotos: boolean) {
-    setExporting(true);
-    try {
-      // Always package the full property slice so vendors/interactions are never dropped
-      // by a stale lastSharedAtISO watermark.
-      const deletedIds = await getPendingDeletedIds(propertyId);
-      const bundle = buildPropertyUpdateBundle({
-        state,
-        propertyId,
-        deletedIds,
-        sourceLabel: `Updates: ${prop.name}`,
-      });
-      if (!bundle) {
-        Alert.alert('Save failed', 'Property not found.');
-        return;
-      }
-
-      const safeName = prop.name.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '') || 'property';
-      if (includePhotos) {
-        const path = await exportPropertyUpdateToZip(bundle, { fileNamePrefix: safeName });
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(path, {
-            mimeType: 'application/zip',
-            UTI: 'public.zip-archive',
-            dialogTitle: `Updates for ${prop.name}`,
-          });
-        } else {
-          Alert.alert('Saved', `Update package saved to ${path}`);
-        }
-      } else {
-        const json = transferBundleToJson(bundle);
-        const fileName = `${safeName}-updates-${new Date().toISOString().slice(0, 10)}.json`;
-        const path = `${FileSystem.cacheDirectory ?? ''}${fileName}`;
-        await FileSystem.writeAsStringAsync(path, json);
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(path, {
-            mimeType: 'application/json',
-            dialogTitle: `Updates for ${prop.name}`,
-          });
-        } else {
-          Alert.alert('Saved', `Update package saved to ${path}`);
-        }
-      }
-      await markPropertyShared();
-    } catch (e) {
-      Alert.alert('Save failed', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function materializeEmbeddedPhotoData(
-    merged: AppState,
-    photoData: Record<string, string> | undefined
-  ): Promise<AppState> {
-    if (!photoData) return merged;
-    let next = merged;
-    const collections = [
-      'photos',
-      'propertyPhotos',
-      'roomPhotos',
-      'projectPhotos',
-      'vendorPhotos',
-    ] as const;
-    for (const key of collections) {
-      const updated: AppState[typeof key] = [];
-      for (const photo of next[key]) {
-        const b64 = photoData[photo.id];
-        if (!b64) {
-          updated.push(photo as never);
-          continue;
-        }
-        const localUri = await writePhotoFromBase64(photo.id, b64);
-        updated.push({ ...photo, localUri } as never);
-      }
-      next = { ...next, [key]: updated };
-    }
-    const docs: AppState['documents'] = [];
-    for (const doc of next.documents) {
-      const b64 = photoData[doc.id];
-      if (!b64) {
-        docs.push(doc);
-        continue;
-      }
-      const localUri = await writeDocumentFromBase64(doc.id, b64, doc.fileName);
-      docs.push({ ...doc, localUri });
-    }
-    return { ...next, documents: docs };
-  }
-
-  async function applyPropertyUpdateLoad(
-    incoming: AppState,
-    packagePropertyId: string,
-    deletedIds: SyncDeletedIds,
-    mediaFiles?: Record<string, string>,
-    extractRoot?: string,
-    photoData?: Record<string, string>
-  ) {
-    if (packagePropertyId !== propertyId) {
-      Alert.alert(
-        'Wrong property',
-        'This update package belongs to a different property. Open that property and use Load updates there.'
-      );
-      await cleanupExtractRoot(extractRoot);
-      return;
-    }
-
-    setExporting(true);
-    try {
-      let payload = incoming;
-      if (mediaFiles) {
-        payload = await materializeZipMedia(incoming, mediaFiles);
-      }
-      payload = await materializeEmbeddedPhotoData(payload, photoData);
-      const { state: merged, summary } = mergeCollaborativeState(state, payload, deletedIds);
-      onSave(merged);
-      // Let the spinner clear before the success alert (iOS often drops alerts during modal transitions).
-      setExporting(false);
-      await new Promise((r) => setTimeout(r, 250));
-      Alert.alert(
-        'Updates loaded',
-        `Added ${summary.added}, updated ${summary.updated}, deleted ${summary.deleted}.`
-      );
-    } catch (e) {
-      Alert.alert('Load failed', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      await cleanupExtractRoot(extractRoot);
-      setExporting(false);
-    }
-  }
-
-  async function loadPropertyUpdates() {
-    let extractRoot: string | undefined;
-    try {
-      // Do not set exporting yet — a spinner during DocumentPicker (especially right after the
-      // gear modal closes) often prevents the picker from appearing on iOS.
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets[0]?.uri) {
-        return;
-      }
-
-      setExporting(true);
-      const asset = result.assets[0];
-      const imported = await importBackupFromUri(asset.uri, {
-        fileName: asset.name,
-        mimeType: asset.mimeType,
-      });
-      setExporting(false);
-      // Document picker dismissal can swallow the next Alert if shown immediately.
-      await new Promise((r) => setTimeout(r, 300));
-
-      if (!imported.ok) {
-        Alert.alert('Invalid file', imported.error);
-        return;
-      }
-
-      const confirmLoad = (
-        message: string,
-        onConfirm: () => void,
-        onCancel?: () => void
-      ) => {
-        Alert.alert('Load updates', message, [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => onCancel?.(),
-          },
-          { text: 'Load', onPress: onConfirm },
-        ]);
-      };
-
-      if (imported.kind === 'zip') {
-        extractRoot = imported.extractRoot;
-        if (imported.result.packageKind === 'property-update') {
-          const pkgPropertyId = imported.result.propertyId;
-          if (!pkgPropertyId) {
-            Alert.alert('Invalid file', 'Update package is missing property id.');
-            await cleanupExtractRoot(extractRoot);
-            return;
-          }
-          const summary = summarizeChanges(
-            imported.result.state,
-            imported.result.deletedIds ?? {}
-          );
-          const zipState = imported.result.state;
-          const zipDeleted = imported.result.deletedIds ?? {};
-          const zipMedia = imported.result.mediaFiles;
-          const zipRoot = imported.extractRoot;
-          confirmLoad(
-            `Apply updates to "${prop.name}"?\n\nIncludes: ${summary}. Newer edits win when both sides changed the same record.`,
-            () =>
-              void applyPropertyUpdateLoad(
-                zipState,
-                pkgPropertyId,
-                zipDeleted,
-                zipMedia,
-                zipRoot
-              ),
-            () => void cleanupExtractRoot(zipRoot)
-          );
-          return;
-        }
-
-        const sliced = sliceAppStateForProperty(imported.result.state, propertyId);
-        if (!sliced || sliced.properties.length === 0) {
-          Alert.alert(
-            'Wrong property',
-            'This file does not contain the current property. Use Export property / Save updates for this property.'
-          );
-          await cleanupExtractRoot(extractRoot);
-          return;
-        }
-        const summary = summarizeChanges(sliced);
-        const zipMedia = imported.result.mediaFiles;
-        const zipRoot = imported.extractRoot;
-        confirmLoad(
-          `Merge exported data into "${prop.name}"?\n\nIncludes: ${summary}. Newer edits win when both sides changed the same record.`,
-          () => void applyPropertyUpdateLoad(sliced, propertyId, {}, zipMedia, zipRoot),
-          () => void cleanupExtractRoot(zipRoot)
-        );
-        return;
-      }
-
-      if (imported.packageKind === 'property-update') {
-        const summary = summarizeChanges(imported.state, imported.deletedIds);
-        confirmLoad(
-          `Apply updates to "${prop.name}"?\n\nIncludes: ${summary}. Newer edits win when both sides changed the same record.`,
-          () =>
-            void applyPropertyUpdateLoad(
-              imported.state,
-              imported.propertyId,
-              imported.deletedIds
-            )
-        );
-        return;
-      }
-
-      const sliced = sliceAppStateForProperty(imported.state, propertyId);
-      if (!sliced || sliced.properties.length === 0) {
-        Alert.alert(
-          'Wrong property',
-          'This file does not contain the current property. Use Export property / Save updates for this property.'
-        );
-        return;
-      }
-      const summary = summarizeChanges(sliced);
-      const photoData = imported.photoData;
-      confirmLoad(
-        `Merge exported data into "${prop.name}"?\n\nIncludes: ${summary}. Newer edits win when both sides changed the same record.`,
-        () =>
-          void applyPropertyUpdateLoad(
-            sliced,
-            propertyId,
-            {},
-            undefined,
-            undefined,
-            photoData
-          )
-      );
-    } catch (e) {
-      Alert.alert('Load failed', e instanceof Error ? e.message : 'Unknown error');
-      await cleanupExtractRoot(extractRoot);
-    } finally {
-      setExporting(false);
-    }
   }
 
   function openPropertyMenu() {
@@ -787,25 +639,13 @@ export function PropertyDetailScreen(props: {
     void setSectionHelpVisible(next);
   }
 
-  function runMenuAction(action: () => void) {
-    setMenuOpen(false);
-    // Let the menu dismiss before opening another alert/modal.
-    setTimeout(action, 50);
-  }
-
-  /** Extra delay so DocumentPicker can present after the gear modal finishes closing. */
-  function runMenuActionAfterModal(action: () => void) {
-    setMenuOpen(false);
-    setTimeout(action, 400);
-  }
-
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScreenBackHeader onPress={onBack}>
         <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable
             onPress={toggleHelp}
-            disabled={exporting || sharingPng}
+            disabled={sharingPng}
             accessibilityRole="button"
             accessibilityLabel={helpVisible ? 'Hide section help' : 'Show section help'}
             accessibilityState={{ selected: helpVisible }}
@@ -821,9 +661,9 @@ export function PropertyDetailScreen(props: {
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: helpVisible ? colors.helpBg : 'transparent',
-                opacity: exporting || sharingPng ? 0.6 : 1,
+                opacity: sharingPng ? 0.6 : 1,
               },
-              pressed && !exporting && !sharingPng && { opacity: 0.8 },
+              pressed && !sharingPng && { opacity: 0.8 },
             ]}
           >
             <MaterialIcons
@@ -832,101 +672,25 @@ export function PropertyDetailScreen(props: {
               color={helpVisible ? colors.helpText : colors.primary}
             />
           </Pressable>
-          <Pressable
-            onPress={() => playFavoriteSlideshow()}
-            disabled={exporting || sharingPng}
-            accessibilityRole="button"
-            accessibilityLabel="Play slideshow"
-            accessibilityHint="Opens the favorite photo slideshow."
-            hitSlop={8}
-            style={({ pressed }) => [
-              {
-                width: 42,
-                height: 36,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: colors.border,
-                borderRadius: 4,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: 'transparent',
-                opacity: exporting || sharingPng ? 0.6 : 1,
-              },
-              pressed && !exporting && !sharingPng && { opacity: 0.8 },
-            ]}
-          >
-            <MaterialIcons name="slideshow" size={22} color={colors.primary} />
-          </Pressable>
-          <Pressable
-            onPress={() => void runPropertyImageExport()}
-            disabled={exporting || sharingPng}
-            accessibilityRole="button"
-            accessibilityLabel="Share property"
-            accessibilityHint="Creates an image of this property and opens the share sheet."
-            hitSlop={8}
-            style={({ pressed }) => [
-              {
-                width: 42,
-                height: 36,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: colors.border,
-                borderRadius: 4,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: 'transparent',
-                opacity: exporting || sharingPng ? 0.6 : 1,
-              },
-              pressed && !exporting && !sharingPng && { opacity: 0.8 },
-            ]}
-          >
-            {sharingPng ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <MaterialIcons name="ios-share" size={22} color={colors.primary} />
-            )}
-          </Pressable>
-          {hasInteractions ? (
-            <Pressable
-              onPress={onOpenInteractions}
-              disabled={exporting || sharingPng}
-              accessibilityRole="button"
-              accessibilityLabel="Property interactions"
-              accessibilityHint="Opens recent vendor interactions for this property."
-              hitSlop={8}
-              style={({ pressed }) => [
-                {
-                  width: 42,
-                  height: 36,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: colors.border,
-                  borderRadius: 4,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: 'transparent',
-                  opacity: exporting || sharingPng ? 0.6 : 1,
-                },
-                pressed && !exporting && !sharingPng && { opacity: 0.8 },
-              ]}
-            >
-              <MaterialIcons name="forum" size={22} color={colors.primary} />
-            </Pressable>
-          ) : null}
+          <ToolbarNewSearchControls
+            title={prop.name}
+            newItems={propertyNewItems}
+            searchItems={propertySearchItems}
+            disabled={sharingPng}
+          />
           <Pressable
             onPress={openPropertyMenu}
-            disabled={exporting || sharingPng}
+            disabled={sharingPng}
             accessibilityRole="button"
             accessibilityLabel="Property options"
-            accessibilityHint="Opens actions like new room, new project, edit slideshow, export, save or load updates, and delete."
+            accessibilityHint="Opens actions like play slideshow, share, and delete."
             hitSlop={6}
             style={({ pressed }) => ({
               padding: 4,
-              opacity: exporting || sharingPng ? 0.5 : pressed ? 0.7 : 1,
+              opacity: sharingPng ? 0.5 : pressed ? 0.7 : 1,
             })}
           >
-            {exporting ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <MaterialIcons name="settings" size={24} color={colors.primary} />
-            )}
+            <MaterialIcons name="settings" size={24} color={colors.primary} />
           </Pressable>
         </View>
       </ScreenBackHeader>
@@ -945,15 +709,48 @@ export function PropertyDetailScreen(props: {
             color: colors.helpText,
           }}
         >
-          Help | Slideshow | Share
-          {hasInteractions ? ' | Interactions' : ''} | Utilities
+          Help | New
+          {propertySearchItems.length > 0 ? ' | Search' : ''} | Utilities
         </Text>
       ) : null}
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
         contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}
+        onScroll={(e) => {
+          const y = e.nativeEvent.contentOffset.y;
+          scrollYRef.current = y;
+          setPropertyScrollPrefs(propertyId, { scrollY: y });
+        }}
+        onContentSizeChange={(_w, h) => {
+          if (didRestoreScrollRef.current) return;
+          const y = pendingRestoreScrollYRef.current;
+          if (y == null || y <= 0) {
+            didRestoreScrollRef.current = true;
+            return;
+          }
+          if (h < y) return;
+          didRestoreScrollRef.current = true;
+          pendingRestoreScrollYRef.current = null;
+          requestAnimationFrame(() => {
+            scrollRef.current?.scrollTo({ y, animated: false });
+            scrollYRef.current = y;
+          });
+        }}
+        scrollEventThrottle={16}
       >
-        <PropertyPhotosSection state={state} property={prop} onSave={onSave}>
+        <PropertyPhotosSection
+          state={state}
+          property={prop}
+          onSave={onSave}
+          showReorderArrows={showReorderArrows}
+          expanded={photosExpanded}
+          onToggleExpanded={() => {
+            const next = !photosExpanded;
+            setPhotosExpanded(next);
+            void setPropertySectionExpand({ photos: next });
+          }}
+        >
           <Pressable
             onLongPress={openRenameProperty}
             accessibilityRole="header"
@@ -973,102 +770,37 @@ export function PropertyDetailScreen(props: {
             </Text>
             <SectionHelpTip>
               Fill in the reserved photos of your Property. Quick and easy access to all views of
-              your property is very useful. Use the star symbol under the large picture to add it to
-              your slideshow. Add any additional pictures. Long press on small photos to change
-              label, notes and delete.
+              your property is very useful to have in your pocket. Use the star symbol under the
+              large picture to add it to your slideshow. Add any additional pictures. Long press on
+              small photos to change label, notes and delete.
             </SectionHelpTip>
           </View>
         ) : null}
 
+        <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
-            marginTop: 8,
-            marginBottom: 8,
-          }}
-        >
-          <Text
-            style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}
-          >
-            Service schedule
-          </Text>
-          <Pressable
-            onPress={openUpcomingHorizonPicker}
-            accessibilityRole="button"
-            accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
-            accessibilityHint="Opens a list of time ranges for upcoming service."
-            style={({ pressed }) => ({
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 2,
-              opacity: pressed ? 0.7 : 1,
-              paddingVertical: 4,
-              paddingLeft: 8,
-            })}
-          >
-            <Text
-              style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}
-            >
-              {upcomingHorizonLabel(upcomingHorizon)}
-            </Text>
-            <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
-          </Pressable>
-        </View>
-        {helpVisible ? (
-          <SectionHelpTip>
-            Use the months selector above right to control how far into the future of this Property
-            schedule should be shown.
-          </SectionHelpTip>
-        ) : null}
-        {upcomingEvents.length === 0 ? (
-          <Text style={[sharedStyles.cardMeta, { marginBottom: 16 }]}>
-            No upcoming service scheduled.
-          </Text>
-        ) : (
-          <View style={{ marginBottom: 16 }}>
-            {upcomingEvents.map((e) => {
-              const item = itemById(state, e.itemId);
-              const eventPhotos = photosForEvent(state, e.id);
-              return (
-                <UpcomingServiceCard
-                  key={e.id}
-                  event={e}
-                  leadingLabel={item ? itemDisplayLabel(item) : undefined}
-                  thumbnailUri={eventPhotos[0]?.localUri}
-                  onPressDetails={() => onEditEvent(e.itemId, e.id)}
-                  onLogService={() => onLogUpcomingService(e.itemId, e.id)}
-                />
-              );
-            })}
-          </View>
-        )}
-
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginTop: 8,
             marginBottom: 8,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
-            <Text
-              style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}
-            >
-              Rooms
-            </Text>
-            <Pressable
-              onPress={() => {
-                setRoomName('');
-                setModalOpen(true);
+            <CollapsibleSectionTitle
+              title="Reminders"
+              expanded={remindersExpanded}
+              count={upcomingReminders.length}
+              onExpand={() => {
+                setRemindersExpanded(true);
+                void setPropertySectionExpand({ reminders: true });
               }}
+            />
+            <Pressable
+              onPress={openAddReminderPicker}
               accessibilityRole="button"
-              accessibilityLabel="Add room"
+              accessibilityLabel="Add reminder"
               hitSlop={6}
               style={({ pressed }) => ({
                 padding: 4,
@@ -1080,109 +812,158 @@ export function PropertyDetailScreen(props: {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Pressable
-              onPress={() => {
-                setRoomViewMode('gallery');
-                void setPropertyRoomViewMode('gallery');
-              }}
+              onPress={openUpcomingHorizonPicker}
               accessibilityRole="button"
-              accessibilityState={{ selected: roomViewMode === 'gallery' }}
-              accessibilityLabel="Compact gallery view"
-              hitSlop={6}
+              accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
+              accessibilityHint="Opens a list of time ranges for upcoming reminders."
               style={({ pressed }) => ({
-                padding: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 2,
                 opacity: pressed ? 0.7 : 1,
+                paddingVertical: 4,
+                paddingLeft: 8,
               })}
             >
-              <MaterialIcons
-                name="grid-view"
-                size={22}
-                color={roomViewMode === 'gallery' ? colors.primary : colors.textMuted}
-              />
+              <Text
+                style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}
+              >
+                {upcomingHorizonLabel(upcomingHorizon)}
+              </Text>
+              <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
             </Pressable>
-            <Pressable
-              onPress={() => {
-                setRoomViewMode('list');
-                void setPropertyRoomViewMode('list');
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: roomViewMode === 'list' }}
-              accessibilityLabel="Detailed list view"
-              hitSlop={6}
-              style={({ pressed }) => ({
-                padding: 6,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <MaterialIcons
-                name="view-list"
-                size={22}
-                color={roomViewMode === 'list' ? colors.primary : colors.textMuted}
-              />
-            </Pressable>
+            {upcomingReminders.length > 0 ? (
+              <Pressable
+                onPress={() => {
+                  const next = !remindersExpanded;
+                  setRemindersExpanded(next);
+                  void setPropertySectionExpand({ reminders: next });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={remindersExpanded ? 'Hide reminders' : 'Show reminders'}
+                accessibilityState={{ expanded: remindersExpanded }}
+                hitSlop={6}
+                style={({ pressed }) => ({
+                  padding: 4,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <MaterialIcons
+                  name={remindersExpanded ? 'expand-less' : 'expand-more'}
+                  size={24}
+                  color={colors.primary}
+                />
+              </Pressable>
+            ) : null}
           </View>
         </View>
         {helpVisible ? (
           <SectionHelpTip>
-            Use rooms as containers for equipment you want to track (Heating, appliances, cars,
-            septic system, tractor...).
+            Use the months selector above right to control how far into the future reminders are
+            shown. Includes asset service dates, dated to-dos, and future vendor interactions.
           </SectionHelpTip>
         ) : null}
-        {rooms.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>
-            Add a room like Utilities or Kitchen.
+        {upcomingReminders.length === 0 ? (
+          <Text style={sharedStyles.cardMeta}>
+            No upcoming reminders.
           </Text>
-        ) : roomViewMode === 'gallery' ? (
-          <View style={sharedStyles.galleryRow}>
-            {rooms.map((r) => (
-              <RoomGalleryTile
-                key={r.id}
-                name={r.name}
-                thumbnailUri={firstPhotoUriForRoom(state, r)}
-                itemCount={state.items.filter((i) => i.roomId === r.id).length}
-                overdueCount={overdueCountForRoom(state, r.id)}
-                upcomingCount={upcomingNotOverdueCountForRoom(state, r.id, upcomingHorizon)}
-                requiresAuth={r.requiresAuth}
-                onPress={() => onOpenRoom(r.id)}
-              />
-            ))}
+        ) : remindersExpanded ? (
+          <View
+            style={{
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.text,
+            }}
+          >
+            {upcomingReminders.map((entry) => {
+              if (entry.kind === 'event') {
+                const e = entry.event;
+                const item = itemById(state, e.itemId);
+                const eventPhotos = photosForEvent(state, e.id);
+                return (
+                  <UpcomingServiceCard
+                    key={`event:${e.id}`}
+                    event={e}
+                    leadingLabel={item ? itemDisplayLabel(item) : undefined}
+                    thumbnailUri={eventPhotos[0]?.localUri}
+                    onPressDetails={() => onEditEvent(e.itemId, e.id)}
+                    onLogService={() => onLogUpcomingService(e.itemId, e.id)}
+                    cardBackgroundColor={colors.helpBg}
+                    dividerColor={colors.text}
+                  />
+                );
+              }
+              if (entry.kind === 'interaction') {
+                const interaction = entry.interaction;
+                const vendor = interaction.vendorId
+                  ? vendorById(state, interaction.vendorId)
+                  : undefined;
+                const interactionPhotos = photosForVendorInteraction(state, interaction.id);
+                const methodLabel = vendorContactMethodLabel(interaction.contactMethod);
+                const notesParts = [methodLabel, interaction.notes?.trim()].filter(Boolean);
+                return (
+                  <UpcomingReminderCard
+                    key={`interaction:${interaction.id}`}
+                    title={
+                      vendor?.name?.trim() ||
+                      interaction.contactName?.trim() ||
+                      'Interaction'
+                    }
+                    dueAtISO={interaction.occurredAtISO}
+                    notes={notesParts.join(' · ') || undefined}
+                    thumbnailUri={
+                      interactionPhotos[0]?.localUri ??
+                      (vendor ? firstPhotoUriForVendor(state, vendor) : undefined)
+                    }
+                    onPress={() => onOpenInteraction(interaction.vendorId, interaction.id)}
+                    noun="interaction"
+                    important={interaction.important === true}
+                    cardBackgroundColor={colors.helpBg}
+                    dividerColor={colors.text}
+                  />
+                );
+              }
+              const todo = entry.todo;
+              const todoPhotos = photosForPropertyTodo(state, todo.id);
+              return (
+                <UpcomingReminderCard
+                  key={`todo:${todo.id}`}
+                  title={todo.title}
+                  dueAtISO={todo.dueAtISO}
+                  notes={todo.notes}
+                  thumbnailUri={todoPhotos[0]?.localUri}
+                  onPress={() => onOpenTodo(todo.id, { kind: 'todo' })}
+                  noun="to-do"
+                  cardBackgroundColor={colors.helpBg}
+                  dividerColor={colors.text}
+                />
+              );
+            })}
           </View>
-        ) : (
-          rooms.map((r) => (
-            <RoomListRow
-              key={r.id}
-              name={r.name}
-              thumbnailUri={firstPhotoUriForRoom(state, r)}
-              itemCount={state.items.filter((i) => i.roomId === r.id).length}
-              overdueCount={overdueCountForRoom(state, r.id)}
-              upcomingCount={upcomingNotOverdueCountForRoom(state, r.id, upcomingHorizon)}
-              requiresAuth={r.requiresAuth}
-              onPress={() => onOpenRoom(r.id)}
-            />
-          ))
-        )}
+        ) : null}
+        </View>
 
+        <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
-            marginTop: 8,
             marginBottom: 8,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
-            <Text
-              style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}
-            >
-              Projects
-            </Text>
-            <Pressable
-              onPress={() => {
-                setProjectName('');
-                setProjectDescription('');
-                setProjectModalOpen(true);
+            <CollapsibleSectionTitle
+              title="Projects"
+              expanded={projectsExpanded}
+              count={projects.length}
+              onExpand={() => {
+                setProjectsExpanded(true);
+                void setPropertySectionExpand({ projects: true });
               }}
+            />
+            <Pressable
+              onPress={openAddProject}
               accessibilityRole="button"
               accessibilityLabel="Add project"
               hitSlop={6}
@@ -1235,6 +1016,29 @@ export function PropertyDetailScreen(props: {
                 color={projectViewMode === 'list' ? colors.primary : colors.textMuted}
               />
             </Pressable>
+            {projects.length > 0 ? (
+              <Pressable
+                onPress={() => {
+                  const next = !projectsExpanded;
+                  setProjectsExpanded(next);
+                  void setPropertySectionExpand({ projects: next });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={projectsExpanded ? 'Hide projects' : 'Show projects'}
+                accessibilityState={{ expanded: projectsExpanded }}
+                hitSlop={6}
+                style={({ pressed }) => ({
+                  padding: 4,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <MaterialIcons
+                  name={projectsExpanded ? 'expand-less' : 'expand-more'}
+                  size={24}
+                  color={colors.primary}
+                />
+              </Pressable>
+            ) : null}
           </View>
         </View>
         {helpVisible ? (
@@ -1247,7 +1051,7 @@ export function PropertyDetailScreen(props: {
           <Text style={sharedStyles.emptyText}>
             Add a project to track contractor bids, like a pool renovation.
           </Text>
-        ) : projectViewMode === 'gallery' ? (
+        ) : !projectsExpanded ? null : projectViewMode === 'gallery' ? (
           <View style={sharedStyles.galleryRow}>
             {projects.map((p) => {
               const vendors = vendorsForProject(state, p.id);
@@ -1261,44 +1065,215 @@ export function PropertyDetailScreen(props: {
                   thumbnailUri={firstPhotoUriForProject(state, p)}
                   vendorCount={vendors.length}
                   waitingForQuoteCount={waitingForQuoteCount}
+                  statusLabel={projectStatusLabel(p.status ?? 'research')}
+                  statusColor={projectStatusColor(p.status ?? 'research')}
+                  totalCostLabel={
+                    p.totalCost != null ? formatCurrency(p.totalCost) : undefined
+                  }
                   onPress={() => onOpenProject(p.id)}
                 />
               );
             })}
           </View>
         ) : (
-          projects.map((p) => {
-            const vendors = vendorsForProject(state, p.id);
-            const waitingForQuoteCount = vendors.filter(
-              (v) => v.status === 'waiting_for_quote'
-            ).length;
-            return (
-              <ProjectListRow
-                key={p.id}
-                name={p.name}
-                thumbnailUri={firstPhotoUriForProject(state, p)}
-                vendorCount={vendors.length}
-                waitingForQuoteCount={waitingForQuoteCount}
-                onPress={() => onOpenProject(p.id)}
-              />
-            );
-          })
+          <View
+            style={{
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.text,
+            }}
+          >
+            {projects.map((p) => {
+              const vendors = vendorsForProject(state, p.id);
+              const waitingForQuoteCount = vendors.filter(
+                (v) => v.status === 'waiting_for_quote'
+              ).length;
+              return (
+                <ProjectListRow
+                  key={p.id}
+                  name={p.name}
+                  thumbnailUri={firstPhotoUriForProject(state, p)}
+                  vendorCount={vendors.length}
+                  waitingForQuoteCount={waitingForQuoteCount}
+                  statusLabel={projectStatusLabel(p.status ?? 'research')}
+                  statusColor={projectStatusColor(p.status ?? 'research')}
+                  totalCostLabel={
+                    p.totalCost != null ? formatCurrency(p.totalCost) : undefined
+                  }
+                  onPress={() => onOpenProject(p.id)}
+                  dividerColor={colors.text}
+                />
+              );
+            })}
+          </View>
         )}
+        </View>
 
+        <View style={sharedStyles.propertySectionPanel}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 8,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
+            <CollapsibleSectionTitle
+              title="Rooms"
+              expanded={roomsExpanded}
+              count={rooms.length}
+              onExpand={() => {
+                setRoomsExpanded(true);
+                void setPropertySectionExpand({ rooms: true });
+              }}
+            />
+            <Pressable
+              onPress={openAddRoom}
+              accessibilityRole="button"
+              accessibilityLabel="Add room"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons name="add" size={24} color={colors.primary} />
+            </Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Pressable
+              onPress={() => {
+                setRoomViewMode('gallery');
+                void setPropertyRoomViewMode('gallery');
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: roomViewMode === 'gallery' }}
+              accessibilityLabel="Compact gallery view"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 6,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name="grid-view"
+                size={22}
+                color={roomViewMode === 'gallery' ? colors.primary : colors.textMuted}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setRoomViewMode('list');
+                void setPropertyRoomViewMode('list');
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: roomViewMode === 'list' }}
+              accessibilityLabel="Detailed list view"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 6,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name="view-list"
+                size={22}
+                color={roomViewMode === 'list' ? colors.primary : colors.textMuted}
+              />
+            </Pressable>
+            {rooms.length > 0 ? (
+              <Pressable
+                onPress={() => {
+                  const next = !roomsExpanded;
+                  setRoomsExpanded(next);
+                  void setPropertySectionExpand({ rooms: next });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={roomsExpanded ? 'Hide rooms' : 'Show rooms'}
+                accessibilityState={{ expanded: roomsExpanded }}
+                hitSlop={6}
+                style={({ pressed }) => ({
+                  padding: 4,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <MaterialIcons
+                  name={roomsExpanded ? 'expand-less' : 'expand-more'}
+                  size={24}
+                  color={colors.primary}
+                />
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+        {helpVisible ? (
+          <SectionHelpTip>
+            Use rooms as containers for equipment you want to track (Heating, appliances, cars,
+            septic system, tractor...).
+          </SectionHelpTip>
+        ) : null}
+        {rooms.length === 0 ? (
+          <Text style={sharedStyles.emptyText}>
+            Add a room like Utilities or Kitchen.
+          </Text>
+        ) : !roomsExpanded ? null : roomViewMode === 'gallery' ? (
+          <View style={sharedStyles.galleryRow}>
+            {rooms.map((r) => (
+              <RoomGalleryTile
+                key={r.id}
+                name={r.name}
+                thumbnailUri={firstPhotoUriForRoom(state, r)}
+                itemCount={state.items.filter((i) => i.roomId === r.id).length}
+                overdueCount={overdueCountForRoom(state, r.id)}
+                upcomingCount={upcomingNotOverdueCountForRoom(state, r.id, upcomingHorizon)}
+                requiresAuth={r.requiresAuth}
+                onPress={() => onOpenRoom(r.id)}
+              />
+            ))}
+          </View>
+        ) : (
+          <View
+            style={{
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.text,
+            }}
+          >
+            {rooms.map((r) => (
+              <RoomListRow
+                key={r.id}
+                name={r.name}
+                thumbnailUri={firstPhotoUriForRoom(state, r)}
+                itemCount={state.items.filter((i) => i.roomId === r.id).length}
+                overdueCount={overdueCountForRoom(state, r.id)}
+                upcomingCount={upcomingNotOverdueCountForRoom(state, r.id, upcomingHorizon)}
+                requiresAuth={r.requiresAuth}
+                onPress={() => onOpenRoom(r.id)}
+                dividerColor={colors.text}
+              />
+            ))}
+          </View>
+        )}
+        </View>
+
+        <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
-            marginTop: 8,
             marginBottom: 8,
           }}
         >
-          <Text
-            style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}
-          >
-            To do
-          </Text>
+          <CollapsibleSectionTitle
+            title="To do"
+            expanded={todosExpanded}
+            count={todos.length}
+            onExpand={() => {
+              setTodosExpanded(true);
+              void setPropertySectionExpand({ todos: true });
+            }}
+          />
           <Pressable
             onPress={openAddTodo}
             accessibilityRole="button"
@@ -1311,6 +1286,30 @@ export function PropertyDetailScreen(props: {
           >
             <MaterialIcons name="add" size={24} color={colors.primary} />
           </Pressable>
+          {todos.length > 0 ? (
+            <Pressable
+              onPress={() => {
+                const next = !todosExpanded;
+                setTodosExpanded(next);
+                void setPropertySectionExpand({ todos: next });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={todosExpanded ? 'Hide to do' : 'Show to do'}
+              accessibilityState={{ expanded: todosExpanded }}
+              hitSlop={6}
+              style={({ pressed }) => ({
+                marginLeft: 'auto',
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name={todosExpanded ? 'expand-less' : 'expand-more'}
+                size={24}
+                color={colors.primary}
+              />
+            </Pressable>
+          ) : null}
         </View>
         {helpVisible ? (
           <SectionHelpTip>
@@ -1322,34 +1321,48 @@ export function PropertyDetailScreen(props: {
           <Text style={sharedStyles.emptyText}>
             Track property tasks like repairs, follow-ups, or seasonal chores.
           </Text>
-        ) : (
-          todos.map((todo) => (
-            <PropertyTodoListRow
-              key={todo.id}
-              title={todo.title}
-              dueLabel={todo.dueAtISO ? formatDate(todo.dueAtISO) : undefined}
-              notes={todo.notes}
-              done={todo.done}
-              thumbnailUri={photosForPropertyTodo(state, todo.id)[0]?.localUri}
-              onPress={() => onOpenTodo(todo.id, { kind: 'todo' })}
-            />
-          ))
-        )}
+        ) : todosExpanded ? (
+          <View
+            style={{
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.text,
+            }}
+          >
+            {todos.map((todo) => (
+              <PropertyTodoListRow
+                key={todo.id}
+                title={todo.title}
+                dueLabel={todo.dueAtISO ? formatDisplayDate(todo.dueAtISO) : undefined}
+                notes={todo.notes}
+                done={todo.done}
+                thumbnailUri={photosForPropertyTodo(state, todo.id)[0]?.localUri}
+                onPress={() => onOpenTodo(todo.id, { kind: 'todo' })}
+                cardBackgroundColor={colors.helpBg}
+                dividerColor={colors.text}
+              />
+            ))}
+          </View>
+        ) : null}
+        </View>
 
+        <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
-            marginTop: 8,
             marginBottom: 8,
           }}
         >
-          <Text
-            style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}
-          >
-            Ideas
-          </Text>
+          <CollapsibleSectionTitle
+            title="Ideas"
+            expanded={ideasExpanded}
+            count={ideas.length}
+            onExpand={() => {
+              setIdeasExpanded(true);
+              void setPropertySectionExpand({ ideas: true });
+            }}
+          />
           <Pressable
             onPress={openAddIdea}
             accessibilityRole="button"
@@ -1362,32 +1375,205 @@ export function PropertyDetailScreen(props: {
           >
             <MaterialIcons name="add" size={24} color={colors.primary} />
           </Pressable>
+          {ideas.length > 0 ? (
+            <Pressable
+              onPress={() => {
+                const next = !ideasExpanded;
+                setIdeasExpanded(next);
+                void setPropertySectionExpand({ ideas: next });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={ideasExpanded ? 'Hide ideas' : 'Show ideas'}
+              accessibilityState={{ expanded: ideasExpanded }}
+              hitSlop={6}
+              style={({ pressed }) => ({
+                marginLeft: 'auto',
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name={ideasExpanded ? 'expand-less' : 'expand-more'}
+                size={24}
+                color={colors.primary}
+              />
+            </Pressable>
+          ) : null}
         </View>
         {helpVisible ? (
           <SectionHelpTip>
-            Loosely thought out topics for this property. Ideas still need details added and may
-            someday move to a Project or To Do depending on complexity. Similar to TO DO but may
-            never be done.
+            Capture rough ideas for this property before they become to-dos or projects. Loosely
+            thought out topics for this property. Ideas still need details added and may someday
+            move to a Project or To Do depending on complexity. Similar to TO DO but may never be
+            done.
           </SectionHelpTip>
         ) : null}
-        {ideas.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>
-            Capture rough ideas for this property before they become to-dos or projects.
-          </Text>
-        ) : (
-          ideas.map((idea) => (
-            <PropertyTodoListRow
-              key={idea.id}
-              title={idea.title}
-              dueLabel={idea.dueAtISO ? formatDate(idea.dueAtISO) : undefined}
-              notes={idea.notes}
-              done={idea.done}
-              thumbnailUri={photosForPropertyTodo(state, idea.id)[0]?.localUri}
-              onPress={() => onOpenTodo(idea.id, { kind: 'idea' })}
-              variant="idea"
+        {ideas.length === 0 ? null : ideasExpanded ? (
+          <View
+            style={{
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.text,
+            }}
+          >
+            {ideas.map((idea) => (
+              <PropertyTodoListRow
+                key={idea.id}
+                title={idea.title}
+                dueLabel={idea.dueAtISO ? formatDisplayDate(idea.dueAtISO) : undefined}
+                notes={idea.notes}
+                done={idea.done}
+                thumbnailUri={photosForPropertyTodo(state, idea.id)[0]?.localUri}
+                onPress={() => onOpenTodo(idea.id, { kind: 'idea' })}
+                variant="idea"
+                cardBackgroundColor={colors.helpBg}
+                dividerColor={colors.text}
+              />
+            ))}
+          </View>
+        ) : null}
+        </View>
+
+        <View style={sharedStyles.propertySectionPanel}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              marginBottom: 8,
+            }}
+          >
+            <CollapsibleSectionTitle
+              title="Recent activity"
+              expanded={recentActivityExpanded}
+              count={recentActivityAll.length}
+              onExpand={() => {
+                setRecentActivityExpanded(true);
+                void setPropertySectionExpand({ recentActivity: true });
+              }}
             />
-          ))
-        )}
+            {recentActivityAll.length > 0 ? (
+              <Pressable
+                onPress={() => {
+                  const next = !recentActivityExpanded;
+                  setRecentActivityExpanded(next);
+                  void setPropertySectionExpand({ recentActivity: next });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  recentActivityExpanded ? 'Hide recent activity' : 'Show recent activity'
+                }
+                accessibilityState={{ expanded: recentActivityExpanded }}
+                hitSlop={6}
+                style={({ pressed }) => ({
+                  marginLeft: 'auto',
+                  padding: 4,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <MaterialIcons
+                  name={recentActivityExpanded ? 'expand-less' : 'expand-more'}
+                  size={24}
+                  color={colors.primary}
+                />
+              </Pressable>
+            ) : null}
+          </View>
+          {helpVisible ? (
+            <SectionHelpTip>
+              Latest vendor interactions and asset service events for this property, newest first.
+            </SectionHelpTip>
+          ) : null}
+          {recentActivityAll.length === 0 ? (
+            <Text style={sharedStyles.emptyText}>No recent activity yet.</Text>
+          ) : recentActivityExpanded ? (
+            <>
+              <View
+                style={{
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.text,
+                }}
+              >
+                {recentActivity.map((entry) => {
+                  if (entry.kind === 'interaction') {
+                    const interaction = entry.interaction;
+                    const vendor = interaction.vendorId
+                      ? vendorById(state, interaction.vendorId)
+                      : undefined;
+                    const photo = photosForVendorInteraction(state, interaction.id)[0];
+                    return (
+                      <PropertyInteractionListRow
+                        key={`interaction:${interaction.id}`}
+                        contactName={interaction.contactName}
+                        companyName={vendor?.name ?? 'No vendor'}
+                        companyPhotoUri={
+                          vendor ? firstPhotoUriForVendor(state, vendor) : undefined
+                        }
+                        hideCompanyPhoto={!vendor}
+                        vendorStatusLabel={
+                          vendor ? vendorStatusLabel(vendor.status) : undefined
+                        }
+                        vendorStatusColor={
+                          vendor ? vendorStatusColor(vendor.status) : undefined
+                        }
+                        dateISO={interaction.occurredAtISO}
+                        methodLabel={vendorContactMethodLabel(interaction.contactMethod)}
+                        notes={interaction.notes}
+                        photoUri={photo?.localUri}
+                        important={interaction.important === true}
+                        onPress={() =>
+                          onOpenInteraction(interaction.vendorId, interaction.id)
+                        }
+                        cardBackgroundColor={colors.helpBg}
+                        dividerColor={colors.text}
+                        cornerIcon="forum"
+                      />
+                    );
+                  }
+                  const event = entry.event;
+                  const item = itemById(state, event.itemId);
+                  if (!item) return null;
+                  const eventRoom = roomById(state, item.roomId);
+                  const photo = photosForEvent(state, event.id)[0];
+                  const open = upcomingDueAtISO(event) != null;
+                  return (
+                    <PropertyServiceListRow
+                      key={`event:${event.id}`}
+                      scopeLabel={eventRoom?.name}
+                      itemName={itemDisplayLabel(item)}
+                      itemPhotoUri={firstPhotoUriForItem(state, item)}
+                      dateLabel={formatDisplayDate(serviceListDateISO(event))}
+                      statusLabel={open ? 'Open' : 'Done'}
+                      title={event.title}
+                      notes={event.notes}
+                      company={event.serviceCompany}
+                      photoUri={photo?.localUri}
+                      onPress={() => onEditEvent(event.itemId, event.id)}
+                      onPressItem={() => onOpenItem(event.itemId)}
+                      cardBackgroundColor={colors.upcomingCardBg}
+                      dividerColor={colors.text}
+                      cornerIcon="handyman"
+                    />
+                  );
+                })}
+              </View>
+              {recentActivityAll.length > 10 ? (
+                <Pressable
+                  onPress={openShowAllRecentActivity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show all recent activity"
+                  style={({ pressed }) => ({
+                    alignSelf: 'flex-start',
+                    marginTop: 4,
+                    marginBottom: 8,
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  <Text style={sharedStyles.textLink}>Show all</Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : null}
+        </View>
 
       </ScrollView>
 
@@ -1410,6 +1596,16 @@ export function PropertyDetailScreen(props: {
           </View>
         </View>
       ) : null}
+
+      <PropertyShareOptionsModal
+        visible={shareOptionsOpen}
+        include={shareInclude}
+        onChangeInclude={setShareInclude}
+        shareFormat={shareFormat}
+        onChangeShareFormat={setShareFormat}
+        onShare={() => void runPropertyImageExport(shareInclude, shareFormat)}
+        onClose={() => setShareOptionsOpen(false)}
+      />
 
       {sharingPng ? (
         <View
@@ -1463,29 +1659,26 @@ export function PropertyDetailScreen(props: {
             {(
               [
                 {
-                  key: 'room',
-                  label: 'New room',
-                  onPress: () =>
-                    runMenuAction(() => {
-                      setRoomName('');
-                      setModalOpen(true);
-                    }),
-                },
-                {
-                  key: 'project',
-                  label: 'New project',
-                  onPress: () =>
-                    runMenuAction(() => {
-                      setProjectName('');
-                      setProjectDescription('');
-                      setProjectModalOpen(true);
-                    }),
+                  key: 'playSlideshow',
+                  label: 'Play slideshow',
+                  onPress: () => runMenuAction(() => playFavoriteSlideshow()),
                 },
                 {
                   key: 'slideshow',
                   label: 'Edit slideshow',
                   star: true,
                   onPress: () => runMenuAction(openSlideshowEditor),
+                },
+                {
+                  key: 'share',
+                  label: 'Share',
+                  onPress: () => runMenuAction(openShareOptions),
+                  disabled: sharingPng,
+                },
+                {
+                  key: 'reorderPhoto',
+                  label: showReorderArrows ? 'Reorder Photo: On' : 'Reorder Photo: Off',
+                  onPress: () => runMenuAction(() => setShowReorderArrows((prev) => !prev)),
                 },
                 {
                   key: 'textLarger',
@@ -1506,21 +1699,6 @@ export function PropertyDetailScreen(props: {
                   disabled: !textScaleControls.canMakeSmaller,
                 },
                 {
-                  key: 'export',
-                  label: 'Export property',
-                  onPress: () => runMenuAction(promptExportProperty),
-                },
-                {
-                  key: 'saveUpdates',
-                  label: 'Save updates',
-                  onPress: () => runMenuAction(promptSaveUpdates),
-                },
-                {
-                  key: 'loadUpdates',
-                  label: 'Load updates',
-                  onPress: () => runMenuActionAfterModal(() => void loadPropertyUpdates()),
-                },
-                {
                   key: 'delete',
                   label: 'Delete property',
                   danger: true,
@@ -1535,37 +1713,37 @@ export function PropertyDetailScreen(props: {
                 disabled?: boolean;
               }>
             ).map((item) => (
-              <Pressable
-                key={item.key}
-                onPress={item.disabled ? undefined : item.onPress}
-                disabled={item.disabled}
-                accessibilityRole="button"
-                accessibilityLabel={item.label}
-                accessibilityState={{ disabled: item.disabled === true }}
-                style={({ pressed }) => ({
-                  paddingVertical: 14,
-                  borderTopWidth: 1,
-                  borderTopColor: colors.hairline,
-                  opacity: item.disabled ? 0.35 : pressed ? 0.7 : 1,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8,
-                })}
-              >
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: '500',
-                    color: item.danger ? colors.danger : colors.text,
-                  }}
+                <Pressable
+                  key={item.key}
+                  onPress={item.disabled ? undefined : item.onPress}
+                  disabled={item.disabled}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.label}
+                  accessibilityState={{ disabled: item.disabled === true }}
+                  style={({ pressed }) => ({
+                    paddingVertical: 14,
+                    borderTopWidth: 1,
+                    borderTopColor: colors.hairline,
+                    opacity: item.disabled ? 0.35 : pressed ? 0.7 : 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                  })}
                 >
-                  {item.label}
-                </Text>
-                {item.star ? (
-                  <Text style={{ fontSize: 13, lineHeight: 16, color: '#000' }}>★</Text>
-                ) : null}
-              </Pressable>
-            ))}
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: '500',
+                      color: item.danger ? colors.danger : colors.text,
+                    }}
+                  >
+                    {item.label}
+                  </Text>
+                  {item.star ? (
+                    <Text style={{ fontSize: 13, lineHeight: 16, color: '#000' }}>★</Text>
+                  ) : null}
+                </Pressable>
+              ))}
             <Pressable
               onPress={() => setMenuOpen(false)}
               style={({ pressed }) => [
@@ -1574,68 +1752,13 @@ export function PropertyDetailScreen(props: {
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+              <Text style={sharedStyles.secondaryBtnText}>Done</Text>
             </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
 
-      <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }} onPress={() => setModalOpen(false)}>
-          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
-            <Text style={sharedStyles.sectionTitle}>New room</Text>
-            <TextInput
-              value={roomName}
-              onChangeText={setRoomName}
-              placeholder="Utilities, Garage, Kitchen…"
-              style={sharedStyles.input}
-              autoFocus
-            />
-            <Pressable
-              onPress={addRoom}
-              style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
-            >
-              <Text style={sharedStyles.primaryBtnText}>Save</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal
-        visible={projectModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setProjectModalOpen(false)}
-      >
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
-          onPress={() => setProjectModalOpen(false)}
-        >
-          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
-            <Text style={sharedStyles.sectionTitle}>New project</Text>
-            <TextInput
-              value={projectName}
-              onChangeText={setProjectName}
-              placeholder="Pool renovation, kitchen remodel…"
-              style={sharedStyles.input}
-              autoFocus
-            />
-            <TextInput
-              value={projectDescription}
-              onChangeText={setProjectDescription}
-              placeholder="Optional description"
-              style={[sharedStyles.input, sharedStyles.inputMultiline, { marginTop: 8 }]}
-              multiline
-            />
-            <Pressable
-              onPress={addProject}
-              style={({ pressed }) => [sharedStyles.primaryBtn, pressed && sharedStyles.primaryBtnPressed]}
-            >
-              <Text style={sharedStyles.primaryBtnText}>Save</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {propertyGearCreateModals}
 
       <RenameModal
         visible={renameOpen}

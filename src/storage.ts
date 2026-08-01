@@ -13,6 +13,8 @@ import type {
   PropertyTodo,
   PropertyTodoKind,
   Project,
+  ProjectPhoto,
+  ProjectPunchItem,
   ProjectVendor,
   Room,
   VendorInteraction,
@@ -27,9 +29,25 @@ import { normalizeWasteWaterSystem } from './wasteWaterSlots';
 import { furnaceUsesFuelShutoff, furnaceUsesFuelTank, normalizeFuelType, normalizeHeatDistribution } from './furnaceSlots';
 import { APPLIANCE_PHOTO_SLOTS } from './applianceSlots';
 import { ELECTRIC_PANEL_PHOTO_SLOTS } from './electricPanelSlots';
+import { WATER_HEATER_PHOTO_SLOTS } from './waterHeaterSlots';
+import { SECURITY_SYSTEM_PHOTO_SLOTS, normalizeSecuritySystemType } from './securitySystemSlots';
+import {
+  RADON_MITIGATION_PHOTO_SLOTS,
+  normalizeRadonMitigationSystemType,
+} from './radonMitigationSlots';
+import { WELL_PUMP_PHOTO_SLOTS } from './wellPumpSlots';
+import { GENERATOR_PHOTO_SLOTS, normalizeGeneratorFuelType } from './generatorSlots';
+import { SUMP_PUMP_PHOTO_SLOTS, normalizeSumpPumpRole } from './sumpPumpSlots';
+import { GARAGE_DOOR_PHOTO_SLOTS } from './garageDoorSlots';
+import { ROOF_PHOTO_SLOTS, normalizeRoofMaterial } from './roofSlots';
+import { POOL_PHOTO_SLOTS, normalizePoolType } from './poolSlots';
+import { IRRIGATION_PHOTO_SLOTS } from './irrigationSlots';
+import { EV_CHARGER_PHOTO_SLOTS } from './evChargerSlots';
+import { SOLAR_PHOTO_SLOTS } from './solarSlots';
+import { HOT_TUB_PHOTO_SLOTS } from './hotTubSlots';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
-import { isAfterToday } from './eventRecurrence';
+import { isAfterToday, serviceListDateISO } from './eventRecurrence';
 import { normalizeHiddenPhotoSlotKeys } from './hiddenPhotoSlots';
 import { recordInferredDeletions } from './syncMeta';
 import { ensureUpdatedAt, stampChangedRecords } from './syncStamp';
@@ -192,6 +210,485 @@ function normalizeElectricPanelDetails(details: ItemDetails): ItemDetails {
   };
 }
 
+function normalizeWaterHeaterDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'water_heater') return defaultDetailsForType('water_heater');
+  const fuelType = normalizeFuelType(
+    typeof details.fuelType === 'string' ? details.fuelType : undefined
+  );
+  return {
+    kind: 'water_heater',
+    fuelType,
+    fuelTypeOther:
+      fuelType === 'other'
+        ? typeof details.fuelTypeOther === 'string'
+          ? details.fuelTypeOther.trim() || undefined
+          : undefined
+        : undefined,
+    make: typeof details.make === 'string' ? details.make.trim() || undefined : undefined,
+    modelNumber:
+      typeof details.modelNumber === 'string' ? details.modelNumber.trim() || undefined : undefined,
+    serialNumber:
+      typeof details.serialNumber === 'string' ? details.serialNumber.trim() || undefined : undefined,
+    notes: typeof details.notes === 'string' ? details.notes.trim() || undefined : undefined,
+    frontPhotoId: details.frontPhotoId,
+    distancePhotoId: details.distancePhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    frontDocumentId: details.frontDocumentId,
+    distanceDocumentId: details.distanceDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeSecuritySystemDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'security_system') return defaultDetailsForType('security_system');
+  const systemType = normalizeSecuritySystemType(
+    typeof details.systemType === 'string' ? details.systemType : undefined
+  );
+  return {
+    kind: 'security_system',
+    systemType,
+    systemTypeOther:
+      systemType === 'other'
+        ? typeof details.systemTypeOther === 'string'
+          ? details.systemTypeOther.trim() || undefined
+          : undefined
+        : undefined,
+    monitoringCompany:
+      typeof details.monitoringCompany === 'string'
+        ? details.monitoringCompany.trim() || undefined
+        : undefined,
+    accountNumber:
+      typeof details.accountNumber === 'string'
+        ? details.accountNumber.trim() || undefined
+        : undefined,
+    monitoringPhone:
+      typeof details.monitoringPhone === 'string'
+        ? details.monitoringPhone.trim() || undefined
+        : undefined,
+    make: typeof details.make === 'string' ? details.make.trim() || undefined : undefined,
+    modelNumber:
+      typeof details.modelNumber === 'string' ? details.modelNumber.trim() || undefined : undefined,
+    serialNumber:
+      typeof details.serialNumber === 'string' ? details.serialNumber.trim() || undefined : undefined,
+    panelLocation:
+      typeof details.panelLocation === 'string'
+        ? details.panelLocation.trim() || undefined
+        : undefined,
+    keypadLocation:
+      typeof details.keypadLocation === 'string'
+        ? details.keypadLocation.trim() || undefined
+        : undefined,
+    accessNotes:
+      typeof details.accessNotes === 'string' ? details.accessNotes.trim() || undefined : undefined,
+    installDateAtISO:
+      typeof details.installDateAtISO === 'string'
+        ? details.installDateAtISO.trim() || undefined
+        : undefined,
+    installerName:
+      typeof details.installerName === 'string'
+        ? details.installerName.trim() || undefined
+        : undefined,
+    installerPhone:
+      typeof details.installerPhone === 'string'
+        ? details.installerPhone.trim() || undefined
+        : undefined,
+    serviceCompany:
+      typeof details.serviceCompany === 'string'
+        ? details.serviceCompany.trim() || undefined
+        : undefined,
+    servicePhone:
+      typeof details.servicePhone === 'string'
+        ? details.servicePhone.trim() || undefined
+        : undefined,
+    notes: typeof details.notes === 'string' ? details.notes.trim() || undefined : undefined,
+    controlPanelPhotoId: details.controlPanelPhotoId,
+    keypadPhotoId: details.keypadPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    controlPanelDocumentId: details.controlPanelDocumentId,
+    keypadDocumentId: details.keypadDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeRadonMitigationDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'radon_mitigation') return defaultDetailsForType('radon_mitigation');
+  const systemType = normalizeRadonMitigationSystemType(
+    typeof details.systemType === 'string' ? details.systemType : undefined
+  );
+  return {
+    kind: 'radon_mitigation',
+    systemType,
+    systemTypeOther:
+      systemType === 'other'
+        ? typeof details.systemTypeOther === 'string'
+          ? details.systemTypeOther.trim() || undefined
+          : undefined
+        : undefined,
+    fanMake: typeof details.fanMake === 'string' ? details.fanMake.trim() || undefined : undefined,
+    fanModel:
+      typeof details.fanModel === 'string' ? details.fanModel.trim() || undefined : undefined,
+    fanSerialNumber:
+      typeof details.fanSerialNumber === 'string'
+        ? details.fanSerialNumber.trim() || undefined
+        : undefined,
+    fanLocation:
+      typeof details.fanLocation === 'string' ? details.fanLocation.trim() || undefined : undefined,
+    suctionPointLocation:
+      typeof details.suctionPointLocation === 'string'
+        ? details.suctionPointLocation.trim() || undefined
+        : undefined,
+    dischargeLocation:
+      typeof details.dischargeLocation === 'string'
+        ? details.dischargeLocation.trim() || undefined
+        : undefined,
+    manometerReading:
+      typeof details.manometerReading === 'string'
+        ? details.manometerReading.trim() || undefined
+        : undefined,
+    lastTestDateAtISO:
+      typeof details.lastTestDateAtISO === 'string'
+        ? details.lastTestDateAtISO.trim() || undefined
+        : undefined,
+    lastTestResult:
+      typeof details.lastTestResult === 'string'
+        ? details.lastTestResult.trim() || undefined
+        : undefined,
+    installDateAtISO:
+      typeof details.installDateAtISO === 'string'
+        ? details.installDateAtISO.trim() || undefined
+        : undefined,
+    installerName:
+      typeof details.installerName === 'string'
+        ? details.installerName.trim() || undefined
+        : undefined,
+    installerPhone:
+      typeof details.installerPhone === 'string'
+        ? details.installerPhone.trim() || undefined
+        : undefined,
+    serviceCompany:
+      typeof details.serviceCompany === 'string'
+        ? details.serviceCompany.trim() || undefined
+        : undefined,
+    servicePhone:
+      typeof details.servicePhone === 'string'
+        ? details.servicePhone.trim() || undefined
+        : undefined,
+    notes: typeof details.notes === 'string' ? details.notes.trim() || undefined : undefined,
+    fanPhotoId: details.fanPhotoId,
+    manometerPhotoId: details.manometerPhotoId,
+    dischargePhotoId: details.dischargePhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    fanDocumentId: details.fanDocumentId,
+    manometerDocumentId: details.manometerDocumentId,
+    dischargeDocumentId: details.dischargeDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeWellPumpDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'well_pump') return defaultDetailsForType('well_pump');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  return {
+    kind: 'well_pump',
+    pumpMake: trim(details.pumpMake),
+    pumpModel: trim(details.pumpModel),
+    pumpSerialNumber: trim(details.pumpSerialNumber),
+    wellDepth: trim(details.wellDepth),
+    yieldGpm: trim(details.yieldGpm),
+    pressureTankSize: trim(details.pressureTankSize),
+    locationNotes: trim(details.locationNotes),
+    installDateAtISO: trim(details.installDateAtISO),
+    installerName: trim(details.installerName),
+    installerPhone: trim(details.installerPhone),
+    serviceCompany: trim(details.serviceCompany),
+    servicePhone: trim(details.servicePhone),
+    notes: trim(details.notes),
+    pumpPhotoId: details.pumpPhotoId,
+    pressureTankPhotoId: details.pressureTankPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    pumpDocumentId: details.pumpDocumentId,
+    pressureTankDocumentId: details.pressureTankDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeGeneratorDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'generator') return defaultDetailsForType('generator');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  const fuelType = normalizeGeneratorFuelType(
+    typeof details.fuelType === 'string' ? details.fuelType : undefined
+  );
+  return {
+    kind: 'generator',
+    fuelType,
+    fuelTypeOther: fuelType === 'other' ? trim(details.fuelTypeOther) : undefined,
+    make: trim(details.make),
+    modelNumber: trim(details.modelNumber),
+    serialNumber: trim(details.serialNumber),
+    wattage: trim(details.wattage),
+    transferSwitchLocation: trim(details.transferSwitchLocation),
+    runtimeHours: trim(details.runtimeHours),
+    lastExerciseAtISO: trim(details.lastExerciseAtISO),
+    installDateAtISO: trim(details.installDateAtISO),
+    installerName: trim(details.installerName),
+    installerPhone: trim(details.installerPhone),
+    serviceCompany: trim(details.serviceCompany),
+    servicePhone: trim(details.servicePhone),
+    notes: trim(details.notes),
+    generatorPhotoId: details.generatorPhotoId,
+    transferSwitchPhotoId: details.transferSwitchPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    generatorDocumentId: details.generatorDocumentId,
+    transferSwitchDocumentId: details.transferSwitchDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeSumpPumpDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'sump_pump') return defaultDetailsForType('sump_pump');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  return {
+    kind: 'sump_pump',
+    pumpRole: normalizeSumpPumpRole(
+      typeof details.pumpRole === 'string' ? details.pumpRole : undefined
+    ),
+    make: trim(details.make),
+    modelNumber: trim(details.modelNumber),
+    serialNumber: trim(details.serialNumber),
+    batteryBackupNotes: trim(details.batteryBackupNotes),
+    dischargeLocation: trim(details.dischargeLocation),
+    locationNotes: trim(details.locationNotes),
+    installDateAtISO: trim(details.installDateAtISO),
+    installerName: trim(details.installerName),
+    installerPhone: trim(details.installerPhone),
+    serviceCompany: trim(details.serviceCompany),
+    servicePhone: trim(details.servicePhone),
+    notes: trim(details.notes),
+    pumpPhotoId: details.pumpPhotoId,
+    dischargePhotoId: details.dischargePhotoId,
+    batteryBackupPhotoId: details.batteryBackupPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    pumpDocumentId: details.pumpDocumentId,
+    dischargeDocumentId: details.dischargeDocumentId,
+    batteryBackupDocumentId: details.batteryBackupDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeGarageDoorDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'garage_door') return defaultDetailsForType('garage_door');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  return {
+    kind: 'garage_door',
+    openerMake: trim(details.openerMake),
+    openerModel: trim(details.openerModel),
+    openerSerialNumber: trim(details.openerSerialNumber),
+    springType: trim(details.springType),
+    programmingNotes: trim(details.programmingNotes),
+    installDateAtISO: trim(details.installDateAtISO),
+    installerName: trim(details.installerName),
+    installerPhone: trim(details.installerPhone),
+    serviceCompany: trim(details.serviceCompany),
+    servicePhone: trim(details.servicePhone),
+    notes: trim(details.notes),
+    doorPhotoId: details.doorPhotoId,
+    openerPhotoId: details.openerPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    doorDocumentId: details.doorDocumentId,
+    openerDocumentId: details.openerDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeRoofDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'roof') return defaultDetailsForType('roof');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  const material = normalizeRoofMaterial(
+    typeof details.material === 'string' ? details.material : undefined
+  );
+  return {
+    kind: 'roof',
+    material,
+    materialOther: material === 'other' ? trim(details.materialOther) : undefined,
+    color: trim(details.color),
+    installDateAtISO: trim(details.installDateAtISO),
+    warrantyExpiresAtISO: trim(details.warrantyExpiresAtISO),
+    lastInspectedAtISO: trim(details.lastInspectedAtISO),
+    contractorName: trim(details.contractorName),
+    contractorPhone: trim(details.contractorPhone),
+    notes: trim(details.notes),
+    overviewPhotoId: details.overviewPhotoId,
+    detailPhotoId: details.detailPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    overviewDocumentId: details.overviewDocumentId,
+    detailDocumentId: details.detailDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizePoolDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'pool') return defaultDetailsForType('pool');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  const poolType = normalizePoolType(
+    typeof details.poolType === 'string' ? details.poolType : undefined
+  );
+  return {
+    kind: 'pool',
+    poolType,
+    poolTypeOther: poolType === 'other' ? trim(details.poolTypeOther) : undefined,
+    volumeGallons: trim(details.volumeGallons),
+    filterMake: trim(details.filterMake),
+    filterModel: trim(details.filterModel),
+    pumpMake: trim(details.pumpMake),
+    pumpModel: trim(details.pumpModel),
+    heaterType: trim(details.heaterType),
+    chemicalNotes: trim(details.chemicalNotes),
+    installDateAtISO: trim(details.installDateAtISO),
+    serviceCompany: trim(details.serviceCompany),
+    servicePhone: trim(details.servicePhone),
+    notes: trim(details.notes),
+    overviewPhotoId: details.overviewPhotoId,
+    equipmentPadPhotoId: details.equipmentPadPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    overviewDocumentId: details.overviewDocumentId,
+    equipmentPadDocumentId: details.equipmentPadDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeIrrigationDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'irrigation') return defaultDetailsForType('irrigation');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  return {
+    kind: 'irrigation',
+    controllerMake: trim(details.controllerMake),
+    controllerModel: trim(details.controllerModel),
+    zoneCount: trim(details.zoneCount),
+    backflowLocation: trim(details.backflowLocation),
+    winterizeNotes: trim(details.winterizeNotes),
+    installDateAtISO: trim(details.installDateAtISO),
+    installerName: trim(details.installerName),
+    installerPhone: trim(details.installerPhone),
+    serviceCompany: trim(details.serviceCompany),
+    servicePhone: trim(details.servicePhone),
+    notes: trim(details.notes),
+    controllerPhotoId: details.controllerPhotoId,
+    backflowPhotoId: details.backflowPhotoId,
+    zoneValvePhotoId: details.zoneValvePhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    controllerDocumentId: details.controllerDocumentId,
+    backflowDocumentId: details.backflowDocumentId,
+    zoneValveDocumentId: details.zoneValveDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeEvChargerDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'ev_charger') return defaultDetailsForType('ev_charger');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  return {
+    kind: 'ev_charger',
+    make: trim(details.make),
+    modelNumber: trim(details.modelNumber),
+    serialNumber: trim(details.serialNumber),
+    amperage: trim(details.amperage),
+    connectorType: trim(details.connectorType),
+    circuitBreaker: trim(details.circuitBreaker),
+    installDateAtISO: trim(details.installDateAtISO),
+    installerName: trim(details.installerName),
+    installerPhone: trim(details.installerPhone),
+    notes: trim(details.notes),
+    chargerPhotoId: details.chargerPhotoId,
+    breakerPanelPhotoId: details.breakerPanelPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    chargerDocumentId: details.chargerDocumentId,
+    breakerPanelDocumentId: details.breakerPanelDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeSolarDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'solar') return defaultDetailsForType('solar');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  return {
+    kind: 'solar',
+    systemSizeKw: trim(details.systemSizeKw),
+    panelMake: trim(details.panelMake),
+    panelModel: trim(details.panelModel),
+    panelCount: trim(details.panelCount),
+    inverterMake: trim(details.inverterMake),
+    inverterModel: trim(details.inverterModel),
+    inverterSerialNumber: trim(details.inverterSerialNumber),
+    productionAccountNotes: trim(details.productionAccountNotes),
+    installDateAtISO: trim(details.installDateAtISO),
+    installerName: trim(details.installerName),
+    installerPhone: trim(details.installerPhone),
+    warrantyNotes: trim(details.warrantyNotes),
+    notes: trim(details.notes),
+    panelsPhotoId: details.panelsPhotoId,
+    inverterPhotoId: details.inverterPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    panelsDocumentId: details.panelsDocumentId,
+    inverterDocumentId: details.inverterDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
+function normalizeHotTubDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'hot_tub') return defaultDetailsForType('hot_tub');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  return {
+    kind: 'hot_tub',
+    make: trim(details.make),
+    modelNumber: trim(details.modelNumber),
+    serialNumber: trim(details.serialNumber),
+    capacityPersons: trim(details.capacityPersons),
+    filterModel: trim(details.filterModel),
+    heaterType: trim(details.heaterType),
+    chemicalNotes: trim(details.chemicalNotes),
+    installDateAtISO: trim(details.installDateAtISO),
+    serviceCompany: trim(details.serviceCompany),
+    servicePhone: trim(details.servicePhone),
+    notes: trim(details.notes),
+    overviewPhotoId: details.overviewPhotoId,
+    equipmentPhotoId: details.equipmentPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    overviewDocumentId: details.overviewDocumentId,
+    equipmentDocumentId: details.equipmentDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
 function normalizeWaterTreatmentDetails(details: ItemDetails): ItemDetails {
   if (details.kind !== 'water_treatment') return defaultDetailsForType('water_treatment');
   const legacy = details as WaterTreatmentDetails & { provider?: string };
@@ -324,6 +821,84 @@ function exclusiveItemDetails(itemTypeId: ItemTypeId, details: ItemDetails): Ite
       ELECTRIC_PANEL_PHOTO_SLOTS.map((slot) => slot.key)
     ) as ItemDetails;
   }
+  if (details.kind === 'water_heater') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      WATER_HEATER_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'security_system') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      SECURITY_SYSTEM_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'radon_mitigation') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      RADON_MITIGATION_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'well_pump') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      WELL_PUMP_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'generator') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      GENERATOR_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'sump_pump') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      SUMP_PUMP_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'garage_door') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      GARAGE_DOOR_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'roof') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      ROOF_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'pool') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      POOL_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'irrigation') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      IRRIGATION_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'ev_charger') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      EV_CHARGER_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'solar') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      SOLAR_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
+  if (details.kind === 'hot_tub') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      HOT_TUB_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
   return details;
 }
 
@@ -341,6 +916,45 @@ function normalizeDetails(itemTypeId: ItemTypeId, details: ItemDetails): ItemDet
   }
   if (itemTypeId === 'electric_panel') {
     return exclusiveItemDetails(itemTypeId, normalizeElectricPanelDetails(details));
+  }
+  if (itemTypeId === 'water_heater') {
+    return exclusiveItemDetails(itemTypeId, normalizeWaterHeaterDetails(details));
+  }
+  if (itemTypeId === 'security_system') {
+    return exclusiveItemDetails(itemTypeId, normalizeSecuritySystemDetails(details));
+  }
+  if (itemTypeId === 'radon_mitigation') {
+    return exclusiveItemDetails(itemTypeId, normalizeRadonMitigationDetails(details));
+  }
+  if (itemTypeId === 'well_pump') {
+    return exclusiveItemDetails(itemTypeId, normalizeWellPumpDetails(details));
+  }
+  if (itemTypeId === 'generator') {
+    return exclusiveItemDetails(itemTypeId, normalizeGeneratorDetails(details));
+  }
+  if (itemTypeId === 'sump_pump') {
+    return exclusiveItemDetails(itemTypeId, normalizeSumpPumpDetails(details));
+  }
+  if (itemTypeId === 'garage_door') {
+    return exclusiveItemDetails(itemTypeId, normalizeGarageDoorDetails(details));
+  }
+  if (itemTypeId === 'roof') {
+    return exclusiveItemDetails(itemTypeId, normalizeRoofDetails(details));
+  }
+  if (itemTypeId === 'pool') {
+    return exclusiveItemDetails(itemTypeId, normalizePoolDetails(details));
+  }
+  if (itemTypeId === 'irrigation') {
+    return exclusiveItemDetails(itemTypeId, normalizeIrrigationDetails(details));
+  }
+  if (itemTypeId === 'ev_charger') {
+    return exclusiveItemDetails(itemTypeId, normalizeEvChargerDetails(details));
+  }
+  if (itemTypeId === 'solar') {
+    return exclusiveItemDetails(itemTypeId, normalizeSolarDetails(details));
+  }
+  if (itemTypeId === 'hot_tub') {
+    return exclusiveItemDetails(itemTypeId, normalizeHotTubDetails(details));
   }
   if (itemTypeId === 'water_treatment') {
     return exclusiveItemDetails(itemTypeId, normalizeWaterTreatmentDetails(details));
@@ -392,6 +1006,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
   const vendorPhotos = Array.isArray(raw.vendorPhotos) ? raw.vendorPhotos : [];
   const vendorInteractions = Array.isArray(raw.vendorInteractions) ? raw.vendorInteractions : [];
   const propertyTodos = Array.isArray(raw.propertyTodos) ? raw.propertyTodos : [];
+  const projectPunchItems = Array.isArray(raw.projectPunchItems) ? raw.projectPunchItems : [];
 
   const validDocumentIds = new Set(
     documents
@@ -500,17 +1115,46 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     .filter((p) => propertyIds.has(p.propertyId))
     .map((p) => ({
       ...p,
+      status: p.status ?? 'research',
       photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter((id) =>
-        projectPhotos.some((photo) => photo.id === id)
+        projectPhotos.some((photo) => photo.id === id && !photo.punchItemId)
       ),
     }));
   const projectIds = new Set(cleanProjects.map((p) => p.id));
-  const cleanProjectPhotos = projectPhotos.filter((p) => projectIds.has(p.projectId));
+  const cleanProjectPunchItemsDraft = projectPunchItems.filter((item) =>
+    projectIds.has(item.projectId)
+  );
+  const punchItemIds = new Set(cleanProjectPunchItemsDraft.map((item) => item.id));
+  const cleanProjectPhotos = projectPhotos.filter(
+    (p) =>
+      projectIds.has(p.projectId) && (!p.punchItemId || punchItemIds.has(p.punchItemId))
+  );
   const validProjectPhotoIds = new Set(cleanProjectPhotos.map((p) => p.id));
   const cleanProjectsWithPhotos = cleanProjects.map((p) => ({
     ...p,
-    photoIds: p.photoIds.filter((id) => validProjectPhotoIds.has(id)),
+    photoIds: p.photoIds.filter(
+      (id) =>
+        validProjectPhotoIds.has(id) &&
+        cleanProjectPhotos.some((photo) => photo.id === id && !photo.punchItemId)
+    ),
   }));
+
+  const cleanProjectPunchItems = cleanProjectPunchItemsDraft.map((item) => {
+    const ownedIds = cleanProjectPhotos
+      .filter((p) => p.punchItemId === item.id)
+      .map((p) => p.id);
+    const ownedSet = new Set(ownedIds);
+    const ordered = (Array.isArray(item.photoIds) ? item.photoIds : []).filter((id) =>
+      ownedSet.has(id)
+    );
+    const orderedSet = new Set(ordered);
+    return {
+      ...item,
+      title: typeof item.title === 'string' ? item.title : '',
+      done: item.done === true,
+      photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
+    };
+  });
 
   const cleanProjectVendors = projectVendors
     .filter((v) => projectIds.has(v.projectId))
@@ -525,13 +1169,22 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       ),
     }));
   const vendorIds = new Set(cleanProjectVendors.map((v) => v.id));
-  const interactionIds = new Set(
-    vendorInteractions.filter((i) => vendorIds.has(i.vendorId)).map((i) => i.id)
-  );
-  const cleanVendorPhotos = vendorPhotos.filter(
-    (p) =>
-      vendorIds.has(p.vendorId) && (!p.interactionId || interactionIds.has(p.interactionId))
-  );
+  const cleanVendorInteractionsDraft = vendorInteractions.filter((i) => {
+    if (i.vendorId) return vendorIds.has(i.vendorId);
+    if (typeof i.propertyId === 'string' && i.propertyId) {
+      return propertyIds.has(i.propertyId);
+    }
+    return false;
+  });
+  const interactionIds = new Set(cleanVendorInteractionsDraft.map((i) => i.id));
+  const cleanVendorPhotos = vendorPhotos.filter((p) => {
+    if (p.interactionId) {
+      if (!interactionIds.has(p.interactionId)) return false;
+      if (p.vendorId && !vendorIds.has(p.vendorId)) return false;
+      return true;
+    }
+    return Boolean(p.vendorId && vendorIds.has(p.vendorId));
+  });
   const validVendorPhotoIds = new Set(cleanVendorPhotos.map((p) => p.id));
   const cleanProjectVendorsFinal = cleanProjectVendors.map((v) => ({
     ...v,
@@ -541,24 +1194,25 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
         cleanVendorPhotos.some((p) => p.id === id && !p.interactionId)
     ),
   }));
-  const cleanVendorInteractions = vendorInteractions
-    .filter((i) => vendorIds.has(i.vendorId))
-    .map((i) => {
-      // Rebuild photoIds from photo.interactionId ownership so links lost in
-      // older saves or partial imports are repaired; existing order is kept.
-      const ownedIds = cleanVendorPhotos
-        .filter((p) => p.interactionId === i.id)
-        .map((p) => p.id);
-      const ownedSet = new Set(ownedIds);
-      const ordered = (Array.isArray(i.photoIds) ? i.photoIds : []).filter((id) =>
-        ownedSet.has(id)
-      );
-      const orderedSet = new Set(ordered);
-      return {
-        ...i,
-        photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
-      };
-    });
+  const cleanVendorInteractions = cleanVendorInteractionsDraft.map((i) => {
+    // Rebuild photoIds from photo.interactionId ownership so links lost in
+    // older saves or partial imports are repaired; existing order is kept.
+    const ownedIds = cleanVendorPhotos
+      .filter((p) => p.interactionId === i.id)
+      .map((p) => p.id);
+    const ownedSet = new Set(ownedIds);
+    const ordered = (Array.isArray(i.photoIds) ? i.photoIds : []).filter((id) =>
+      ownedSet.has(id)
+    );
+    const orderedSet = new Set(ordered);
+    return {
+      ...i,
+      vendorId: i.vendorId || undefined,
+      propertyId: typeof i.propertyId === 'string' && i.propertyId ? i.propertyId : undefined,
+      important: i.important === true ? true : undefined,
+      photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
+    };
+  });
 
   const cleanPropertyTodos = cleanPropertyTodosDraft.map((todo) => {
     const ownedIds = cleanPropertyPhotos.filter((p) => p.todoId === todo.id).map((p) => p.id);
@@ -567,11 +1221,19 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       ownedSet.has(id)
     );
     const orderedSet = new Set(ordered);
+    const repeatMonthsRaw = todo.repeatMonths;
+    const repeatMonths =
+      typeof repeatMonthsRaw === 'number' &&
+      Number.isFinite(repeatMonthsRaw) &&
+      repeatMonthsRaw >= 1
+        ? Math.floor(repeatMonthsRaw)
+        : undefined;
     return {
       ...todo,
       kind: (todo.kind === 'idea' ? 'idea' : 'todo') as PropertyTodoKind,
       title: typeof todo.title === 'string' ? todo.title : '',
       done: todo.done === true,
+      repeatMonths,
       photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
     };
   });
@@ -606,6 +1268,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     vendorPhotos: cleanVendorPhotos.map(remapUri).map(ensureUpdatedAt),
     vendorInteractions: cleanVendorInteractions.map(ensureUpdatedAt),
     propertyTodos: cleanPropertyTodos.map(ensureUpdatedAt),
+    projectPunchItems: cleanProjectPunchItems.map(ensureUpdatedAt),
   };
 }
 
@@ -670,22 +1333,27 @@ export function roomById(state: AppState, id: string): Room | undefined {
   return state.rooms.find((r) => r.id === id);
 }
 
+function compareInventoryItemsForList(a: InventoryItem, b: InventoryItem): number {
+  const typeCompare = catalogLabel(a.itemTypeId).localeCompare(
+    catalogLabel(b.itemTypeId),
+    undefined,
+    { sensitivity: 'base' }
+  );
+  if (typeCompare !== 0) return typeCompare;
+  const nameCompare = (itemCustomName(a) ?? '').localeCompare(itemCustomName(b) ?? '', undefined, {
+    sensitivity: 'base',
+  });
+  if (nameCompare !== 0) return nameCompare;
+  return a.createdAtISO.localeCompare(b.createdAtISO);
+}
+
 export function itemsForRoom(state: AppState, roomId: string): InventoryItem[] {
-  return state.items
-    .filter((i) => i.roomId === roomId)
-    .sort((a, b) => {
-      const typeCompare = catalogLabel(a.itemTypeId).localeCompare(
-        catalogLabel(b.itemTypeId),
-        undefined,
-        { sensitivity: 'base' }
-      );
-      if (typeCompare !== 0) return typeCompare;
-      const nameCompare = (itemCustomName(a) ?? '').localeCompare(itemCustomName(b) ?? '', undefined, {
-        sensitivity: 'base',
-      });
-      if (nameCompare !== 0) return nameCompare;
-      return a.createdAtISO.localeCompare(b.createdAtISO);
-    });
+  return state.items.filter((i) => i.roomId === roomId).sort(compareInventoryItemsForList);
+}
+
+/** All inventory assets across every property, sorted like room lists. */
+export function allItems(state: AppState): InventoryItem[] {
+  return [...state.items].sort(compareInventoryItemsForList);
 }
 
 export function itemById(state: AppState, id: string): InventoryItem | undefined {
@@ -734,6 +1402,136 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
+  if (item.itemTypeId === 'water_heater' && item.details.kind === 'water_heater') {
+    for (const slot of WATER_HEATER_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'security_system' && item.details.kind === 'security_system') {
+    for (const slot of SECURITY_SYSTEM_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'radon_mitigation' && item.details.kind === 'radon_mitigation') {
+    for (const slot of RADON_MITIGATION_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'well_pump' && item.details.kind === 'well_pump') {
+    for (const slot of WELL_PUMP_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'generator' && item.details.kind === 'generator') {
+    for (const slot of GENERATOR_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'sump_pump' && item.details.kind === 'sump_pump') {
+    for (const slot of SUMP_PUMP_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'garage_door' && item.details.kind === 'garage_door') {
+    for (const slot of GARAGE_DOOR_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'roof' && item.details.kind === 'roof') {
+    for (const slot of ROOF_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'pool' && item.details.kind === 'pool') {
+    for (const slot of POOL_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'irrigation' && item.details.kind === 'irrigation') {
+    for (const slot of IRRIGATION_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'ev_charger' && item.details.kind === 'ev_charger') {
+    for (const slot of EV_CHARGER_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'solar' && item.details.kind === 'solar') {
+    for (const slot of SOLAR_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'hot_tub' && item.details.kind === 'hot_tub') {
+    for (const slot of HOT_TUB_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
   for (const photoId of item.photoIds) {
     const photo = itemPhotos.find((p) => p.id === photoId);
     if (photo) return photo.localUri;
@@ -755,12 +1553,38 @@ export function serviceHistoryEventsForItem(state: AppState, itemId: string): It
 
 export function itemsForProperty(state: AppState, propertyId: string): InventoryItem[] {
   const roomIds = new Set(roomsForProperty(state, propertyId).map((r) => r.id));
-  return state.items.filter((i) => roomIds.has(i.roomId));
+  return state.items.filter((i) => roomIds.has(i.roomId)).sort(compareInventoryItemsForList);
+}
+
+/** Display/sort date for services lists — same field as list/detail UI. */
+function eventListSortKey(event: ItemEvent): string {
+  return serviceListDateISO(event);
+}
+
+function sortEventsNewestFirst(events: ItemEvent[]): ItemEvent[] {
+  return [...events].sort((a, b) => {
+    const byDate = eventListSortKey(b).localeCompare(eventListSortKey(a));
+    if (byDate !== 0) return byDate;
+    const aSecondary = a.updatedAtISO ?? a.occurredAtISO;
+    const bSecondary = b.updatedAtISO ?? b.occurredAtISO;
+    return bSecondary.localeCompare(aSecondary);
+  });
+}
+
+/** All item service events across every property, newest first by display date. */
+export function allItemEvents(state: AppState): ItemEvent[] {
+  return sortEventsNewestFirst(state.events);
 }
 
 export function eventsForProperty(state: AppState, propertyId: string): ItemEvent[] {
   const itemIds = new Set(itemsForProperty(state, propertyId).map((i) => i.id));
-  return state.events.filter((e) => itemIds.has(e.itemId));
+  return sortEventsNewestFirst(state.events.filter((e) => itemIds.has(e.itemId)));
+}
+
+/** All item service events for assets in a room, newest first by display date. */
+export function eventsForRoom(state: AppState, roomId: string): ItemEvent[] {
+  const itemIds = new Set(itemsForRoom(state, roomId).map((i) => i.id));
+  return sortEventsNewestFirst(state.events.filter((e) => itemIds.has(e.itemId)));
 }
 
 export function nextRoomSortOrder(state: AppState, propertyId: string): number {
@@ -795,7 +1619,24 @@ export function interactionsForVendor(state: AppState, vendorId: string): Vendor
     .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
 }
 
-/** All vendor interactions across projects for a property, newest first. */
+/** Resolve the property for an interaction (explicit propertyId or via vendor → project). */
+export function propertyIdForInteraction(
+  state: AppState,
+  interaction: VendorInteraction
+): string | undefined {
+  if (interaction.propertyId) return interaction.propertyId;
+  if (!interaction.vendorId) return undefined;
+  const vendor = vendorById(state, interaction.vendorId);
+  if (!vendor) return undefined;
+  return projectById(state, vendor.projectId)?.propertyId;
+}
+
+/** All vendor interactions across every property, newest first. */
+export function allVendorInteractions(state: AppState): VendorInteraction[] {
+  return sortInteractionsNewestFirst(state.vendorInteractions);
+}
+
+/** All interactions for a property (vendor-linked + property-scoped), newest first. */
 export function interactionsForProperty(
   state: AppState,
   propertyId: string
@@ -805,7 +1646,10 @@ export function interactionsForProperty(
     state.projectVendors.filter((v) => projectIds.has(v.projectId)).map((v) => v.id)
   );
   return sortInteractionsNewestFirst(
-    state.vendorInteractions.filter((i) => vendorIds.has(i.vendorId))
+    state.vendorInteractions.filter((i) => {
+      if (i.propertyId === propertyId) return true;
+      return Boolean(i.vendorId && vendorIds.has(i.vendorId));
+    })
   );
 }
 
@@ -818,7 +1662,7 @@ export function interactionsForProject(
     state.projectVendors.filter((v) => v.projectId === projectId).map((v) => v.id)
   );
   return sortInteractionsNewestFirst(
-    state.vendorInteractions.filter((i) => vendorIds.has(i.vendorId))
+    state.vendorInteractions.filter((i) => Boolean(i.vendorId && vendorIds.has(i.vendorId)))
   );
 }
 
@@ -917,6 +1761,50 @@ export function deletePropertyTodoCascade(state: AppState, todoId: string): AppS
   };
 }
 
+export function punchItemsForProject(state: AppState, projectId: string): ProjectPunchItem[] {
+  return state.projectPunchItems
+    .filter((item) => item.projectId === projectId)
+    .slice()
+    .sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      const aDue = a.dueAtISO ?? '\uffff';
+      const bDue = b.dueAtISO ?? '\uffff';
+      if (aDue !== bDue) return aDue.localeCompare(bDue);
+      return a.createdAtISO.localeCompare(b.createdAtISO);
+    });
+}
+
+export function projectPunchItemById(
+  state: AppState,
+  id: string
+): ProjectPunchItem | undefined {
+  return state.projectPunchItems.find((item) => item.id === id);
+}
+
+export function photosForPunchItem(state: AppState, punchItemId: string): ProjectPhoto[] {
+  const owned = state.projectPhotos.filter((p) => p.punchItemId === punchItemId);
+  if (owned.length === 0) return [];
+  const item = state.projectPunchItems.find((t) => t.id === punchItemId);
+  const byId = new Map(owned.map((p) => [p.id, p]));
+  const ordered: ProjectPhoto[] = [];
+  for (const id of item?.photoIds ?? []) {
+    const photo = byId.get(id);
+    if (photo) {
+      ordered.push(photo);
+      byId.delete(id);
+    }
+  }
+  return [...ordered, ...byId.values()];
+}
+
+export function deletePunchItemCascade(state: AppState, punchItemId: string): AppState {
+  return {
+    ...state,
+    projectPunchItems: state.projectPunchItems.filter((item) => item.id !== punchItemId),
+    projectPhotos: state.projectPhotos.filter((p) => p.punchItemId !== punchItemId),
+  };
+}
+
 export function nextProjectSortOrder(state: AppState, propertyId: string): number {
   const projects = projectsForProperty(state, propertyId);
   if (projects.length === 0) return 0;
@@ -931,6 +1819,13 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
   );
   const vendorIds = new Set(
     state.projectVendors.filter((v) => projectIds.has(v.projectId)).map((v) => v.id)
+  );
+  const dropInteractionIds = new Set(
+    state.vendorInteractions
+      .filter(
+        (i) => i.propertyId === propertyId || (i.vendorId != null && vendorIds.has(i.vendorId))
+      )
+      .map((i) => i.id)
   );
   const dropDocumentIds = new Set<string>();
   for (const vendor of state.projectVendors) {
@@ -950,9 +1845,14 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
     projects: state.projects.filter((p) => p.propertyId !== propertyId),
     projectVendors: state.projectVendors.filter((v) => !projectIds.has(v.projectId)),
     projectPhotos: state.projectPhotos.filter((p) => !projectIds.has(p.projectId)),
-    vendorPhotos: state.vendorPhotos.filter((p) => !vendorIds.has(p.vendorId)),
-    vendorInteractions: state.vendorInteractions.filter((i) => !vendorIds.has(i.vendorId)),
+    vendorPhotos: state.vendorPhotos.filter(
+      (p) =>
+        !vendorIds.has(p.vendorId ?? '') &&
+        !(p.interactionId != null && dropInteractionIds.has(p.interactionId))
+    ),
+    vendorInteractions: state.vendorInteractions.filter((i) => !dropInteractionIds.has(i.id)),
     propertyTodos: state.propertyTodos.filter((t) => t.propertyId !== propertyId),
+    projectPunchItems: state.projectPunchItems.filter((item) => !projectIds.has(item.projectId)),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
   };
 }
@@ -1024,8 +1924,13 @@ export function deleteProjectCascade(state: AppState, projectId: string): AppSta
     projects: state.projects.filter((p) => p.id !== projectId),
     projectVendors: state.projectVendors.filter((v) => v.projectId !== projectId),
     projectPhotos: state.projectPhotos.filter((p) => p.projectId !== projectId),
-    vendorPhotos: state.vendorPhotos.filter((p) => !vendorIds.has(p.vendorId)),
-    vendorInteractions: state.vendorInteractions.filter((i) => !vendorIds.has(i.vendorId)),
+    vendorPhotos: state.vendorPhotos.filter(
+      (p) => !(p.vendorId != null && vendorIds.has(p.vendorId))
+    ),
+    vendorInteractions: state.vendorInteractions.filter(
+      (i) => !(i.vendorId != null && vendorIds.has(i.vendorId))
+    ),
+    projectPunchItems: state.projectPunchItems.filter((item) => item.projectId !== projectId),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
   };
 }

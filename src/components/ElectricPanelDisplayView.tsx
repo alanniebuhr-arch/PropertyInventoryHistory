@@ -8,6 +8,7 @@ import { PhotoSection } from './PhotoSection';
 import { sharedStyles } from '../theme';
 import { formatStoredDate } from '../itemDetailDisplayHelpers';
 import { buildSlotAndExtraPhotoTiles } from '../photoSectionBuilders';
+import { withReorderedItemPhotoIds } from '../photoReorder';
 import {
   ELECTRIC_PANEL_PHOTO_SLOTS,
   electricPanelHasInfo,
@@ -41,8 +42,9 @@ export function ElectricPanelDisplayView(props: {
   onDetailsChange: (details: ElectricPanelDetails) => void;
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
+  showReorderArrows?: boolean;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<'panel' | null>(null);
 
   const extraPhotos = electricPanelExtraPhotos(state, itemId, details);
@@ -113,6 +115,17 @@ export function ElectricPanelDisplayView(props: {
         onDeleteExtra: (photoId) => {
           void removeElectricPanelExtraPhoto(state, itemId, photoId).then(onSave);
         },
+        onReorderExtra: (photoId, direction) => {
+          onSave(
+            withReorderedItemPhotoIds(
+              state,
+              itemId,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
+        },
         onLabelExtra: (photoId, label, notes) => {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
@@ -150,6 +163,7 @@ export function ElectricPanelDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        showReorderArrows={showReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >
@@ -170,6 +184,7 @@ export function ElectricPanelDisplayView(props: {
             <DetailDisplayRow label="Amperage" value={details.amperage} />
             <DetailDisplayRow label="Brand" value={details.brand} />
             <DetailDisplayRow label="Location notes" value={details.locationNotes} />
+            <DetailDisplayRow label="Notes" value={details.notes} />
             <DetailDisplayRow
               label="Last inspected"
               value={formatStoredDate(details.lastInspectedAtISO)}

@@ -402,6 +402,7 @@ function coerceState(stateRaw: AppState): AppState {
       ? stateRaw.vendorInteractions
       : [],
     propertyTodos: Array.isArray(stateRaw.propertyTodos) ? stateRaw.propertyTodos : [],
+    projectPunchItems: Array.isArray(stateRaw.projectPunchItems) ? stateRaw.projectPunchItems : [],
   };
 }
 

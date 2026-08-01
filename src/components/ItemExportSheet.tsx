@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
 import type { ItemExportSnapshot } from '../itemExportContent';
+import { ExportPhotoGrid, ExportPhotoNoteText } from './ExportPhotoLayout';
 
 export const ITEM_EXPORT_WIDTH = 390;
 const EXPORT_EVENT_THUMB_SIZE = 72;
@@ -31,7 +32,7 @@ function isTagPhoto(label: string): boolean {
   return label.trim().toLowerCase().endsWith('tag');
 }
 
-type ExportPhoto = { uri: string; label: string };
+type ExportPhoto = { uri: string; label: string; notes?: string };
 
 type ExportPhotoChunk =
   | { type: 'tag'; photo: ExportPhoto }
@@ -62,6 +63,36 @@ function chunkExportPhotos(photos: ExportPhoto[]): ExportPhotoChunk[] {
 
 function ExportTagPhoto(props: { photo: ExportPhoto }) {
   const { photo } = props;
+  const notes = photo.notes?.trim();
+
+  if (notes) {
+    const imageWidth = Math.round(EXPORT_CONTENT_WIDTH * 0.48);
+    const imageHeight = Math.min(
+      Math.round(imageWidth * 1.35),
+      EXPORT_TAG_PHOTO_HEIGHT
+    );
+    return (
+      <View style={{ width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <Image
+          source={{ uri: photo.uri }}
+          style={{
+            width: imageWidth,
+            height: imageHeight,
+            borderRadius: 8,
+            backgroundColor: exportColors.border,
+          }}
+          resizeMode="contain"
+        />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 11, color: exportColors.muted, fontWeight: '600' }} numberOfLines={2}>
+            {photo.label}
+          </Text>
+          <Text style={{ fontSize: 13, color: exportColors.text, marginTop: 4 }}>{notes}</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={{ width: '100%', alignItems: 'center' }}>
       <Image
@@ -89,7 +120,7 @@ function ExportTagPhoto(props: { photo: ExportPhoto }) {
   );
 }
 
-function ExportPhotoGrid(props: { photos: ExportPhoto[] }) {
+function ItemExportPhotoGrid(props: { photos: ExportPhoto[] }) {
   const { photos } = props;
   if (photos.length === 0) return null;
 
@@ -101,35 +132,15 @@ function ExportPhotoGrid(props: { photos: ExportPhoto[] }) {
         chunk.type === 'tag' ? (
           <ExportTagPhoto key={`tag-${chunk.photo.uri}-${chunkIndex}`} photo={chunk.photo} />
         ) : (
-          <View
+          <ExportPhotoGrid
             key={`grid-${chunkIndex}`}
-            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}
-          >
-            {chunk.photos.map((photo, index) => (
-              <View key={`${photo.uri}-${index}`} style={{ width: EXPORT_PHOTO_SIZE, alignItems: 'center' }}>
-                <Image
-                  source={{ uri: photo.uri }}
-                  style={{
-                    width: EXPORT_PHOTO_SIZE,
-                    height: EXPORT_PHOTO_SIZE,
-                    borderRadius: 8,
-                    backgroundColor: exportColors.border,
-                  }}
-                />
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: exportColors.muted,
-                    marginTop: 4,
-                    textAlign: 'center',
-                  }}
-                  numberOfLines={2}
-                >
-                  {photo.label}
-                </Text>
-              </View>
-            ))}
-          </View>
+            photos={chunk.photos}
+            photoSize={EXPORT_PHOTO_SIZE}
+            mutedColor={exportColors.muted}
+            borderColor={exportColors.border}
+            textColor={exportColors.text}
+            style={{ marginTop: 0 }}
+          />
         )
       )}
     </View>
@@ -204,7 +215,7 @@ export function ItemExportSheet(props: { snapshot: ItemExportSnapshot }) {
           >
             Photos
           </Text>
-          <ExportPhotoGrid photos={snapshot.photos} />
+          <ItemExportPhotoGrid photos={snapshot.photos} />
         </View>
       ) : null}
 
@@ -264,9 +275,18 @@ export function ItemExportSheet(props: { snapshot: ItemExportSnapshot }) {
                         {line}
                       </Text>
                     ))}
+                    <ExportPhotoNoteText notes={firstPhoto?.notes} color={exportColors.text} />
                   </View>
                 </View>
-                {morePhotos.length > 0 ? <ExportPhotoGrid photos={morePhotos} /> : null}
+                {morePhotos.length > 0 ? (
+                  <ExportPhotoGrid
+                    photos={morePhotos}
+                    photoSize={EXPORT_PHOTO_SIZE}
+                    mutedColor={exportColors.muted}
+                    borderColor={exportColors.border}
+                    textColor={exportColors.text}
+                  />
+                ) : null}
               </View>
             );
           })}

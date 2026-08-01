@@ -8,6 +8,7 @@ import { PhotoSection } from './PhotoSection';
 import { sharedStyles } from '../theme';
 import { formatStoredDate } from '../itemDetailDisplayHelpers';
 import { buildSlotAndExtraPhotoTiles } from '../photoSectionBuilders';
+import { withReorderedItemPhotoIds } from '../photoReorder';
 import {
   APPLIANCE_PHOTO_SLOTS,
   applianceHasIdentityInfo,
@@ -50,8 +51,9 @@ export function ApplianceDisplayView(props: {
   initialEditingSection?: ApplianceEditingSection;
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
+  showReorderArrows?: boolean;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, initialEditingSection, photoHeader, onActiveHeroLabelChange } = props;
+  const { state, details, itemId, onSave, onDetailsChange, initialEditingSection, photoHeader, onActiveHeroLabelChange, showReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<ApplianceEditingSection | null>(
     () =>
       initialEditingSection ??
@@ -116,6 +118,17 @@ export function ApplianceDisplayView(props: {
         onDeleteExtra: (photoId) => {
           void removeApplianceExtraPhoto(state, itemId, photoId).then(onSave);
         },
+        onReorderExtra: (photoId, direction) => {
+          onSave(
+            withReorderedItemPhotoIds(
+              state,
+              itemId,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
+        },
         onLabelExtra: (photoId, label, notes) => {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
@@ -164,6 +177,7 @@ export function ApplianceDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        showReorderArrows={showReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >

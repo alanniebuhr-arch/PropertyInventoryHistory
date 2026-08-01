@@ -7,12 +7,15 @@ import { EditableDetailSection } from './EditableDetailSection';
 import { PhotoSection } from './PhotoSection';
 import { sharedStyles } from '../theme';
 import { formatStoredDate, hasAnyValue } from '../itemDetailDisplayHelpers';
+import { fuelTypeLabel } from '../furnaceSlots';
 import { buildExtraOnlyPhotoTiles } from '../photoSectionBuilders';
+import type { PhotoReorderDirection } from '../photoReorder';
 import type { DocumentListRow } from './DocumentListSection';
 import { GasMainForm } from '../screens/itemDetails/GasMainForm';
 import { WaterHeaterForm } from '../screens/itemDetails/WaterHeaterForm';
 import {
   InternetAccountFields,
+  InternetNotesFields,
   InternetServiceFields,
 } from '../screens/itemDetails/InternetForm';
 import { OtherItemNotesFields } from '../screens/itemDetails/OtherItemForm';
@@ -32,12 +35,14 @@ export function ItemDisplayView(props: {
   ) => void | Promise<void>;
   extraDocumentRows?: DocumentListRow[];
   onDeletePhoto: (photoId: string) => void;
+  onReorderPhoto?: (photoId: string, direction: PhotoReorderDirection) => void;
   onPhotoCaptionChange?: (photoId: string, caption: string, notes: string) => void;
   onPhotoFavoriteChange?: (photoId: string, favorite: boolean) => void;
   onDetailsChange: (details: ItemDetails) => void;
   onDisplayNameChange?: (displayName: string) => void;
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
+  showReorderArrows?: boolean;
 }) {
   const {
     itemTypeId,
@@ -49,12 +54,14 @@ export function ItemDisplayView(props: {
     onAddDocuments,
     extraDocumentRows,
     onDeletePhoto,
+    onReorderPhoto,
     onPhotoCaptionChange,
     onPhotoFavoriteChange,
     onDetailsChange,
     onDisplayNameChange,
     photoHeader,
     onActiveHeroLabelChange,
+    showReorderArrows,
   } = props;
 
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -64,10 +71,11 @@ export function ItemDisplayView(props: {
       buildExtraOnlyPhotoTiles({
         photos,
         onDeletePhoto,
+        onReorderPhoto,
         onLabelPhoto: onPhotoCaptionChange,
         onToggleFavorite: onPhotoFavoriteChange,
       }),
-    [onDeletePhoto, onPhotoCaptionChange, onPhotoFavoriteChange, photos]
+    [onDeletePhoto, onReorderPhoto, onPhotoCaptionChange, onPhotoFavoriteChange, photos]
   );
 
   function updateDetails(next: ItemDetails) {
@@ -113,11 +121,12 @@ export function ItemDisplayView(props: {
           >
             {editingSection === 'main' ? (
               <GasMainForm details={main} onChange={updateDetails} />
-            ) : hasAnyValue([main.shutoffLocation, main.provider, main.meterNumber]) ? (
+            ) : hasAnyValue([main.shutoffLocation, main.provider, main.meterNumber, main.notes]) ? (
               <>
                 <DetailDisplayRow label="Shutoff location" value={main.shutoffLocation} />
                 <DetailDisplayRow label="Provider" value={main.provider} />
                 <DetailDisplayRow label="Meter number" value={main.meterNumber} />
+                <DetailDisplayRow label="Notes" value={main.notes} />
               </>
             ) : (
               <Text style={sharedStyles.cardMeta}>Not set</Text>
@@ -137,8 +146,18 @@ export function ItemDisplayView(props: {
           >
             {editingSection === 'heater' ? (
               <WaterHeaterForm details={heater} onChange={updateDetails} />
-            ) : hasAnyValue([heater.make, heater.modelNumber, heater.serialNumber, heater.notes]) ? (
+            ) : hasAnyValue([
+                fuelTypeLabel(heater.fuelType, heater.fuelTypeOther),
+                heater.make,
+                heater.modelNumber,
+                heater.serialNumber,
+                heater.notes,
+              ]) ? (
               <>
+                <DetailDisplayRow
+                  label="Fuel type"
+                  value={fuelTypeLabel(heater.fuelType, heater.fuelTypeOther)}
+                />
                 <DetailDisplayRow label="Make" value={heater.make} />
                 <DetailDisplayRow label="Model" value={heater.modelNumber} />
                 <DetailDisplayRow label="Serial number" value={heater.serialNumber} />
@@ -184,6 +203,21 @@ export function ItemDisplayView(props: {
                 <InternetAccountFields details={internet} onChange={updateDetails} />
               ) : internet.accountNotes?.trim() ? (
                 <DetailDisplayRow label="Account notes" value={internet.accountNotes} />
+              ) : (
+                <Text style={sharedStyles.cardMeta}>Not set</Text>
+              )}
+            </EditableDetailSection>
+
+            <EditableDetailSection
+              title="Notes"
+              isEditing={editingSection === 'notes'}
+              onPress={() => openSection('notes')}
+              onDone={closeSection}
+            >
+              {editingSection === 'notes' ? (
+                <InternetNotesFields details={internet} onChange={updateDetails} />
+              ) : internet.notes?.trim() ? (
+                <DetailDisplayRow label="Notes" value={internet.notes} />
               ) : (
                 <Text style={sharedStyles.cardMeta}>Not set</Text>
               )}
@@ -236,6 +270,7 @@ export function ItemDisplayView(props: {
         onAddDocuments={onAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        showReorderArrows={showReorderArrows}
       >
         {photoHeader}
       </PhotoSection>

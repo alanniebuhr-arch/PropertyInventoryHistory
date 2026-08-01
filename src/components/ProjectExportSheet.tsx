@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
 import type { ProjectExportSnapshot } from '../projectExportContent';
+import { ExportPhotoGrid, ExportPhotoNoteText } from './ExportPhotoLayout';
 
 export const PROJECT_EXPORT_WIDTH = 390;
 const EXPORT_VENDOR_THUMB_SIZE = Math.round(72 * 1.2);
@@ -11,13 +12,13 @@ const exportColors = {
   text: '#1a1814',
   muted: '#6b6560',
   border: '#d4cfc6',
-  section: '#2c2824',
+  section: '#1f5fbf',
 };
 
 function ExportRow(props: { label: string; value: string }) {
   return (
     <View style={{ marginBottom: 8 }}>
-      <Text style={{ fontSize: 12, color: exportColors.muted, fontWeight: '600' }}>
+      <Text style={{ fontSize: 12, color: exportColors.section, fontWeight: '600' }}>
         {props.label}
       </Text>
       <Text style={{ fontSize: 15, color: exportColors.text, marginTop: 2 }}>{props.value}</Text>
@@ -25,37 +26,15 @@ function ExportRow(props: { label: string; value: string }) {
   );
 }
 
-function ExportPhotoGrid(props: { photos: { uri: string; label: string }[] }) {
-  const { photos } = props;
-  if (photos.length === 0) return null;
-
+function sheetPhotoGrid(photos: { uri: string; label: string; notes?: string }[]) {
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-      {photos.map((photo, index) => (
-        <View key={`${photo.uri}-${index}`} style={{ width: EXPORT_PHOTO_SIZE, alignItems: 'center' }}>
-          <Image
-            source={{ uri: photo.uri }}
-            style={{
-              width: EXPORT_PHOTO_SIZE,
-              height: EXPORT_PHOTO_SIZE,
-              borderRadius: 8,
-              backgroundColor: exportColors.border,
-            }}
-          />
-          <Text
-            style={{
-              fontSize: 11,
-              color: exportColors.muted,
-              marginTop: 4,
-              textAlign: 'center',
-            }}
-            numberOfLines={2}
-          >
-            {photo.label}
-          </Text>
-        </View>
-      ))}
-    </View>
+    <ExportPhotoGrid
+      photos={photos}
+      photoSize={EXPORT_PHOTO_SIZE}
+      mutedColor={exportColors.muted}
+      borderColor={exportColors.border}
+      textColor={exportColors.text}
+    />
   );
 }
 
@@ -127,7 +106,13 @@ export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
           >
             Photos
           </Text>
-          <ExportPhotoGrid photos={snapshot.photos} />
+          <ExportPhotoGrid
+            photos={snapshot.photos}
+            photoSize={EXPORT_PHOTO_SIZE}
+            mutedColor={exportColors.muted}
+            borderColor={exportColors.border}
+            textColor={exportColors.text}
+          />
         </View>
       ) : null}
 
@@ -187,6 +172,7 @@ export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
                         {line}
                       </Text>
                     ))}
+                    <ExportPhotoNoteText notes={firstPhoto?.notes} color={exportColors.text} />
                   </View>
                 </View>
                 {vendor.interactions.length > 0 ? (
@@ -221,17 +207,131 @@ export function ProjectExportSheet(props: { snapshot: ProjectExportSnapshot }) {
                             <View style={{ flex: 1 }} />
                           )}
                         </View>
-                        {interaction.photos.length > 0 ? (
-                          <ExportPhotoGrid photos={interaction.photos} />
-                        ) : null}
+                        {interaction.photos.length > 0 ? sheetPhotoGrid(interaction.photos) : null}
                       </View>
                     ))}
                   </View>
                 ) : null}
-                {morePhotos.length > 0 ? <ExportPhotoGrid photos={morePhotos} /> : null}
+                {morePhotos.length > 0 ? sheetPhotoGrid(morePhotos) : null}
               </View>
             );
           })}
+        </View>
+      ) : null}
+
+      {(snapshot.punchItems?.length ?? 0) > 0 ? (
+        <View
+          style={{
+            marginTop: 20,
+            paddingTop: 16,
+            borderTopWidth: 1,
+            borderTopColor: exportColors.border,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: '700',
+              color: exportColors.section,
+              marginBottom: 10,
+            }}
+          >
+            Punch list
+          </Text>
+          {snapshot.punchItems.map((item, index) => (
+            <View
+              key={`${item.title}-${index}`}
+              style={{
+                marginBottom: 12,
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 12,
+              }}
+            >
+              {item.thumbnailUri ? (
+                <Image
+                  source={{ uri: item.thumbnailUri }}
+                  style={{
+                    width: EXPORT_VENDOR_THUMB_SIZE,
+                    height: EXPORT_VENDOR_THUMB_SIZE,
+                    borderRadius: 8,
+                    backgroundColor: exportColors.border,
+                  }}
+                />
+              ) : null}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: exportColors.text }}>
+                  {item.title}
+                </Text>
+                {item.lines.map((line) => (
+                  <Text
+                    key={line}
+                    style={{ fontSize: 13, color: exportColors.muted, marginTop: 2 }}
+                  >
+                    {line}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {(snapshot.recentInteractions?.length ?? 0) > 0 ? (
+        <View
+          style={{
+            marginTop: 20,
+            paddingTop: 16,
+            borderTopWidth: 1,
+            borderTopColor: exportColors.border,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: '700',
+              color: exportColors.section,
+              marginBottom: 10,
+            }}
+          >
+            Recent interactions
+          </Text>
+          {snapshot.recentInteractions.map((item, index) => (
+            <View
+              key={`${item.title}-${index}`}
+              style={{
+                marginBottom: 12,
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 12,
+              }}
+            >
+              {item.thumbnailUri ? (
+                <Image
+                  source={{ uri: item.thumbnailUri }}
+                  style={{
+                    width: EXPORT_VENDOR_THUMB_SIZE,
+                    height: EXPORT_VENDOR_THUMB_SIZE,
+                    borderRadius: 8,
+                    backgroundColor: exportColors.border,
+                  }}
+                />
+              ) : null}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: exportColors.text }}>
+                  {item.title}
+                </Text>
+                {item.lines.map((line) => (
+                  <Text
+                    key={line}
+                    style={{ fontSize: 13, color: exportColors.muted, marginTop: 2 }}
+                  >
+                    {line}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          ))}
         </View>
       ) : null}
 

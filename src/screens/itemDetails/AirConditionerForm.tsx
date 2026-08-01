@@ -74,7 +74,7 @@ export function AirConditionerInstallFields(props: {
   return (
     <>
       <DateFormField
-        label="Install date (MM/DD/YYYY)"
+        label="Install date"
         value={details.installDateAtISO}
         parseStored={parseDateInputValue}
         onChangeStored={(installDateAtISO) =>

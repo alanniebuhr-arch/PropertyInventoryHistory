@@ -8,6 +8,7 @@ import { PhotoSection } from './PhotoSection';
 import { sharedStyles } from '../theme';
 import { formatStoredDate } from '../itemDetailDisplayHelpers';
 import { buildSlotAndExtraPhotoTiles } from '../photoSectionBuilders';
+import { withReorderedItemPhotoIds } from '../photoReorder';
 import {
   AUTOMOBILE_PHOTO_SLOTS,
   automobileHasMaintenanceInfo,
@@ -50,8 +51,9 @@ export function AutomobileDisplayView(props: {
   onDetailsChange: (details: AutomobileDetails) => void;
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
+  showReorderArrows?: boolean;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<
     'vehicle' | 'purchase' | 'maintenance' | 'service' | 'notes' | null
   >(null);
@@ -119,6 +121,17 @@ export function AutomobileDisplayView(props: {
         onDeleteExtra: (photoId) => {
           void removeAutomobileExtraPhoto(state, itemId, photoId).then(onSave);
         },
+        onReorderExtra: (photoId, direction) => {
+          onSave(
+            withReorderedItemPhotoIds(
+              state,
+              itemId,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
+        },
         onLabelExtra: (photoId, label, notes) => {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
@@ -160,6 +173,7 @@ export function AutomobileDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        showReorderArrows={showReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >

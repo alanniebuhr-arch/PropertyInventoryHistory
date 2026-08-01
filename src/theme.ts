@@ -17,16 +17,24 @@ export const colors = {
   upcomingWeekBg: '#e4d4b8',
   upcomingOverdueBg: '#f0e4e2',
   historyCardBg: '#efeae3',
-  upcomingCardBg: '#e9e2d6',
+  upcomingCardBg: '#e4ebe0',
   photoPlaceholder: '#d4cfc6',
   hairline: '#cfc8bc',
   /** Last-service accents on Room asset list rows. */
   lastService: '#2f6b3a',
-  /** All-caps section titles (Service schedule, Assets, Rooms, etc.). */
+  /** Interaction summary dates on list rows and reminder cards. */
+  interactionDate: '#1f5fbf',
+  /** All-caps section titles (Reminders, Assets, Rooms, etc.). Also used for screen titles. */
   sectionTitle: '#1f5fbf',
+  /** Main screen/entity title (property, project, room, etc.) — same as sectionTitle ("Properties" on Home). */
+  screenTitle: '#1f5fbf',
   /** In-context help tip callouts on Property Detail. */
   helpBg: '#e3ecf8',
   helpText: '#1a4a8a',
+  /** Inline date-picker popup surface (DateInputField calendar). */
+  calendarPopupBg: '#dde8f4',
+  /** Search-hit substring highlight on read-only detail rows. */
+  searchHighlight: '#f0e6a8',
 };
 
 export const sharedStyles = StyleSheet.create({
@@ -63,7 +71,7 @@ export const sharedStyles = StyleSheet.create({
     flex: 1,
     fontSize: 28,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.screenTitle,
     letterSpacing: -0.4,
   },
   subtitle: {
@@ -112,6 +120,21 @@ export const sharedStyles = StyleSheet.create({
     borderColor: colors.hairline,
     padding: 16,
     marginBottom: 16,
+  },
+  /** Property detail collapsible sections — raised blue panels. */
+  propertySectionPanel: {
+    backgroundColor: colors.helpBg,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.hairline,
+    padding: 16,
+    marginTop: 8,
+    marginBottom: 16,
+    shadowColor: '#1a4a8a',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    elevation: 4,
   },
   /** Catalog-style detail block — minimal chrome for editable sections. */
   catalogSection: {

@@ -3,14 +3,16 @@ import { View } from 'react-native';
 import type { ItemPhoto } from '../types';
 import { PhotoSection } from './PhotoSection';
 import { buildEventPhotoTiles } from '../photoSectionBuilders';
+import type { PhotoReorderDirection } from '../photoReorder';
 
 type GalleryPhoto = Pick<ItemPhoto, 'id' | 'localUri' | 'caption' | 'notes' | 'favorite'>;
 
 export function EventPhotoSection(props: {
   photos: GalleryPhoto[];
-  onAddReceipt: (uri: string) => void | Promise<void>;
-  onAddPhotos: (uris: string[]) => Promise<string[] | void> | string[] | void;
-  onDeletePhoto: (photoId: string) => void;
+  onAddReceipt?: (uri: string) => void | Promise<void>;
+  onAddPhotos?: (uris: string[]) => Promise<string[] | void> | string[] | void;
+  onDeletePhoto?: (photoId: string) => void;
+  onReorderPhoto?: (photoId: string, direction: PhotoReorderDirection) => void;
   onLabelPhoto?: (photoId: string, label: string, notes: string) => void;
   onToggleFavorite?: (photoId: string, favorite: boolean) => void;
   title?: string;
@@ -20,6 +22,7 @@ export function EventPhotoSection(props: {
     onAddReceipt,
     onAddPhotos,
     onDeletePhoto,
+    onReorderPhoto,
     onLabelPhoto,
     onToggleFavorite,
     title = 'Event photos',
@@ -34,10 +37,14 @@ export function EventPhotoSection(props: {
         receiptPhoto,
         otherPhotos,
         onAddReceipt,
-        onDeleteReceipt: () => {
-          if (receiptPhoto) onDeletePhoto(receiptPhoto.id);
-        },
+        onDeleteReceipt:
+          onDeletePhoto && receiptPhoto
+            ? () => {
+                onDeletePhoto(receiptPhoto.id);
+              }
+            : undefined,
         onDeletePhoto,
+        onReorderPhoto,
         onLabelReceipt: onLabelPhoto
           ? (notes) => {
               if (receiptPhoto) onLabelPhoto(receiptPhoto.id, 'receipt', notes);
@@ -46,7 +53,15 @@ export function EventPhotoSection(props: {
         onLabelPhoto,
         onToggleFavorite,
       }),
-    [onDeletePhoto, onAddReceipt, onLabelPhoto, onToggleFavorite, otherPhotos, receiptPhoto]
+    [
+      onDeletePhoto,
+      onReorderPhoto,
+      onAddReceipt,
+      onLabelPhoto,
+      onToggleFavorite,
+      otherPhotos,
+      receiptPhoto,
+    ]
   );
 
   return (

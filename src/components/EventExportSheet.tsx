@@ -1,6 +1,7 @@
 import React from 'react';
-import { Image, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import type { EventExportSnapshot } from '../eventExportContent';
+import { ExportPhotoGrid } from './ExportPhotoLayout';
 
 export const EVENT_EXPORT_WIDTH = 390;
 const EXPORT_PHOTO_SIZE = Math.round(110 * 1.33);
@@ -20,40 +21,6 @@ function ExportRow(props: { label: string; value: string }) {
         {props.label}
       </Text>
       <Text style={{ fontSize: 15, color: exportColors.text, marginTop: 2 }}>{props.value}</Text>
-    </View>
-  );
-}
-
-function ExportPhotoGrid(props: { photos: { uri: string; label: string }[] }) {
-  const { photos } = props;
-  if (photos.length === 0) return null;
-
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-      {photos.map((photo, index) => (
-        <View key={`${photo.uri}-${index}`} style={{ width: EXPORT_PHOTO_SIZE, alignItems: 'center' }}>
-          <Image
-            source={{ uri: photo.uri }}
-            style={{
-              width: EXPORT_PHOTO_SIZE,
-              height: EXPORT_PHOTO_SIZE,
-              borderRadius: 8,
-              backgroundColor: exportColors.border,
-            }}
-          />
-          <Text
-            style={{
-              fontSize: 11,
-              color: exportColors.muted,
-              marginTop: 4,
-              textAlign: 'center',
-            }}
-            numberOfLines={2}
-          >
-            {photo.label}
-          </Text>
-        </View>
-      ))}
     </View>
   );
 }
@@ -130,7 +97,13 @@ export function EventExportSheet(props: { snapshot: EventExportSnapshot }) {
           >
             Photos
           </Text>
-          <ExportPhotoGrid photos={snapshot.photos} />
+          <ExportPhotoGrid
+            photos={snapshot.photos}
+            photoSize={EXPORT_PHOTO_SIZE}
+            mutedColor={exportColors.muted}
+            borderColor={exportColors.border}
+            textColor={exportColors.text}
+          />
         </View>
       ) : null}
 

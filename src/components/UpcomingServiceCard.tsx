@@ -1,69 +1,125 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { ItemEvent } from '../types';
 import { sharedStyles, colors } from '../theme';
-import { formatDate } from '../utils';
-import { daysOverdue, isOverdue, upcomingDueAtISO } from '../eventRecurrence';
+import { formatDisplayDate, formatDisplayDateParts } from '../utils';
+import { isOverdue, upcomingDueAtISO } from '../eventRecurrence';
 import { EVENT_LIST_THUMB_SIZE } from './ListRows';
 import { Text } from '../textScale';
 
-export function UpcomingServiceCard(props: {
-  event: ItemEvent;
-  /** Shown first on the title row when set (e.g. room or asset name). */
-  leadingLabel?: string;
+/** Shared card for Reminders (service events and dated to-dos). */
+export function UpcomingReminderCard(props: {
+  title: string;
+  dueAtISO?: string;
+  notes?: string;
   thumbnailUri?: string;
-  onPressDetails: () => void;
-  /** @deprecated Prefer editing the event; kept for call-site compatibility. */
-  onLogService?: () => void;
+  onPress: () => void;
+  /** Used in accessibility labels, e.g. "service" or "to-do". */
+  noun?: string;
+  important?: boolean;
+  /** Non-overdue card fill; defaults to upcomingCardBg. */
+  cardBackgroundColor?: string;
+  /** When set, draw a list divider under the row (Property section style). */
+  dividerColor?: string;
 }) {
-  const { event, leadingLabel, thumbnailUri, onPressDetails } = props;
-  const dueAt = upcomingDueAtISO(event);
-  const dueOverdue = isOverdue(dueAt);
-  const daysLate = daysOverdue(dueAt);
-  const titleText = leadingLabel?.trim()
-    ? `${leadingLabel.trim()} · ${event.title}`
-    : event.title;
-  const dateLabel = dueAt ? formatDate(dueAt) : '—';
-  const notesText = (event.recurrence?.notes ?? event.notes)?.trim();
-  const lateSuffix =
-    dueOverdue && daysLate > 0
-      ? ` · ${daysLate} day${daysLate === 1 ? '' : 's'} late`
-      : '';
+  const {
+    title,
+    dueAtISO,
+    notes,
+    thumbnailUri,
+    onPress,
+    noun = 'reminder',
+    important,
+    cardBackgroundColor,
+    dividerColor,
+  } = props;
+  const dueOverdue = isOverdue(dueAtISO);
+  const dateParts = dueAtISO ? formatDisplayDateParts(dueAtISO) : null;
+  const dateLabel = dueAtISO ? formatDisplayDate(dueAtISO) : '—';
+  const notesText = notes?.trim();
   const hasSecondary = Boolean(thumbnailUri || notesText);
+  const interactionDateAccent = noun === 'interaction' && !dueOverdue && Boolean(dateParts);
 
   return (
     <Pressable
-      onPress={onPressDetails}
+      onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={
-        dueOverdue ? `Overdue scheduled service: ${titleText}` : `Edit scheduled service: ${titleText}`
+        dueOverdue
+          ? `Overdue ${noun}: ${title}`
+          : important
+            ? `Important ${noun}: ${title}`
+            : `Open ${noun}: ${title}`
       }
       style={({ pressed }) => [
         sharedStyles.card,
         {
-          marginBottom: 10,
-          backgroundColor: dueOverdue ? colors.upcomingOverdueBg : colors.upcomingCardBg,
-          borderColor: dueOverdue ? colors.overdue : colors.hairline,
-          borderWidth: dueOverdue ? 1 : StyleSheet.hairlineWidth,
+          marginBottom: dividerColor ? 0 : 10,
+          backgroundColor: dueOverdue
+            ? colors.upcomingOverdueBg
+            : (cardBackgroundColor ?? colors.upcomingCardBg),
+          ...(dividerColor
+            ? {
+                borderRadius: 0,
+                borderWidth: 0,
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: dividerColor,
+              }
+            : {
+                borderColor: dueOverdue ? colors.overdue : colors.hairline,
+                borderWidth: dueOverdue ? 1 : StyleSheet.hairlineWidth,
+              }),
         },
         pressed && sharedStyles.cardPressed,
       ]}
     >
-      <Text
-        style={{
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {important ? (
+          <MaterialIcons name="star" size={16} color={colors.primary} accessibilityLabel="Important" />
+        ) : null}
+        <Text
+          style={{
+            flex: 1,
             fontSize: 13,
-            fontWeight: '500',
+            fontWeight: important ? '700' : '500',
             letterSpacing: 0.2,
             color: dueOverdue ? colors.overdue : colors.text,
-            marginBottom: hasSecondary ? 8 : 0,
           }}
+        >
+          {dueOverdue ? 'OVERDUE · ' : ''}
+          {interactionDateAccent && dateParts ? (
+            <>
+              <Text style={{ fontWeight: '700', color: colors.interactionDate }}>{dateParts.date}</Text>
+              {dateParts.rest ? (
+                <Text style={{ fontWeight: '500', color: colors.textMuted }}>{` ${dateParts.rest}`}</Text>
+              ) : null}
+            </>
+          ) : (
+            dateLabel
+          )}
+        </Text>
+      </View>
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: '600',
+          letterSpacing: 0.2,
+          color: dueOverdue ? colors.overdue : colors.text,
+          marginTop: 2,
+        }}
       >
-        {dueOverdue ? 'OVERDUE · ' : ''}
-        {dateLabel}
-        {lateSuffix} · {titleText}
+        {title}
       </Text>
       {hasSecondary ? (
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 12,
+            marginTop: 4,
+          }}
+        >
           {thumbnailUri ? (
             <Image
               source={{ uri: thumbnailUri }}
@@ -78,10 +134,10 @@ export function UpcomingServiceCard(props: {
           {notesText ? (
             <Text
               style={[
-                  sharedStyles.cardMeta,
-                  { flex: 1 },
-                  dueOverdue && { color: colors.overdue },
-                ]}
+                sharedStyles.cardMeta,
+                { flex: 1, marginTop: 0 },
+                dueOverdue && { color: colors.overdue },
+              ]}
               numberOfLines={6}
             >
               {notesText}
@@ -90,5 +146,38 @@ export function UpcomingServiceCard(props: {
         </View>
       ) : null}
     </Pressable>
+  );
+}
+
+export function UpcomingServiceCard(props: {
+  event: ItemEvent;
+  /** Shown first on the title row when set (e.g. room or asset name). */
+  leadingLabel?: string;
+  thumbnailUri?: string;
+  onPressDetails: () => void;
+  /** @deprecated Prefer editing the event; kept for call-site compatibility. */
+  onLogService?: () => void;
+  cardBackgroundColor?: string;
+  dividerColor?: string;
+}) {
+  const { event, leadingLabel, thumbnailUri, onPressDetails, cardBackgroundColor, dividerColor } =
+    props;
+  const dueAt = upcomingDueAtISO(event);
+  const titleText = leadingLabel?.trim()
+    ? `${leadingLabel.trim()} · ${event.title}`
+    : event.title;
+  const notesText = (event.recurrence?.notes ?? event.notes)?.trim();
+
+  return (
+    <UpcomingReminderCard
+      title={titleText}
+      dueAtISO={dueAt}
+      notes={notesText}
+      thumbnailUri={thumbnailUri}
+      onPress={onPressDetails}
+      noun="scheduled service"
+      cardBackgroundColor={cardBackgroundColor}
+      dividerColor={dividerColor}
+    />
   );
 }

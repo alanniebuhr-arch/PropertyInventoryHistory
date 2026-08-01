@@ -41,6 +41,7 @@ export function electricPanelHasInfo(details: ElectricPanelDetails): boolean {
       details.amperage?.trim() ||
       details.brand?.trim() ||
       details.locationNotes?.trim() ||
+      details.notes?.trim() ||
       details.lastInspectedAtISO?.trim()
   );
 }

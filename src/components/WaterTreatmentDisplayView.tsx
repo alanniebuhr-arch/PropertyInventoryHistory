@@ -7,6 +7,7 @@ import { EditableDetailSection } from './EditableDetailSection';
 import { PhotoSection } from './PhotoSection';
 import { sharedStyles } from '../theme';
 import { buildSlotAndExtraPhotoTiles } from '../photoSectionBuilders';
+import { withReorderedItemPhotoIds } from '../photoReorder';
 import {
   WATER_TREATMENT_PHOTO_SLOTS,
   waterTreatmentHasInfo,
@@ -40,8 +41,9 @@ export function WaterTreatmentDisplayView(props: {
   onDetailsChange: (details: WaterTreatmentDetails) => void;
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
+  showReorderArrows?: boolean;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<'treatment' | null>(null);
 
   const extraPhotos = waterTreatmentExtraPhotos(state, itemId, details);
@@ -122,6 +124,17 @@ export function WaterTreatmentDisplayView(props: {
         onDeleteExtra: (photoId) => {
           void removeWaterTreatmentExtraPhoto(state, itemId, photoId).then(onSave);
         },
+        onReorderExtra: (photoId, direction) => {
+          onSave(
+            withReorderedItemPhotoIds(
+              state,
+              itemId,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
+        },
         onLabelExtra: (photoId, label, notes) => {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
@@ -162,6 +175,7 @@ export function WaterTreatmentDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        showReorderArrows={showReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >

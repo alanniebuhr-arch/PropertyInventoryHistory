@@ -27,7 +27,6 @@ import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
 import { sharedStyles, colors } from '../theme';
 import {
   deleteVendorCascade,
-  interactionsForProject,
   interactionsForVendor,
   photosForVendorInteraction,
   projectById,
@@ -37,9 +36,17 @@ import { photosForVendor } from '../vendorPhotos';
 import { deletePhotoFile } from '../photoStorage';
 import { VENDOR_STATUS_OPTIONS, vendorStatusLabel } from '../vendorStatus';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
-import { formatDate } from '../utils';
+import { formatPhoneNumber } from '../utils';
 import { buildVendorExportSnapshot, type VendorExportSnapshot } from '../vendorExportContent';
+import { DEFAULT_SHARE_FORMAT, type ShareFormat } from '../shareFormat';
 import { shareViewAsPng } from '../shareViewImage';
+import { shareHtmlAsPdf } from '../shareViewPdf';
+import { buildExportPdfHtml, vendorSnapshotToPdfDoc } from '../exportPdfHtml';
+import { ShareFormatModal } from '../components/ShareFormatModal';
+import {
+  ToolbarNewSearchControls,
+  usePropertyGearNav,
+} from '../components/PropertyGearNavItems';
 
 const headerIconBtn = {
   width: 42,
@@ -59,7 +66,14 @@ export function VendorDetailScreen(props: {
   onBack: () => void;
   onGoToProperty: () => void;
   onOpenInteractions: () => void;
+  onSearchInteractions: () => void;
+  onSearchActivity?: () => void;
   onAddInteraction: () => void;
+  onAddServiceEvent: () => void;
+  onSearchAssets: () => void;
+  onSearchServiceHistory: () => void;
+  onOpenProject: (projectId: string) => void;
+  onOpenItem: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
   onEditInteraction: (interactionId: string) => void;
   onSave: (state: AppState) => void;
 }) {
@@ -69,18 +83,22 @@ export function VendorDetailScreen(props: {
     startEditing = false,
     onBack,
     onGoToProperty,
-    onOpenInteractions,
+    onSearchInteractions,
+    onSearchActivity,
     onAddInteraction,
+    onAddServiceEvent,
+    onSearchAssets,
+    onSearchServiceHistory,
+    onOpenProject,
+    onOpenItem,
     onEditInteraction,
     onSave,
   } = props;
   const insets = useSafeAreaInsets();
   const vendor = vendorById(state, vendorId);
   const project = vendor ? projectById(state, vendor.projectId) : undefined;
+  const propertyId = project?.propertyId ?? '';
   const interactions = interactionsForVendor(state, vendorId);
-  const projectInteractionCount = vendor
-    ? interactionsForProject(state, vendor.projectId).length
-    : 0;
 
   const [nameDraft, setNameDraft] = useState('');
   const [contactDraft, setContactDraft] = useState('');
@@ -92,7 +110,10 @@ export function VendorDetailScreen(props: {
   const [isEditing, setIsEditing] = useState(startEditing);
   const [exportSnapshot, setExportSnapshot] = useState<VendorExportSnapshot | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [shareOptionsOpen, setShareOptionsOpen] = useState(false);
+  const [shareFormat, setShareFormat] = useState<ShareFormat>(DEFAULT_SHARE_FORMAT);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showReorderArrows, setShowReorderArrows] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const exportRef = useRef<View>(null);
   const scrollRef = useRef<RNScrollView>(null);
@@ -105,13 +126,14 @@ export function VendorDetailScreen(props: {
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'vendorDetailEditDone',
     label: 'Enter',
+    variant: 'overlay',
   });
 
   useEffect(() => {
     if (vendor) {
       setNameDraft(vendor.name);
       setContactDraft(vendor.contactName ?? '');
-      setPhoneDraft(vendor.phone ?? '');
+      setPhoneDraft(formatPhoneNumber(vendor.phone ?? ''));
       setWebsiteDraft(vendor.website ?? '');
       setNotesDraft(vendor.notes ?? '');
       setCompanySummaryDraft(vendor.companySummary ?? '');
@@ -128,15 +150,34 @@ export function VendorDetailScreen(props: {
     vendor?.status,
   ]);
 
-  const runVendorExport = useCallback(async () => {
-    const snapshot = buildVendorExportSnapshot(state, vendorId);
-    if (!snapshot) {
-      Alert.alert('Export failed', 'Could not build vendor summary.');
-      return;
-    }
-    setExportSnapshot(snapshot);
-    setExporting(true);
-  }, [state, vendorId]);
+  const openShareOptions = useCallback(() => {
+    setShareFormat(DEFAULT_SHARE_FORMAT);
+    setShareOptionsOpen(true);
+  }, []);
+
+  const runVendorExport = useCallback(
+    async (format: ShareFormat = DEFAULT_SHARE_FORMAT) => {
+      const snapshot = buildVendorExportSnapshot(state, vendorId);
+      if (!snapshot) {
+        Alert.alert('Export failed', 'Could not build vendor summary.');
+        return;
+      }
+      setShareOptionsOpen(false);
+      if (format === 'pdf') {
+        setExporting(true);
+        try {
+          const html = await buildExportPdfHtml(vendorSnapshotToPdfDoc(snapshot));
+          await shareHtmlAsPdf(html, `Share ${snapshot.title}`);
+        } finally {
+          setExporting(false);
+        }
+        return;
+      }
+      setExportSnapshot(snapshot);
+      setExporting(true);
+    },
+    [state, vendorId]
+  );
 
   useEffect(() => {
     if (!exportSnapshot || !exporting) return;
@@ -216,6 +257,32 @@ export function VendorDetailScreen(props: {
     };
   }, [scrollFieldIntoView]);
 
+  function runMenuAction(action: () => void) {
+    setMenuOpen(false);
+    setTimeout(action, 50);
+  }
+
+  const {
+    newItems: propertyNewItems,
+    searchItems: propertySearchItems,
+    createModals: propertyGearCreateModals,
+  } = usePropertyGearNav({
+    state,
+    propertyId,
+    runMenuAction,
+    actions: {
+      onAddInteraction,
+      onAddServiceEvent,
+      onSearchAssets,
+      onSearchInteractions,
+      onSearchServiceHistory,
+      onSearchActivity,
+      onOpenProject,
+      onOpenItem,
+      onSave,
+    },
+  });
+
   if (!vendor) {
     return (
       <View style={[sharedStyles.screen, { paddingTop: insets.top, padding: 16 }]}>
@@ -232,7 +299,7 @@ export function VendorDetailScreen(props: {
   const isDirty =
     nameDraft.trim() !== vnd.name ||
     contactDraft.trim() !== (vnd.contactName ?? '') ||
-    phoneDraft.trim() !== (vnd.phone ?? '') ||
+    phoneDraft.trim() !== formatPhoneNumber(vnd.phone ?? '') ||
     websiteDraft.trim() !== (vnd.website ?? '') ||
     notesDraft.trim() !== (vnd.notes ?? '') ||
     companySummaryDraft.trim() !== (vnd.companySummary ?? '') ||
@@ -257,7 +324,7 @@ export function VendorDetailScreen(props: {
     updateVendor({
       name: trimmedName,
       contactName: contactDraft.trim() || undefined,
-      phone: phoneDraft.trim() || undefined,
+      phone: formatPhoneNumber(phoneDraft) || undefined,
       website: websiteDraft.trim() || undefined,
       notes: notesDraft.trim() || undefined,
       companySummary: companySummaryDraft.trim() || undefined,
@@ -269,7 +336,7 @@ export function VendorDetailScreen(props: {
   function startEditingMode() {
     setNameDraft(vnd.name);
     setContactDraft(vnd.contactName ?? '');
-    setPhoneDraft(vnd.phone ?? '');
+    setPhoneDraft(formatPhoneNumber(vnd.phone ?? ''));
     setWebsiteDraft(vnd.website ?? '');
     setNotesDraft(vnd.notes ?? '');
     setCompanySummaryDraft(vnd.companySummary ?? '');
@@ -348,6 +415,19 @@ export function VendorDetailScreen(props: {
     });
   }
 
+  function callVendor() {
+    const raw = vnd.phone?.trim();
+    if (!raw) return;
+    const digits = raw.replace(/[^\d+]/g, '');
+    if (!digits) {
+      Alert.alert('Could not start call', 'Check that the phone number is valid.');
+      return;
+    }
+    void Linking.openURL(`tel:${digits}`).catch(() => {
+      Alert.alert('Could not start call', 'Check that the phone number is valid.');
+    });
+  }
+
   return (
     <KeyboardAvoidingView
       style={[sharedStyles.screen, { paddingTop: insets.top }]}
@@ -381,25 +461,8 @@ export function VendorDetailScreen(props: {
           >
             <MaterialIcons name="home" size={22} color={colors.primary} />
           </Pressable>
-          {projectInteractionCount > 0 ? (
-            <Pressable
-              onPress={() => confirmLeave(onOpenInteractions)}
-              disabled={exporting}
-              accessibilityRole="button"
-              accessibilityLabel="Project interactions"
-              accessibilityHint="Opens interactions for this project, filtered to this vendor."
-              hitSlop={8}
-              style={({ pressed }) => [
-                headerIconBtn,
-                { opacity: exporting ? 0.6 : 1 },
-                pressed && !exporting && { opacity: 0.8 },
-              ]}
-            >
-              <MaterialIcons name="forum" size={22} color={colors.primary} />
-            </Pressable>
-          ) : null}
           <Pressable
-            onPress={() => void runVendorExport()}
+            onPress={openShareOptions}
             disabled={exporting}
             accessibilityRole="button"
             accessibilityLabel="Share vendor"
@@ -457,6 +520,14 @@ export function VendorDetailScreen(props: {
               <MaterialIcons name="edit" size={22} color={colors.primary} />
             </Pressable>
           )}
+          {propertyId ? (
+            <ToolbarNewSearchControls
+              title={vnd.name}
+              newItems={propertyNewItems}
+              searchItems={propertySearchItems}
+              disabled={exporting}
+            />
+          ) : null}
           <Pressable
             onPress={() => setMenuOpen(true)}
             disabled={exporting}
@@ -484,7 +555,11 @@ export function VendorDetailScreen(props: {
         }}
         scrollEventThrottle={16}
       >
-        <VendorPhotosSection state={state} vendorId={vendorId} onSave={onSave}>
+        <VendorPhotosSection
+          state={state}
+          vendorId={vendorId}
+          onSave={onSave}
+          showReorderArrows={showReorderArrows}>
           <View style={{ marginBottom: 4 }}>
             <Text style={[sharedStyles.title, { marginBottom: 0 }]}>{vnd.name}</Text>
             {project ? (
@@ -521,8 +596,8 @@ export function VendorDetailScreen(props: {
             <TextInput
               style={sharedStyles.input}
               value={phoneDraft}
-              onChangeText={setPhoneDraft}
-              placeholder="Phone number"
+              onChangeText={(text) => setPhoneDraft(formatPhoneNumber(text))}
+              placeholder="(555) 555-5555"
               placeholderTextColor={colors.textMuted}
               keyboardType="phone-pad"
               {...keyboardDone.textInputProps}
@@ -571,8 +646,9 @@ export function VendorDetailScreen(props: {
               placeholder="Internal notes about this vendor"
               placeholderTextColor={colors.textMuted}
               multiline
-              onFocus={() => measureAndScroll(notesInputRef.current)}
-              {...keyboardDone.textInputProps}
+              {...keyboardDone.getTextInputProps({
+                onFocus: () => measureAndScroll(notesInputRef.current),
+              })}
             />
 
             <Text style={sharedStyles.fieldLabel}>Summary of company</Text>
@@ -584,15 +660,20 @@ export function VendorDetailScreen(props: {
               placeholder="Quotes, strengths, or overall impression of this company"
               placeholderTextColor={colors.textMuted}
               multiline
-              onFocus={() => measureAndScroll(summaryInputRef.current)}
-              {...keyboardDone.textInputProps}
+              {...keyboardDone.getTextInputProps({
+                onFocus: () => measureAndScroll(summaryInputRef.current),
+              })}
             />
           </>
         ) : (
           <View style={[sharedStyles.catalogSection, { marginTop: 12 }]}>
             <DetailDisplayRow label="Company name" value={vnd.name} />
             <DetailDisplayRow label="Contact name" value={vnd.contactName} />
-            <DetailDisplayRow label="Phone" value={vnd.phone} />
+            <DetailDisplayRow
+              label="Phone"
+              value={vnd.phone ? formatPhoneNumber(vnd.phone) : undefined}
+              onPress={vnd.phone?.trim() ? callVendor : undefined}
+            />
             <DetailDisplayRow label="Website" value={vnd.website} onPress={openVendorWebsite} />
             <DetailDisplayRow label="Status" value={vendorStatusLabel(vnd.status)} />
             <DetailDisplayRow label="Notes" value={vnd.notes} stacked />
@@ -615,7 +696,7 @@ export function VendorDetailScreen(props: {
             <Pressable
               onPress={onAddInteraction}
               accessibilityRole="button"
-              accessibilityLabel="Add interaction"
+              accessibilityLabel="New interaction"
               hitSlop={6}
               style={({ pressed }) => ({
                 padding: 4,
@@ -635,20 +716,17 @@ export function VendorDetailScreen(props: {
                 <VendorInteractionListRow
                   key={interaction.id}
                   methodLabel={vendorContactMethodLabel(interaction.contactMethod)}
-                  dateLabel={formatDate(interaction.occurredAtISO)}
+                  dateISO={interaction.occurredAtISO}
                   contactName={interaction.contactName}
                   notes={interaction.notes}
                   thumbnailUri={photosForVendorInteraction(state, interaction.id)[0]?.localUri}
+                  important={interaction.important === true}
                   onPress={() => onEditInteraction(interaction.id)}
                 />
               ))}
             </View>
           )}
         </View>
-
-        <Pressable onPress={confirmDeleteVendor} style={sharedStyles.dangerBtn}>
-          <Text style={sharedStyles.dangerBtnText}>Delete vendor</Text>
-        </Pressable>
       </ScrollView>
 
       {isEditing ? keyboardDone.accessory : null}
@@ -684,6 +762,26 @@ export function VendorDetailScreen(props: {
                 {vnd.name}
               </Text>
             </View>
+            <Pressable
+              onPress={() =>
+                runMenuAction(() => setShowReorderArrows((prev) => !prev))
+              }
+              accessibilityRole="button"
+              accessibilityLabel={
+                showReorderArrows ? 'Reorder Photo: On' : 'Reorder Photo: Off'
+              }
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                {showReorderArrows ? 'Reorder Photo: On' : 'Reorder Photo: Off'}
+              </Text>
+            </Pressable>
+
             <Pressable
               onPress={() => {
                 if (!textScaleControls.canMakeLarger) return;
@@ -725,6 +823,21 @@ export function VendorDetailScreen(props: {
               </Text>
             </Pressable>
             <Pressable
+              onPress={() => runMenuAction(confirmDeleteVendor)}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete vendor ${vnd.name}`}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.danger }}>
+                Delete vendor {vnd.name}
+              </Text>
+            </Pressable>
+            <Pressable
               onPress={() => setMenuOpen(false)}
               style={({ pressed }) => [
                 sharedStyles.secondaryBtn,
@@ -732,11 +845,22 @@ export function VendorDetailScreen(props: {
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+              <Text style={sharedStyles.secondaryBtnText}>Done</Text>
             </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
+
+      {propertyId ? propertyGearCreateModals : null}
+
+      <ShareFormatModal
+        visible={shareOptionsOpen}
+        title="Share vendor"
+        shareFormat={shareFormat}
+        onChangeShareFormat={setShareFormat}
+        onShare={() => void runVendorExport(shareFormat)}
+        onClose={() => setShareOptionsOpen(false)}
+      />
 
       <Modal visible={exportSnapshot != null} transparent animationType="none" onRequestClose={() => {}}>
         <View

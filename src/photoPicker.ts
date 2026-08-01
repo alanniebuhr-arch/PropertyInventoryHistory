@@ -131,29 +131,80 @@ export function promptSlotAttachment(handlers: {
 
 export function promptPickOrTakeMulti(
   onPhotos: (uris: string[]) => void | Promise<void>,
-  onDocument?: (picked: PickedDocument) => void | Promise<void>
+  onDocument?: (picked: PickedDocument) => void | Promise<void>,
+  options?: { onBusyChange?: (busy: boolean) => void }
 ) {
+  const onBusyChange = options?.onBusyChange;
   Alert.alert('Add photo', undefined, [
     { text: 'Done', style: 'cancel' },
     {
       text: 'Choose photos',
       onPress: () => {
-        void pickImagesFromLibrary().then((uris) => {
-          if (uris.length > 0) void onPhotos(uris);
-        });
+        // Show spinner before the library finishes returning many assets (can take a long time).
+        onBusyChange?.(true);
+        void pickImagesFromLibrary()
+          .then((uris) => {
+            if (uris.length > 0) {
+              void onPhotos(uris);
+              return;
+            }
+            onBusyChange?.(false);
+          })
+          .catch(() => {
+            onBusyChange?.(false);
+          });
       },
     },
     {
       text: 'Take photo',
       onPress: () => {
-        void takePhotoFromCamera().then((uri) => {
-          if (uri) void onPhotos([uri]);
-        });
+        onBusyChange?.(true);
+        void takePhotoFromCamera()
+          .then((uri) => {
+            if (uri) {
+              void onPhotos([uri]);
+              return;
+            }
+            onBusyChange?.(false);
+          })
+          .catch(() => {
+            onBusyChange?.(false);
+          });
       },
     },
     {
       text: 'Load file',
-      onPress: () => runLoadFileForPhoto((uri) => onPhotos([uri]), onDocument),
+      onPress: () => {
+        onBusyChange?.(true);
+        void pickFileAttachment()
+          .then((picked) => {
+            if (!picked) {
+              onBusyChange?.(false);
+              return;
+            }
+            if (picked.kind === 'image') {
+              void onPhotos([picked.uri]);
+              return;
+            }
+            if (onDocument) {
+              onBusyChange?.(false);
+              void onDocument({
+                uri: picked.uri,
+                fileName: picked.fileName,
+                mimeType: picked.mimeType,
+              });
+              return;
+            }
+            onBusyChange?.(false);
+            Alert.alert(
+              'Not a photo',
+              'Choose an image file to add as a photo. Use a named slot and Load file to attach a document.'
+            );
+          })
+          .catch(() => {
+            onBusyChange?.(false);
+          });
+      },
     },
   ]);
 }

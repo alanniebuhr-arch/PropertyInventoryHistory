@@ -28,6 +28,7 @@ export function mergeDeletedIds(a: SyncDeletedIds, b: SyncDeletedIds): SyncDelet
     vendorPhotos: mergeIdLists(a.vendorPhotos, b.vendorPhotos),
     vendorInteractions: mergeIdLists(a.vendorInteractions, b.vendorInteractions),
     propertyTodos: mergeIdLists(a.propertyTodos, b.propertyTodos),
+    projectPunchItems: mergeIdLists(a.projectPunchItems, b.projectPunchItems),
   };
 }
 
@@ -46,7 +47,8 @@ export function countDeletedIds(deleted: SyncDeletedIds): number {
     (deleted.projectPhotos?.length ?? 0) +
     (deleted.vendorPhotos?.length ?? 0) +
     (deleted.vendorInteractions?.length ?? 0) +
-    (deleted.propertyTodos?.length ?? 0)
+    (deleted.propertyTodos?.length ?? 0) +
+    (deleted.projectPunchItems?.length ?? 0)
   );
 }
 
@@ -112,9 +114,18 @@ function propertyIdForProject(state: AppState, projectId: string): string | unde
   return state.projects.find((p) => p.id === projectId)?.propertyId;
 }
 
-function propertyIdForVendor(state: AppState, vendorId: string): string | undefined {
+function propertyIdForVendor(state: AppState, vendorId: string | undefined): string | undefined {
+  if (!vendorId) return undefined;
   const vendor = state.projectVendors.find((v) => v.id === vendorId);
   return vendor ? propertyIdForProject(state, vendor.projectId) : undefined;
+}
+
+function propertyIdForInteractionRecord(
+  state: AppState,
+  interaction: { vendorId?: string; propertyId?: string }
+): string | undefined {
+  if (interaction.propertyId) return interaction.propertyId;
+  return propertyIdForVendor(state, interaction.vendorId);
 }
 
 function addToMap(
@@ -222,14 +233,22 @@ export function inferDeletedIdsByProperty(
   }
   for (const photo of prev.vendorPhotos) {
     if (!next.vendorPhotos.some((p) => p.id === photo.id)) {
-      addToMap(map, propertyIdForVendor(prev, photo.vendorId), 'vendorPhotos', [photo.id]);
+      const propId =
+        propertyIdForVendor(prev, photo.vendorId) ??
+        (photo.interactionId
+          ? propertyIdForInteractionRecord(
+              prev,
+              prev.vendorInteractions.find((i) => i.id === photo.interactionId) ?? {}
+            )
+          : undefined);
+      addToMap(map, propId, 'vendorPhotos', [photo.id]);
     }
   }
   for (const interaction of prev.vendorInteractions) {
     if (!next.vendorInteractions.some((i) => i.id === interaction.id)) {
       addToMap(
         map,
-        propertyIdForVendor(prev, interaction.vendorId),
+        propertyIdForInteractionRecord(prev, interaction),
         'vendorInteractions',
         [interaction.id]
       );
@@ -238,6 +257,11 @@ export function inferDeletedIdsByProperty(
   for (const todo of prev.propertyTodos ?? []) {
     if (!(next.propertyTodos ?? []).some((t) => t.id === todo.id)) {
       addToMap(map, todo.propertyId, 'propertyTodos', [todo.id]);
+    }
+  }
+  for (const item of prev.projectPunchItems ?? []) {
+    if (!(next.projectPunchItems ?? []).some((t) => t.id === item.id)) {
+      addToMap(map, propertyIdForProject(prev, item.projectId), 'projectPunchItems', [item.id]);
     }
   }
 

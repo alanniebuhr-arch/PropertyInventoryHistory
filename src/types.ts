@@ -10,6 +10,18 @@ export type ItemTypeId =
   | 'air_conditioner'
   | 'automobile'
   | 'appliance'
+  | 'security_system'
+  | 'radon_mitigation'
+  | 'well_pump'
+  | 'generator'
+  | 'sump_pump'
+  | 'garage_door'
+  | 'roof'
+  | 'pool'
+  | 'irrigation'
+  | 'ev_charger'
+  | 'solar'
+  | 'hot_tub'
   | 'other';
 
 export type ElectricPanelDetails = {
@@ -18,6 +30,7 @@ export type ElectricPanelDetails = {
   amperage?: string;
   brand?: string;
   locationNotes?: string;
+  notes?: string;
   lastInspectedAtISO?: string;
   panelDistancePhotoId?: string;
   panelInsideCoverPhotoId?: string;
@@ -73,14 +86,25 @@ export type GasMainDetails = {
   shutoffLocation?: string;
   provider?: string;
   meterNumber?: string;
+  notes?: string;
 };
 
 export type WaterHeaterDetails = {
   kind: 'water_heater';
+  fuelType?: FuelType;
+  fuelTypeOther?: string;
   make?: string;
   modelNumber?: string;
   serialNumber?: string;
   notes?: string;
+  frontPhotoId?: string;
+  distancePhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  frontDocumentId?: string;
+  distanceDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
 };
 
 export type WaterTreatmentDetails = {
@@ -102,6 +126,322 @@ export type InternetDetails = {
   accountNotes?: string;
   routerModel?: string;
   wifiSsid?: string;
+  notes?: string;
+};
+
+export type SecuritySystemType = 'alarm' | 'cameras' | 'alarm_and_cameras' | 'other';
+
+export type SecuritySystemDetails = {
+  kind: 'security_system';
+  systemType?: SecuritySystemType;
+  systemTypeOther?: string;
+  monitoringCompany?: string;
+  accountNumber?: string;
+  monitoringPhone?: string;
+  make?: string;
+  modelNumber?: string;
+  serialNumber?: string;
+  panelLocation?: string;
+  keypadLocation?: string;
+  /** Codes, duress code reminders, app login notes, etc. */
+  accessNotes?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  controlPanelPhotoId?: string;
+  keypadPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  controlPanelDocumentId?: string;
+  keypadDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type RadonMitigationSystemType =
+  | 'sub_slab_suction'
+  | 'crawl_space'
+  | 'block_wall'
+  | 'drain_tile'
+  | 'other';
+
+export type RadonMitigationDetails = {
+  kind: 'radon_mitigation';
+  systemType?: RadonMitigationSystemType;
+  systemTypeOther?: string;
+  fanMake?: string;
+  fanModel?: string;
+  fanSerialNumber?: string;
+  fanLocation?: string;
+  suctionPointLocation?: string;
+  dischargeLocation?: string;
+  manometerReading?: string;
+  lastTestDateAtISO?: string;
+  lastTestResult?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  fanPhotoId?: string;
+  manometerPhotoId?: string;
+  dischargePhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  fanDocumentId?: string;
+  manometerDocumentId?: string;
+  dischargeDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type WellPumpDetails = {
+  kind: 'well_pump';
+  pumpMake?: string;
+  pumpModel?: string;
+  pumpSerialNumber?: string;
+  wellDepth?: string;
+  yieldGpm?: string;
+  pressureTankSize?: string;
+  locationNotes?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  pumpPhotoId?: string;
+  pressureTankPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  pumpDocumentId?: string;
+  pressureTankDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type GeneratorFuelType = 'propane' | 'natural_gas' | 'diesel' | 'gasoline' | 'other';
+
+export type GeneratorDetails = {
+  kind: 'generator';
+  fuelType?: GeneratorFuelType;
+  fuelTypeOther?: string;
+  make?: string;
+  modelNumber?: string;
+  serialNumber?: string;
+  wattage?: string;
+  transferSwitchLocation?: string;
+  runtimeHours?: string;
+  lastExerciseAtISO?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  generatorPhotoId?: string;
+  transferSwitchPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  generatorDocumentId?: string;
+  transferSwitchDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type SumpPumpRole = 'primary' | 'backup' | 'primary_and_backup';
+
+export type SumpPumpDetails = {
+  kind: 'sump_pump';
+  pumpRole?: SumpPumpRole;
+  make?: string;
+  modelNumber?: string;
+  serialNumber?: string;
+  batteryBackupNotes?: string;
+  dischargeLocation?: string;
+  locationNotes?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  pumpPhotoId?: string;
+  dischargePhotoId?: string;
+  batteryBackupPhotoId?: string;
+  receiptPhotoId?: string;
+  pumpDocumentId?: string;
+  dischargeDocumentId?: string;
+  batteryBackupDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type GarageDoorDetails = {
+  kind: 'garage_door';
+  openerMake?: string;
+  openerModel?: string;
+  openerSerialNumber?: string;
+  springType?: string;
+  programmingNotes?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  doorPhotoId?: string;
+  openerPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  doorDocumentId?: string;
+  openerDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type RoofMaterial = 'asphalt' | 'metal' | 'slate' | 'tile' | 'other';
+
+export type RoofDetails = {
+  kind: 'roof';
+  material?: RoofMaterial;
+  materialOther?: string;
+  color?: string;
+  installDateAtISO?: string;
+  warrantyExpiresAtISO?: string;
+  lastInspectedAtISO?: string;
+  contractorName?: string;
+  contractorPhone?: string;
+  notes?: string;
+  overviewPhotoId?: string;
+  detailPhotoId?: string;
+  receiptPhotoId?: string;
+  overviewDocumentId?: string;
+  detailDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type PoolType = 'in_ground' | 'above_ground' | 'other';
+
+export type PoolDetails = {
+  kind: 'pool';
+  poolType?: PoolType;
+  poolTypeOther?: string;
+  volumeGallons?: string;
+  filterMake?: string;
+  filterModel?: string;
+  pumpMake?: string;
+  pumpModel?: string;
+  heaterType?: string;
+  chemicalNotes?: string;
+  installDateAtISO?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  overviewPhotoId?: string;
+  equipmentPadPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  overviewDocumentId?: string;
+  equipmentPadDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type IrrigationDetails = {
+  kind: 'irrigation';
+  controllerMake?: string;
+  controllerModel?: string;
+  zoneCount?: string;
+  backflowLocation?: string;
+  winterizeNotes?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  controllerPhotoId?: string;
+  backflowPhotoId?: string;
+  zoneValvePhotoId?: string;
+  receiptPhotoId?: string;
+  controllerDocumentId?: string;
+  backflowDocumentId?: string;
+  zoneValveDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type EvChargerDetails = {
+  kind: 'ev_charger';
+  make?: string;
+  modelNumber?: string;
+  serialNumber?: string;
+  amperage?: string;
+  connectorType?: string;
+  circuitBreaker?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  notes?: string;
+  chargerPhotoId?: string;
+  breakerPanelPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  chargerDocumentId?: string;
+  breakerPanelDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type SolarDetails = {
+  kind: 'solar';
+  systemSizeKw?: string;
+  panelMake?: string;
+  panelModel?: string;
+  panelCount?: string;
+  inverterMake?: string;
+  inverterModel?: string;
+  inverterSerialNumber?: string;
+  productionAccountNotes?: string;
+  installDateAtISO?: string;
+  installerName?: string;
+  installerPhone?: string;
+  warrantyNotes?: string;
+  notes?: string;
+  panelsPhotoId?: string;
+  inverterPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  panelsDocumentId?: string;
+  inverterDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
+export type HotTubDetails = {
+  kind: 'hot_tub';
+  make?: string;
+  modelNumber?: string;
+  serialNumber?: string;
+  capacityPersons?: string;
+  filterModel?: string;
+  heaterType?: string;
+  chemicalNotes?: string;
+  installDateAtISO?: string;
+  serviceCompany?: string;
+  servicePhone?: string;
+  notes?: string;
+  overviewPhotoId?: string;
+  equipmentPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  receiptPhotoId?: string;
+  overviewDocumentId?: string;
+  equipmentDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  receiptDocumentId?: string;
 };
 
 export type FuelType = 'natural_gas' | 'propane' | 'electric' | 'oil' | 'other';
@@ -246,6 +586,18 @@ export type ItemDetails =
   | WasteWaterDetails
   | GasMainDetails
   | InternetDetails
+  | SecuritySystemDetails
+  | RadonMitigationDetails
+  | WellPumpDetails
+  | GeneratorDetails
+  | SumpPumpDetails
+  | GarageDoorDetails
+  | RoofDetails
+  | PoolDetails
+  | IrrigationDetails
+  | EvChargerDetails
+  | SolarDetails
+  | HotTubDetails
   | FurnaceDetails
   | AirConditionerDetails
   | AutomobileDetails
@@ -419,7 +771,14 @@ export type VendorStatus =
   | 'vendor_onsite'
   | 'waiting_for_quote'
   | 'quote_received'
+  | 'accepted'
   | 'rejected';
+
+export type ProjectStatus =
+  | 'research'
+  | 'interviewing_vendors'
+  | 'in_progress'
+  | 'complete';
 
 export type Project = {
   id: string;
@@ -430,6 +789,9 @@ export type Project = {
   vendorIntroNote?: string;
   /** Private notes — app-only; not included in intro share image. */
   vendorQuestionsNote?: string;
+  status: ProjectStatus;
+  /** Optional total / budgeted project cost. */
+  totalCost?: number;
   photoIds: string[];
   sortOrder: number;
   createdAtISO: string;
@@ -456,6 +818,8 @@ export type ProjectVendor = {
 export type ProjectPhoto = {
   id: string;
   projectId: string;
+  /** When set, photo belongs to a punch-list item (not the project gallery). */
+  punchItemId?: string;
   localUri: string;
   caption?: string;
   notes?: string;
@@ -466,7 +830,8 @@ export type ProjectPhoto = {
 
 export type VendorPhoto = {
   id: string;
-  vendorId: string;
+  /** Optional when the photo belongs to a property-scoped (no-vendor) interaction. */
+  vendorId?: string;
   /** When set, photo belongs to a vendor interaction (not the vendor gallery). */
   interactionId?: string;
   localUri: string;
@@ -486,12 +851,20 @@ export type VendorContactMethod =
 
 export type VendorInteraction = {
   id: string;
-  vendorId: string;
+  /** When set, interaction is tied to a project vendor. Omit for property-only contacts. */
+  vendorId?: string;
+  /**
+   * Property this interaction belongs to. Required when vendorId is omitted.
+   * Optional on legacy vendor-linked rows (inferred via vendor → project).
+   */
+  propertyId?: string;
   contactMethod: VendorContactMethod;
-  /** Vendor-side contact person for this interaction. */
+  /** Contact person (vendor contact, neighbor name, etc.). */
   contactName?: string;
   occurredAtISO: string;
   notes?: string;
+  /** When true, emphasized in interaction lists and reminders. */
+  important?: boolean;
   photoIds: string[];
   createdAtISO: string;
   updatedAtISO?: string;
@@ -504,6 +877,25 @@ export type PropertyTodo = {
   propertyId: string;
   /** 'todo' = actionable task, 'idea' = loosely thought-out topic. Missing = 'todo'. */
   kind?: PropertyTodoKind;
+  title: string;
+  dueAtISO?: string;
+  /**
+   * When set (e.g. 1 / 3 / 6 / 12), marking Done advances dueAtISO by this many months
+   * and leaves the to-do open.
+   */
+  repeatMonths?: number;
+  notes?: string;
+  done: boolean;
+  completedAtISO?: string;
+  photoIds: string[];
+  createdAtISO: string;
+  updatedAtISO?: string;
+};
+
+/** Issue / completion checklist item for finishing a project. */
+export type ProjectPunchItem = {
+  id: string;
+  projectId: string;
   title: string;
   dueAtISO?: string;
   notes?: string;
@@ -530,6 +922,7 @@ export type AppState = {
   vendorPhotos: VendorPhoto[];
   vendorInteractions: VendorInteraction[];
   propertyTodos: PropertyTodo[];
+  projectPunchItems: ProjectPunchItem[];
 };
 
 export const EMPTY_APP_STATE: AppState = {
@@ -548,6 +941,7 @@ export const EMPTY_APP_STATE: AppState = {
   vendorPhotos: [],
   vendorInteractions: [],
   propertyTodos: [],
+  projectPunchItems: [],
 };
 
 export type InventoryTransferBundle = {
@@ -576,6 +970,7 @@ export type SyncDeletedIds = {
   vendorPhotos?: string[];
   vendorInteractions?: string[];
   propertyTodos?: string[];
+  projectPunchItems?: string[];
 };
 
 export type PropertyUpdateBundle = {

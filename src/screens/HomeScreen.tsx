@@ -1,22 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
+import type { TextInput as RNTextInput } from 'react-native';
 import { Text, TextInput, useTextScaleControls } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, Property } from '../types';
 import { PropertyListRow } from '../components/ListRows';
+import {
+  ToolbarNewSearchControls,
+  type PropertyGearNavItem,
+} from '../components/PropertyGearNavItems';
+import { UpcomingReminderCard } from '../components/UpcomingServiceCard';
 import { sharedStyles, colors } from '../theme';
 import { uid, nowISO } from '../utils';
 import {
+  itemById,
   itemsForProperty,
+  photosForEvent,
+  photosForPropertyTodo,
+  photosForVendorInteraction,
   roomsForProperty,
   todosForProperty,
+  vendorById,
 } from '../storage';
 import { propertyCoverPhotoUri } from '../propertyPhotos';
+import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { overdueCountForProperty } from '../itemMaintenance';
+import { itemDisplayLabel } from '../itemCatalog';
+import { vendorContactMethodLabel } from '../vendorContactMethod';
 import {
   upcomingHorizonLabel,
-  upcomingServiceCountForProperty,
+  upcomingReminderCountForProperty,
+  upcomingReminderEntriesForProperty,
   UPCOMING_HORIZON_OPTIONS,
   type UpcomingHorizon,
 } from '../eventRecurrence';
@@ -26,6 +41,8 @@ import {
   setPropertyUpcomingHorizon,
 } from '../upcomingHorizonPrefs';
 import { applyPropertyTemplate, type DwellingType } from '../propertyTemplate';
+import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
+import { useKeyboardSheetScroll } from '../components/useKeyboardSheetScroll';
 
 function DwellingPicker(props: {
   value: DwellingType;
@@ -89,10 +106,38 @@ function dueSoonPeriodLabel(horizon: UpcomingHorizon): string {
 export function HomeScreen(props: {
   state: AppState;
   onOpenProperty: (propertyId: string) => void;
-  onOpenTransfer: () => void;
+  onOpenInteractions: () => void;
+  onSearchInteractions: () => void;
+  onOpenServices: () => void;
+  onSearchServiceHistory: () => void;
+  onOpenAssets: () => void;
+  onSearchAssets: () => void;
+  onSearchActivity: () => void;
+  onOpenExport: () => void;
+  onOpenImport: () => void;
+  onOpenEvent: (itemId: string, eventId: string) => void;
+  onOpenTodo: (propertyId: string, todoId: string) => void;
+  onOpenInteraction: (
+    vendorId: string | undefined,
+    interactionId: string,
+    propertyId: string
+  ) => void;
   onSave: (state: AppState) => void;
 }) {
-  const { state, onOpenProperty, onOpenTransfer, onSave } = props;
+  const {
+    state,
+    onOpenProperty,
+    onSearchInteractions,
+    onSearchServiceHistory,
+    onSearchAssets,
+    onSearchActivity,
+    onOpenExport,
+    onOpenImport,
+    onOpenEvent,
+    onOpenTodo,
+    onOpenInteraction,
+    onSave,
+  } = props;
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const [modalOpen, setModalOpen] = useState(false);
@@ -104,7 +149,22 @@ export function HomeScreen(props: {
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
+  const [expandedReminderPropertyId, setExpandedReminderPropertyId] = useState<string | null>(
+    null
+  );
   const textScaleControls = useTextScaleControls();
+  const nameInputRef = useRef<RNTextInput>(null);
+  const addressInputRef = useRef<RNTextInput>(null);
+  const {
+    scrollRef: propertySheetScrollRef,
+    onScroll: onPropertySheetScroll,
+    measureAndScroll: measurePropertySheetField,
+    contentBottomInset: propertySheetBottomInset,
+  } = useKeyboardSheetScroll();
+  const keyboardDone = useKeyboardDoneAccessory({
+    id: 'homeNewPropertyDone',
+    variant: 'overlay',
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -170,6 +230,67 @@ export function HomeScreen(props: {
 
   const sorted = [...state.properties].sort((a, b) => a.name.localeCompare(b.name));
   const periodLabel = dueSoonPeriodLabel(upcomingHorizon);
+  const hasInteractions = state.vendorInteractions.length > 0;
+  const hasServices = state.events.length > 0;
+  const hasAssets = state.items.length > 0;
+
+  const homeNewItems: PropertyGearNavItem[] = [
+    {
+      key: 'property',
+      prefix: 'New',
+      keyword: 'Property',
+      onPress: () => runMenuAction(openAdd),
+    },
+  ];
+  const homeSearchItems: PropertyGearNavItem[] = [
+    ...(hasAssets
+      ? [
+          {
+            key: 'searchAssets',
+            prefix: 'Search' as const,
+            keyword: 'Assets',
+            icon: 'inventory' as const,
+            helpText: 'Things',
+            onPress: () => runMenuAction(onSearchAssets),
+          },
+        ]
+      : []),
+    ...(hasInteractions
+      ? [
+          {
+            key: 'searchInteractions',
+            prefix: 'Search' as const,
+            keyword: 'Interactions',
+            icon: 'forum' as const,
+            helpText: 'Conversations',
+            onPress: () => runMenuAction(onSearchInteractions),
+          },
+        ]
+      : []),
+    ...(hasServices
+      ? [
+          {
+            key: 'searchServices',
+            prefix: 'Search' as const,
+            keyword: 'Service Events',
+            icon: 'handyman' as const,
+            helpText: 'on Assets',
+            onPress: () => runMenuAction(onSearchServiceHistory),
+          },
+        ]
+      : []),
+    ...(hasAssets || hasInteractions || hasServices
+      ? [
+          {
+            key: 'searchActivity',
+            prefix: 'Search' as const,
+            keyword: 'All',
+            icon: 'history' as const,
+            onPress: () => runMenuAction(onSearchActivity),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
@@ -183,19 +304,26 @@ export function HomeScreen(props: {
               Manage assets and projects on your properties.
             </Text>
           </View>
-          <Pressable
-            onPress={() => setMenuOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Home options"
-            accessibilityHint="Opens actions like new property and export or import backup."
-            hitSlop={6}
-            style={({ pressed }) => ({
-              padding: 4,
-              opacity: pressed ? 0.7 : 1,
-            })}
-          >
-            <MaterialIcons name="settings" size={24} color={colors.primary} />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <ToolbarNewSearchControls
+              title="Property Asset Manager"
+              newItems={homeNewItems}
+              searchItems={homeSearchItems}
+            />
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Home options"
+              accessibilityHint="Opens actions like export or import data."
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons name="settings" size={24} color={colors.primary} />
+            </Pressable>
+          </View>
         </View>
       </View>
       <ScrollView contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}>
@@ -209,14 +337,28 @@ export function HomeScreen(props: {
             marginBottom: 8,
           }}
         >
-          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, flex: 1 }]}>
-            Properties
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
+            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+              Properties
+            </Text>
+            <Pressable
+              onPress={openAdd}
+              accessibilityRole="button"
+              accessibilityLabel="New Property"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons name="add" size={24} color={colors.primary} />
+            </Pressable>
+          </View>
           <Pressable
             onPress={openUpcomingHorizonPicker}
             accessibilityRole="button"
             accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
-            accessibilityHint="Opens a list of time ranges for upcoming service counts."
+            accessibilityHint="Opens a list of time ranges for upcoming reminder counts."
             style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
@@ -237,10 +379,14 @@ export function HomeScreen(props: {
             No properties yet. Add a rental unit or property to get started.
           </Text>
         ) : (
-          sorted.map((p) => {
+          sorted.map((p, index) => {
             const rooms = roomsForProperty(state, p.id);
             const items = itemsForProperty(state, p.id);
             const todos = todosForProperty(state, p.id);
+            const remindersExpanded = expandedReminderPropertyId === p.id;
+            const reminderEntries = remindersExpanded
+              ? upcomingReminderEntriesForProperty(state, p.id, upcomingHorizon)
+              : [];
             return (
               <PropertyListRow
                 key={p.id}
@@ -251,14 +397,90 @@ export function HomeScreen(props: {
                 itemCount={items.length}
                 todoCount={todos.length}
                 overdueCount={overdueCountForProperty(state, p.id)}
-                dueSoonCount={upcomingServiceCountForProperty(
+                reminderCount={upcomingReminderCountForProperty(
                   state,
                   p.id,
                   upcomingHorizon
                 )}
                 dueSoonPeriodLabel={periodLabel}
+                striped={index % 2 === 1}
+                remindersExpanded={remindersExpanded}
+                onToggleReminders={() =>
+                  setExpandedReminderPropertyId((current) =>
+                    current === p.id ? null : p.id
+                  )
+                }
                 onPress={() => onOpenProperty(p.id)}
-              />
+              >
+                {reminderEntries.map((entry) => {
+                  if (entry.kind === 'event') {
+                    const e = entry.event;
+                    const item = itemById(state, e.itemId);
+                    const eventPhotos = photosForEvent(state, e.id);
+                    return (
+                      <UpcomingReminderCard
+                        key={`event:${e.id}`}
+                        title={
+                          item
+                            ? `${itemDisplayLabel(item)}${e.title?.trim() ? ` · ${e.title.trim()}` : ''}`
+                            : e.title?.trim() || 'Service'
+                        }
+                        dueAtISO={entry.dueAt}
+                        notes={e.notes}
+                        thumbnailUri={eventPhotos[0]?.localUri}
+                        onPress={() => onOpenEvent(e.itemId, e.id)}
+                        noun="service"
+                      />
+                    );
+                  }
+                  if (entry.kind === 'interaction') {
+                    const interaction = entry.interaction;
+                    const vendor = interaction.vendorId
+                      ? vendorById(state, interaction.vendorId)
+                      : undefined;
+                    const interactionPhotos = photosForVendorInteraction(
+                      state,
+                      interaction.id
+                    );
+                    const methodLabel = vendorContactMethodLabel(interaction.contactMethod);
+                    const notesParts = [methodLabel, interaction.notes?.trim()].filter(Boolean);
+                    return (
+                      <UpcomingReminderCard
+                        key={`interaction:${interaction.id}`}
+                        title={
+                          vendor?.name?.trim() ||
+                          interaction.contactName?.trim() ||
+                          'Interaction'
+                        }
+                        dueAtISO={interaction.occurredAtISO}
+                        notes={notesParts.join(' · ') || undefined}
+                        thumbnailUri={
+                          interactionPhotos[0]?.localUri ??
+                          (vendor ? firstPhotoUriForVendor(state, vendor) : undefined)
+                        }
+                        onPress={() =>
+                          onOpenInteraction(interaction.vendorId, interaction.id, p.id)
+                        }
+                        noun="interaction"
+                        important={interaction.important === true}
+                      />
+                    );
+                  }
+                  const todo = entry.todo;
+                  const todoPhotos = photosForPropertyTodo(state, todo.id);
+                  return (
+                    <UpcomingReminderCard
+                      key={`todo:${todo.id}`}
+                      title={todo.title}
+                      dueAtISO={todo.dueAtISO}
+                      notes={todo.notes}
+                      thumbnailUri={todoPhotos[0]?.localUri}
+                      onPress={() => onOpenTodo(p.id, todo.id)}
+                      noun="to-do"
+                    />
+                  );
+                })}
+              </PropertyListRow>
             );
           })
         )}
@@ -295,21 +517,6 @@ export function HomeScreen(props: {
                 Property Asset Manager
               </Text>
             </View>
-            <Pressable
-              onPress={() => runMenuAction(openAdd)}
-              accessibilityRole="button"
-              accessibilityLabel="New property"
-              style={({ pressed }) => ({
-                paddingVertical: 14,
-                borderTopWidth: 1,
-                borderTopColor: colors.hairline,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
-                New property
-              </Text>
-            </Pressable>
             <Pressable
               onPress={() => {
                 if (!textScaleControls.canMakeLarger) return;
@@ -351,9 +558,9 @@ export function HomeScreen(props: {
               </Text>
             </Pressable>
             <Pressable
-              onPress={() => runMenuAction(onOpenTransfer)}
+              onPress={() => runMenuAction(onOpenImport)}
               accessibilityRole="button"
-              accessibilityLabel="Export or import backup"
+              accessibilityLabel="Import data"
               style={({ pressed }) => ({
                 paddingVertical: 14,
                 borderTopWidth: 1,
@@ -362,7 +569,22 @@ export function HomeScreen(props: {
               })}
             >
               <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
-                Export / import backup
+                Import data
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => runMenuAction(onOpenExport)}
+              accessibilityRole="button"
+              accessibilityLabel="Export data"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Export data
               </Text>
             </Pressable>
             <Pressable
@@ -373,7 +595,7 @@ export function HomeScreen(props: {
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
+              <Text style={sharedStyles.secondaryBtnText}>Done</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -385,82 +607,99 @@ export function HomeScreen(props: {
         animationType="slide"
         onRequestClose={() => setModalOpen(false)}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <Pressable
-            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
-            onPress={() => setModalOpen(false)}
+        <View style={{ flex: 1 }}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
             <Pressable
-              style={{
-                backgroundColor: colors.card,
-                borderTopLeftRadius: 8,
-                borderTopRightRadius: 8,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderBottomWidth: 0,
-                borderColor: colors.border,
-                maxHeight: windowHeight * 0.92,
-                paddingHorizontal: 20,
-                paddingTop: 20,
-                paddingBottom: insets.bottom + 20,
-              }}
-              onPress={() => {}}
+              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
+              onPress={() => setModalOpen(false)}
             >
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator
-                bounces={false}
+              <Pressable
+                style={{
+                  backgroundColor: colors.card,
+                  borderTopLeftRadius: 8,
+                  borderTopRightRadius: 8,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderBottomWidth: 0,
+                  borderColor: colors.border,
+                  maxHeight: windowHeight * 0.92,
+                  paddingHorizontal: 20,
+                  paddingTop: 20,
+                  paddingBottom: insets.bottom + 20,
+                }}
+                onPress={() => {}}
               >
-                <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>New property</Text>
-                <Text style={sharedStyles.fieldLabel}>Name</Text>
-                <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Unit 1, Main Street duplex…"
-                  style={sharedStyles.input}
-                />
-                <Text style={sharedStyles.fieldLabel}>Address (optional)</Text>
-                <TextInput
-                  value={address}
-                  onChangeText={setAddress}
-                  placeholder="123 Main St"
-                  style={sharedStyles.input}
-                />
-                <Text style={sharedStyles.fieldLabel}>Dwelling type</Text>
-                <DwellingPicker value={dwellingType} onChange={setDwellingType} />
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginTop: 12,
-                    marginBottom: 4,
-                    gap: 12,
-                  }}
+                <ScrollView
+                  ref={propertySheetScrollRef}
+                  onScroll={onPropertySheetScroll}
+                  scrollEventThrottle={16}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                  bounces={false}
+                  contentContainerStyle={{ paddingBottom: propertySheetBottomInset }}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[sharedStyles.fieldLabel, { marginTop: 0 }]}>Use default layout</Text>
-                    <Text style={sharedStyles.cardMeta}>
-                      Adds standard rooms and inventory assets (from 24 Cedar Road layout).
-                    </Text>
+                  <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>New property</Text>
+                  <Text style={sharedStyles.fieldLabel}>Name</Text>
+                  <TextInput
+                    ref={nameInputRef}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Unit 1, Main Street duplex…"
+                    style={sharedStyles.input}
+                    {...keyboardDone.getTextInputProps({
+                      onFocus: () => measurePropertySheetField(nameInputRef.current),
+                    })}
+                  />
+                  <Text style={sharedStyles.fieldLabel}>Address (optional)</Text>
+                  <TextInput
+                    ref={addressInputRef}
+                    value={address}
+                    onChangeText={setAddress}
+                    placeholder="123 Main St"
+                    style={sharedStyles.input}
+                    {...keyboardDone.getTextInputProps({
+                      onFocus: () => measurePropertySheetField(addressInputRef.current),
+                    })}
+                  />
+                  <Text style={sharedStyles.fieldLabel}>Dwelling type</Text>
+                  <DwellingPicker value={dwellingType} onChange={setDwellingType} />
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginTop: 12,
+                      marginBottom: 4,
+                      gap: 12,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[sharedStyles.fieldLabel, { marginTop: 0 }]}>
+                        Use default layout
+                      </Text>
+                      <Text style={sharedStyles.cardMeta}>
+                        Adds standard rooms and inventory assets (from 24 Cedar Road layout).
+                      </Text>
+                    </View>
+                    <Switch value={useDefaultLayout} onValueChange={setUseDefaultLayout} />
                   </View>
-                  <Switch value={useDefaultLayout} onValueChange={setUseDefaultLayout} />
-                </View>
-                <Pressable
-                  onPress={saveProperty}
-                  style={({ pressed }) => [
-                    sharedStyles.primaryBtn,
-                    pressed && sharedStyles.primaryBtnPressed,
-                  ]}
-                >
-                  <Text style={sharedStyles.primaryBtnText}>Save</Text>
-                </Pressable>
-              </ScrollView>
+                  <Pressable
+                    onPress={saveProperty}
+                    style={({ pressed }) => [
+                      sharedStyles.primaryBtn,
+                      pressed && sharedStyles.primaryBtnPressed,
+                    ]}
+                  >
+                    <Text style={sharedStyles.primaryBtnText}>Save</Text>
+                  </Pressable>
+                </ScrollView>
+              </Pressable>
             </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+          {keyboardDone.accessory}
+        </View>
       </Modal>
     </View>
   );

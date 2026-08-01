@@ -32,6 +32,30 @@ export const ITEM_CATALOG: CatalogEntry[] = [
 
   { id: 'internet', label: 'Internet' },
 
+  { id: 'security_system', label: 'Security system', defaultRecurrenceHint: 'Annual system check' },
+
+  { id: 'radon_mitigation', label: 'Radon mitigation', defaultRecurrenceHint: 'Annual system check' },
+
+  { id: 'well_pump', label: 'Well / pump', defaultRecurrenceHint: 'Annual system check' },
+
+  { id: 'generator', label: 'Generator', defaultRecurrenceHint: 'Monthly exercise' },
+
+  { id: 'sump_pump', label: 'Sump pump', defaultRecurrenceHint: 'Annual test' },
+
+  { id: 'garage_door', label: 'Garage door', defaultRecurrenceHint: 'Annual maintenance' },
+
+  { id: 'roof', label: 'Roof', defaultRecurrenceHint: 'Annual inspection' },
+
+  { id: 'pool', label: 'Pool', defaultRecurrenceHint: 'Seasonal open/close service' },
+
+  { id: 'irrigation', label: 'Irrigation', defaultRecurrenceHint: 'Seasonal start-up/winterize' },
+
+  { id: 'ev_charger', label: 'EV charger', defaultRecurrenceHint: 'Annual inspection' },
+
+  { id: 'solar', label: 'Solar', defaultRecurrenceHint: 'Annual inspection' },
+
+  { id: 'hot_tub', label: 'Hot tub', defaultRecurrenceHint: 'Annual service' },
+
   { id: 'furnace', label: 'Heating', defaultRecurrenceHint: 'Annual maintenance' },
 
   { id: 'air_conditioner', label: 'Air conditioner', defaultRecurrenceHint: 'Annual maintenance' },
@@ -151,6 +175,54 @@ export function defaultDetailsForType(itemTypeId: ItemTypeId): ItemDetails {
     case 'internet':
 
       return { kind: 'internet' };
+
+    case 'security_system':
+
+      return { kind: 'security_system' };
+
+    case 'radon_mitigation':
+
+      return { kind: 'radon_mitigation' };
+
+    case 'well_pump':
+
+      return { kind: 'well_pump' };
+
+    case 'generator':
+
+      return { kind: 'generator' };
+
+    case 'sump_pump':
+
+      return { kind: 'sump_pump' };
+
+    case 'garage_door':
+
+      return { kind: 'garage_door' };
+
+    case 'roof':
+
+      return { kind: 'roof' };
+
+    case 'pool':
+
+      return { kind: 'pool' };
+
+    case 'irrigation':
+
+      return { kind: 'irrigation' };
+
+    case 'ev_charger':
+
+      return { kind: 'ev_charger' };
+
+    case 'solar':
+
+      return { kind: 'solar' };
+
+    case 'hot_tub':
+
+      return { kind: 'hot_tub' };
 
     case 'furnace':
 

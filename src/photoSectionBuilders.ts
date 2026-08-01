@@ -1,6 +1,7 @@
 import type { ItemPhoto } from './types';
 import type { PhotoTile, SlotDocumentTileInfo } from './components/PhotoSection';
 import { promptPickOrTakeSingle, promptSlotAttachment } from './photoPicker';
+import type { PhotoReorderDirection } from './photoReorder';
 import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 
 /**
@@ -35,6 +36,7 @@ type SlotAndExtraOptions = {
   onToggleFavorite?: (photoId: string, favorite: boolean) => void | Promise<void>;
   extraPhotos: ExtraPhoto[];
   onDeleteExtra: (photoId: string) => void | Promise<void>;
+  onReorderExtra?: (photoId: string, direction: PhotoReorderDirection) => void | Promise<void>;
   onLabelExtra?: (photoId: string, label: string, notes: string) => void | Promise<void>;
 };
 
@@ -65,6 +67,7 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
     onToggleFavorite,
     extraPhotos,
     onDeleteExtra,
+    onReorderExtra,
     onLabelExtra,
   } = options;
 
@@ -124,7 +127,7 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
     };
   });
 
-  for (const photo of extraPhotos) {
+  extraPhotos.forEach((photo, index) => {
     const caption = photo.caption?.trim();
     tiles.push({
       kind: 'extra',
@@ -136,6 +139,18 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
       onDelete: () => {
         void onDeleteExtra(photo.id);
       },
+      onMoveLeft:
+        onReorderExtra && index > 0
+          ? () => {
+              void onReorderExtra(photo.id, 'left');
+            }
+          : undefined,
+      onMoveRight:
+        onReorderExtra && index < extraPhotos.length - 1
+          ? () => {
+              void onReorderExtra(photo.id, 'right');
+            }
+          : undefined,
       onLabelChange: onLabelExtra
         ? (label, notes) => {
             void onLabelExtra(photo.id, label, notes);
@@ -147,7 +162,7 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
           }
         : undefined,
     });
-  }
+  });
 
   return tiles;
 }
@@ -155,12 +170,13 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
 export function buildExtraOnlyPhotoTiles(options: {
   photos: ExtraPhoto[];
   onDeletePhoto?: (photoId: string) => void | Promise<void>;
+  onReorderPhoto?: (photoId: string, direction: PhotoReorderDirection) => void | Promise<void>;
   onLabelPhoto?: (photoId: string, label: string, notes: string) => void | Promise<void>;
   onToggleFavorite?: (photoId: string, favorite: boolean) => void | Promise<void>;
 }): PhotoTile[] {
-  const { photos, onDeletePhoto, onLabelPhoto, onToggleFavorite } = options;
+  const { photos, onDeletePhoto, onReorderPhoto, onLabelPhoto, onToggleFavorite } = options;
 
-  const tiles: PhotoTile[] = photos.map((photo) => {
+  const tiles: PhotoTile[] = photos.map((photo, index) => {
     const caption = photo.caption?.trim();
     return {
       kind: 'extra' as const,
@@ -174,6 +190,18 @@ export function buildExtraOnlyPhotoTiles(options: {
             void onDeletePhoto(photo.id);
           }
         : undefined,
+      onMoveLeft:
+        onReorderPhoto && index > 0
+          ? () => {
+              void onReorderPhoto(photo.id, 'left');
+            }
+          : undefined,
+      onMoveRight:
+        onReorderPhoto && index < photos.length - 1
+          ? () => {
+              void onReorderPhoto(photo.id, 'right');
+            }
+          : undefined,
       onLabelChange: onLabelPhoto
         ? (label, notes) => {
             void onLabelPhoto(photo.id, label, notes);
@@ -193,9 +221,10 @@ export function buildExtraOnlyPhotoTiles(options: {
 export function buildEventPhotoTiles(options: {
   receiptPhoto?: ExtraPhoto;
   otherPhotos: ExtraPhoto[];
-  onAddReceipt: (uri: string) => void | Promise<void>;
-  onDeleteReceipt: () => void;
-  onDeletePhoto: (photoId: string) => void;
+  onAddReceipt?: (uri: string) => void | Promise<void>;
+  onDeleteReceipt?: () => void;
+  onDeletePhoto?: (photoId: string) => void;
+  onReorderPhoto?: (photoId: string, direction: PhotoReorderDirection) => void | Promise<void>;
   onLabelReceipt?: (notes: string) => void | Promise<void>;
   onLabelPhoto?: (photoId: string, label: string, notes: string) => void | Promise<void>;
   onToggleFavorite?: (photoId: string, favorite: boolean) => void | Promise<void>;
@@ -206,13 +235,16 @@ export function buildEventPhotoTiles(options: {
     onAddReceipt,
     onDeleteReceipt,
     onDeletePhoto,
+    onReorderPhoto,
     onLabelReceipt,
     onLabelPhoto,
     onToggleFavorite,
   } = options;
 
-  const tiles: PhotoTile[] = [
-    {
+  const tiles: PhotoTile[] = [];
+
+  if (receiptPhoto || onAddReceipt) {
+    tiles.push({
       kind: 'reserved',
       key: 'receipt',
       shortLabel: 'Receipt',
@@ -220,29 +252,33 @@ export function buildEventPhotoTiles(options: {
       notes: receiptPhoto?.notes,
       photoId: receiptPhoto?.id,
       favorite: receiptPhoto?.favorite === true,
-      onAdd: () => {
-        promptPickOrTakeSingle(onAddReceipt);
-      },
-      onDelete: receiptPhoto
+      onAdd: onAddReceipt
         ? () => {
-            onDeleteReceipt();
+            promptPickOrTakeSingle(onAddReceipt);
           }
         : undefined,
-      onLabelChange: receiptPhoto && onLabelReceipt
-        ? (_label, notes) => {
-            void onLabelReceipt(notes);
-          }
-        : undefined,
+      onDelete:
+        receiptPhoto && onDeleteReceipt
+          ? () => {
+              onDeleteReceipt();
+            }
+          : undefined,
+      onLabelChange:
+        receiptPhoto && onLabelReceipt
+          ? (_label, notes) => {
+              void onLabelReceipt(notes);
+            }
+          : undefined,
       onToggleFavorite:
         receiptPhoto && onToggleFavorite
           ? (favorite) => {
               void onToggleFavorite(receiptPhoto.id, favorite);
             }
           : undefined,
-    },
-  ];
+    });
+  }
 
-  for (const photo of otherPhotos) {
+  otherPhotos.forEach((photo, index) => {
     const caption = photo.caption?.trim();
     tiles.push({
       kind: 'extra',
@@ -251,9 +287,23 @@ export function buildEventPhotoTiles(options: {
       uri: photo.localUri,
       notes: photo.notes,
       favorite: photo.favorite === true,
-      onDelete: () => {
-        onDeletePhoto(photo.id);
-      },
+      onDelete: onDeletePhoto
+        ? () => {
+            onDeletePhoto(photo.id);
+          }
+        : undefined,
+      onMoveLeft:
+        onReorderPhoto && index > 0
+          ? () => {
+              void onReorderPhoto(photo.id, 'left');
+            }
+          : undefined,
+      onMoveRight:
+        onReorderPhoto && index < otherPhotos.length - 1
+          ? () => {
+              void onReorderPhoto(photo.id, 'right');
+            }
+          : undefined,
       onLabelChange: onLabelPhoto
         ? (label, notes) => {
             void onLabelPhoto(photo.id, label, notes);
@@ -265,7 +315,7 @@ export function buildEventPhotoTiles(options: {
           }
         : undefined,
     });
-  }
+  });
 
   return tiles;
 }

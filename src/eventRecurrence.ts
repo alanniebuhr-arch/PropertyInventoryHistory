@@ -1,5 +1,12 @@
-import type { AppState, ItemEvent, ItemEventRecurrence, RecurrenceInterval } from './types';
-import { formatCurrency, formatDate } from './utils';
+import type {
+  AppState,
+  ItemEvent,
+  ItemEventRecurrence,
+  PropertyTodo,
+  RecurrenceInterval,
+  VendorInteraction,
+} from './types';
+import { formatCurrency, formatDisplayDate } from './utils';
 
 const MONTHS_BY_INTERVAL: Record<
   Exclude<RecurrenceInterval, 'custom' | 'once'>,
@@ -114,21 +121,146 @@ export function filterUpcomingByHorizon(
 ): ItemEvent[] {
   if (horizon === 'all') return events;
 
+  return events.filter((event) => dueAtWithinHorizon(upcomingDueAtISO(event), horizon, now));
+}
+
+function horizonCutoffKey(horizon: UpcomingHorizon, now: Date): number | null {
+  if (horizon === 'all') return null;
   const months =
     horizon === '1m' ? 1 : horizon === '3m' ? 3 : horizon === '6m' ? 6 : 12;
   const cutoff = new Date(now.getFullYear(), now.getMonth() + months, now.getDate());
-  const cutoffKey = calendarKey({
+  return calendarKey({
     year: cutoff.getFullYear(),
     month: cutoff.getMonth() + 1,
     day: cutoff.getDate(),
   });
+}
 
-  return events.filter((event) => {
-    const dueAt = upcomingDueAtISO(event);
-    const due = calendarYmdFromISO(dueAt);
-    if (!due) return false;
-    return calendarKey(due) <= cutoffKey;
-  });
+/** True when due is overdue or on/before the horizon cutoff (all = always true if due exists). */
+export function dueAtWithinHorizon(
+  dueAtISO: string | null | undefined,
+  horizon: UpcomingHorizon,
+  now: Date = new Date()
+): boolean {
+  const due = calendarYmdFromISO(dueAtISO);
+  if (!due) return false;
+  const cutoffKey = horizonCutoffKey(horizon, now);
+  if (cutoffKey == null) return true;
+  return calendarKey(due) <= cutoffKey;
+}
+
+/** Open property to-dos with a due date, earliest first (excludes ideas). */
+export function upcomingTodosForProperty(state: AppState, propertyId: string): PropertyTodo[] {
+  return state.propertyTodos
+    .filter(
+      (todo) =>
+        todo.propertyId === propertyId &&
+        todo.kind !== 'idea' &&
+        !todo.done &&
+        Boolean(todo.dueAtISO)
+    )
+    .slice()
+    .sort((a, b) => (a.dueAtISO ?? '').localeCompare(b.dueAtISO ?? ''));
+}
+
+export function filterTodosByHorizon(
+  todos: PropertyTodo[],
+  horizon: UpcomingHorizon,
+  now: Date = new Date()
+): PropertyTodo[] {
+  return todos.filter((todo) => dueAtWithinHorizon(todo.dueAtISO, horizon, now));
+}
+
+/** Count of overdue open dated to-dos for a property. */
+export function overdueTodoCountForProperty(state: AppState, propertyId: string): number {
+  return upcomingTodosForProperty(state, propertyId).filter((todo) => isOverdue(todo.dueAtISO))
+    .length;
+}
+
+/**
+ * Vendor interactions for a property with a date strictly after today, earliest first.
+ * Uses occurredAtISO as the schedule signal (no separate reminder field).
+ */
+export function upcomingInteractionsForProperty(
+  state: AppState,
+  propertyId: string
+): VendorInteraction[] {
+  const projectIds = new Set(
+    state.projects.filter((p) => p.propertyId === propertyId).map((p) => p.id)
+  );
+  const vendorIds = new Set(
+    state.projectVendors.filter((v) => projectIds.has(v.projectId)).map((v) => v.id)
+  );
+  return state.vendorInteractions
+    .filter(
+      (interaction) =>
+        isAfterToday(interaction.occurredAtISO) &&
+        (interaction.propertyId === propertyId ||
+          Boolean(interaction.vendorId && vendorIds.has(interaction.vendorId)))
+    )
+    .slice()
+    .sort((a, b) => a.occurredAtISO.localeCompare(b.occurredAtISO));
+}
+
+/**
+ * Vendor interactions for a project with a date strictly after today, earliest first.
+ */
+export function upcomingInteractionsForProject(
+  state: AppState,
+  projectId: string
+): VendorInteraction[] {
+  const vendorIds = new Set(
+    state.projectVendors.filter((v) => v.projectId === projectId).map((v) => v.id)
+  );
+  return state.vendorInteractions
+    .filter(
+      (interaction) =>
+        Boolean(interaction.vendorId && vendorIds.has(interaction.vendorId)) &&
+        isAfterToday(interaction.occurredAtISO)
+    )
+    .slice()
+    .sort((a, b) => a.occurredAtISO.localeCompare(b.occurredAtISO));
+}
+
+export function filterInteractionsByHorizon(
+  interactions: VendorInteraction[],
+  horizon: UpcomingHorizon,
+  now: Date = new Date()
+): VendorInteraction[] {
+  return interactions.filter((interaction) =>
+    dueAtWithinHorizon(interaction.occurredAtISO, horizon, now)
+  );
+}
+
+/**
+ * Marking Done on a recurring to-do advances dueAtISO and leaves it open.
+ * One-shot to-dos are marked done as usual.
+ */
+export function applyTodoDoneToggle(
+  todo: PropertyTodo,
+  wantDone: boolean,
+  nowIso: string
+): PropertyTodo {
+  if (!wantDone) {
+    return { ...todo, done: false, completedAtISO: undefined, updatedAtISO: nowIso };
+  }
+  const months = todo.repeatMonths;
+  if (months != null && months >= 1) {
+    const base = todo.dueAtISO ?? nowIso;
+    return {
+      ...todo,
+      done: false,
+      completedAtISO: undefined,
+      dueAtISO: addMonths(base, months),
+      updatedAtISO: nowIso,
+    };
+  }
+  return {
+    ...todo,
+    done: true,
+    completedAtISO: todo.completedAtISO ?? nowIso,
+    updatedAtISO: nowIso,
+  };
 }
 
 /** Count of scheduled service events overdue or due within the given horizon. */
@@ -137,10 +269,66 @@ export function upcomingServiceCountForProperty(
   propertyId: string,
   horizon: UpcomingHorizon = '1m'
 ): number {
-  return filterUpcomingByHorizon(
+  const events = filterUpcomingByHorizon(
     upcomingServiceEventsForProperty(state, propertyId),
     horizon
   ).length;
+  const todos = filterTodosByHorizon(upcomingTodosForProperty(state, propertyId), horizon).length;
+  return events + todos;
+}
+
+/** Count matching Property Reminders: services, dated to-dos, and interactions in horizon. */
+export function upcomingReminderCountForProperty(
+  state: AppState,
+  propertyId: string,
+  horizon: UpcomingHorizon = '1m'
+): number {
+  return upcomingReminderEntriesForProperty(state, propertyId, horizon).length;
+}
+
+export type UpcomingReminderEntry =
+  | { kind: 'event'; id: string; dueAt: string; event: ItemEvent }
+  | { kind: 'todo'; id: string; dueAt: string; todo: PropertyTodo }
+  | { kind: 'interaction'; id: string; dueAt: string; interaction: VendorInteraction };
+
+/** Property Reminders list: events, dated to-dos, and interactions within horizon, earliest first. */
+export function upcomingReminderEntriesForProperty(
+  state: AppState,
+  propertyId: string,
+  horizon: UpcomingHorizon = '1m'
+): UpcomingReminderEntry[] {
+  const upcomingEvents = filterUpcomingByHorizon(
+    upcomingServiceEventsForProperty(state, propertyId),
+    horizon
+  );
+  const upcomingTodos = filterTodosByHorizon(
+    upcomingTodosForProperty(state, propertyId),
+    horizon
+  );
+  const upcomingInteractions = filterInteractionsByHorizon(
+    upcomingInteractionsForProperty(state, propertyId),
+    horizon
+  );
+  return [
+    ...upcomingEvents.map((event) => ({
+      kind: 'event' as const,
+      id: event.id,
+      dueAt: upcomingDueAtISO(event)!,
+      event,
+    })),
+    ...upcomingTodos.map((todo) => ({
+      kind: 'todo' as const,
+      id: todo.id,
+      dueAt: todo.dueAtISO!,
+      todo,
+    })),
+    ...upcomingInteractions.map((interaction) => ({
+      kind: 'interaction' as const,
+      id: interaction.id,
+      dueAt: interaction.occurredAtISO,
+      interaction,
+    })),
+  ].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
 }
 
 /** Count of scheduled service events for a room overdue or due within the given horizon. */
@@ -215,8 +403,20 @@ export function isOverdue(nextDueAtISO: string | null | undefined): boolean {
 
 /** Whole days past due (0 if not overdue or invalid). */
 export function daysOverdue(nextDueAtISO: string | null | undefined, now: Date = new Date()): number {
+  const delta = calendarDaysFromToday(nextDueAtISO, now);
+  return delta < 0 ? -delta : 0;
+}
+
+/**
+ * Signed whole calendar days from local today to the due date.
+ * Negative = overdue, 0 = today, positive = days ahead. Null if invalid.
+ */
+export function calendarDaysFromToday(
+  nextDueAtISO: string | null | undefined,
+  now: Date = new Date()
+): number | null {
   const due = calendarYmdFromISO(nextDueAtISO);
-  if (!due) return 0;
+  if (!due) return null;
   const today = {
     year: now.getFullYear(),
     month: now.getMonth() + 1,
@@ -224,8 +424,7 @@ export function daysOverdue(nextDueAtISO: string | null | undefined, now: Date =
   };
   const dueUtc = Date.UTC(due.year, due.month - 1, due.day);
   const todayUtc = Date.UTC(today.year, today.month - 1, today.day);
-  const days = Math.round((dueUtc - todayUtc) / (24 * 60 * 60 * 1000));
-  return days < 0 ? -days : 0;
+  return Math.round((dueUtc - todayUtc) / (24 * 60 * 60 * 1000));
 }
 
 /** Calendar Y-M-D from stored ISO (app dates use UTC noon / YYYY-MM-DD). */
@@ -298,6 +497,14 @@ export function upcomingDueAtISO(event: ItemEvent): string | undefined {
   return candidates[0];
 }
 
+/**
+ * Date shown for an event in services / history lists.
+ * Matches AddEditEventScreen's main date (upcoming due when open, else occurred).
+ */
+export function serviceListDateISO(event: ItemEvent): string {
+  return upcomingDueAtISO(event) ?? event.occurredAtISO;
+}
+
 export type UpcomingUrgency = 'overdue' | 'week' | 'month' | 'none';
 
 /** Most urgent band for due proximity (date-only, calendar days from today). */
@@ -348,7 +555,7 @@ export function recurrenceLabel(recurrence: ItemEventRecurrence): string {
     recurrence.intervalMonths
   );
   if (recurrence.nextDueAtISO) {
-    return `${intervalLabel} · due ${formatDate(recurrence.nextDueAtISO)}`;
+    return `${intervalLabel} · due ${formatDisplayDate(recurrence.nextDueAtISO)}`;
   }
   return intervalLabel;
 }
@@ -365,7 +572,7 @@ export const EVENT_TYPE_LABELS: Record<ItemEvent['eventType'], string> = {
 
 /** One-line summary for list views (title, date, optional cost, optional notes). */
 export function formatServiceEventSummary(event: ItemEvent): string {
-  const parts = [event.title, formatDate(event.occurredAtISO)];
+  const parts = [event.title, formatDisplayDate(event.occurredAtISO)];
   if (event.cost != null) {
     parts.push(formatCurrency(event.cost));
   }

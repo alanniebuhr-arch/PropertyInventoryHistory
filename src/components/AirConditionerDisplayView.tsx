@@ -8,6 +8,7 @@ import { PhotoSection } from './PhotoSection';
 import { sharedStyles } from '../theme';
 import { formatStoredDate } from '../itemDetailDisplayHelpers';
 import { buildSlotAndExtraPhotoTiles } from '../photoSectionBuilders';
+import { withReorderedItemPhotoIds } from '../photoReorder';
 import {
   AIR_CONDITIONER_PHOTO_SLOTS,
   acTypeLabel,
@@ -49,8 +50,9 @@ export function AirConditionerDisplayView(props: {
   onDetailsChange: (details: AirConditionerDetails) => void;
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
+  showReorderArrows?: boolean;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<
     'equipment' | 'install' | 'service' | 'notes' | null
   >(null);
@@ -133,6 +135,17 @@ export function AirConditionerDisplayView(props: {
         onDeleteExtra: (photoId) => {
           void removeAirConditionerExtraPhoto(state, itemId, photoId).then(onSave);
         },
+        onReorderExtra: (photoId, direction) => {
+          onSave(
+            withReorderedItemPhotoIds(
+              state,
+              itemId,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
+        },
         onLabelExtra: (photoId, label, notes) => {
           onSave(setItemPhotoCaptionAndNotes(state, photoId, label, notes));
         },
@@ -174,6 +187,7 @@ export function AirConditionerDisplayView(props: {
         onAddDocuments={handleAddDocuments}
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
+        showReorderArrows={showReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >

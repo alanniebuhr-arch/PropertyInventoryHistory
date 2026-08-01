@@ -23,14 +23,18 @@ import {
   hidePropertyPhotoSlotKey,
   restorePropertyHiddenPhotoSlots,
 } from '../hiddenPhotoSlots';
+import { withReorderedPropertyPhotoIds } from '../photoReorder';
 
 export function PropertyPhotosSection(props: {
   state: AppState;
   property: Property;
   onSave: (state: AppState) => void;
   children?: ReactNode;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
+  showReorderArrows?: boolean;
 }) {
-  const { state, property, onSave, children } = props;
+  const { state, property, onSave, children, expanded, onToggleExpanded, showReorderArrows } = props;
 
   const extraPhotos = propertyExtraPhotos(state, property.id);
   const hasHiddenSlots = (property.hiddenPhotoSlotKeys?.length ?? 0) > 0;
@@ -104,6 +108,17 @@ export function PropertyPhotosSection(props: {
         onDeleteExtra: (photoId) => {
           void removePropertyExtraPhoto(state, property.id, photoId).then(onSave);
         },
+        onReorderExtra: (photoId, direction) => {
+          onSave(
+            withReorderedPropertyPhotoIds(
+              state,
+              property.id,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
+        },
         onLabelExtra: (photoId, label, notes) => {
           onSave(setPropertyPhotoCaptionAndNotes(state, photoId, label, notes));
         },
@@ -125,6 +140,9 @@ export function PropertyPhotosSection(props: {
       onAddPhotos={handleAddExtraPhotos}
       hasHiddenSlots={hasHiddenSlots}
       onRestoreHiddenSlots={() => onSave(restorePropertyHiddenPhotoSlots(state, property.id))}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
+      showReorderArrows={showReorderArrows}
     >
       {children}
     </PhotoSection>

@@ -12,6 +12,7 @@ import {
   setProjectPhotoCaptionAndNotes,
   setProjectPhotoFavorite,
 } from '../photoMeta';
+import { withReorderedProjectPhotoIds } from '../photoReorder';
 
 export function ProjectPhotosSection(props: {
   state: AppState;
@@ -19,8 +20,11 @@ export function ProjectPhotosSection(props: {
   onSave: (state: AppState) => void;
   children?: ReactNode;
   childrenGesture?: ReturnType<typeof Gesture.Pan>;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
+  showReorderArrows?: boolean;
 }) {
-  const { state, projectId, onSave, children, childrenGesture } = props;
+  const { state, projectId, onSave, children, childrenGesture, expanded, onToggleExpanded, showReorderArrows } = props;
 
   const extraPhotos = photosForProject(state, projectId);
 
@@ -36,6 +40,17 @@ export function ProjectPhotosSection(props: {
         })),
         onDeletePhoto: (photoId) => {
           void removeProjectPhoto(state, projectId, photoId).then(onSave);
+        },
+        onReorderPhoto: (photoId, direction) => {
+          onSave(
+            withReorderedProjectPhotoIds(
+              state,
+              projectId,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
         },
         onLabelPhoto: (photoId, label, notes) => {
           onSave(setProjectPhotoCaptionAndNotes(state, photoId, label, notes));
@@ -60,6 +75,9 @@ export function ProjectPhotosSection(props: {
       tiles={photoTiles}
       onAddPhotos={handleAddPhotos}
       childrenGesture={childrenGesture}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
+      showReorderArrows={showReorderArrows}
     >
       {children}
     </PhotoSection>

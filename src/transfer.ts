@@ -9,6 +9,10 @@ import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { recordUpdatedAt } from './syncStamp';
 import { countDeletedIds } from './syncMeta';
+import { deletePropertyCascade } from './storage';
+import { itemDisplayLabel } from './itemCatalog';
+import { vendorContactMethodLabel } from './vendorContactMethod';
+import { formatDisplayDate } from './utils';
 
 export const TRANSFER_FORMAT_VERSION = 1 as const;
 export const UPDATE_FORMAT_VERSION = 2 as const;
@@ -63,6 +67,7 @@ function coerceAppState(state: Partial<AppState> | AppState | undefined): AppSta
       ? state!.vendorInteractions
       : [],
     propertyTodos: Array.isArray(state?.propertyTodos) ? state!.propertyTodos : [],
+    projectPunchItems: Array.isArray(state?.projectPunchItems) ? state!.projectPunchItems : [],
   };
 }
 
@@ -87,9 +92,19 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
   const projectVendors = state.projectVendors.filter((v) => projectIds.has(v.projectId));
   const projectPhotos = state.projectPhotos.filter((p) => projectIds.has(p.projectId));
   const vendorIds = new Set(projectVendors.map((v) => v.id));
-  const vendorPhotos = state.vendorPhotos.filter((p) => vendorIds.has(p.vendorId));
-  const vendorInteractions = state.vendorInteractions.filter((i) => vendorIds.has(i.vendorId));
+  const vendorInteractions = state.vendorInteractions.filter((i) => {
+    if (i.propertyId === propertyId) return true;
+    return Boolean(i.vendorId && vendorIds.has(i.vendorId));
+  });
+  const interactionIds = new Set(vendorInteractions.map((i) => i.id));
+  const vendorPhotos = state.vendorPhotos.filter((p) => {
+    if (p.interactionId && interactionIds.has(p.interactionId)) return true;
+    return Boolean(p.vendorId && vendorIds.has(p.vendorId));
+  });
   const propertyTodos = state.propertyTodos.filter((t) => t.propertyId === propertyId);
+  const projectPunchItems = (state.projectPunchItems ?? []).filter((item) =>
+    projectIds.has(item.projectId)
+  );
 
   const documentIds = new Set<string>();
   for (const slot of PROPERTY_PHOTO_SLOTS) {
@@ -118,6 +133,7 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
     vendorPhotos,
     vendorInteractions,
     propertyTodos,
+    projectPunchItems,
   };
 }
 
@@ -144,6 +160,9 @@ export function slicePropertyChanges(
   const projects = full.projects.filter((p) => isNewerThan(p, sinceISO));
   const projectPhotos = full.projectPhotos.filter((p) => isNewerThan(p, sinceISO));
   const propertyTodos = full.propertyTodos.filter((t) => isNewerThan(t, sinceISO));
+  const projectPunchItems = (full.projectPunchItems ?? []).filter((item) =>
+    isNewerThan(item, sinceISO)
+  );
 
   const changedVendorIds = new Set(
     full.projectVendors.filter((v) => isNewerThan(v, sinceISO)).map((v) => v.id)
@@ -154,9 +173,13 @@ export function slicePropertyChanges(
 
   // Include every interaction for a changed vendor, and the vendor for every changed interaction.
   for (const interaction of full.vendorInteractions) {
-    if (changedInteractionIds.has(interaction.id) || changedVendorIds.has(interaction.vendorId)) {
+    const linkedVendorId = interaction.vendorId;
+    if (
+      changedInteractionIds.has(interaction.id) ||
+      (linkedVendorId != null && changedVendorIds.has(linkedVendorId))
+    ) {
       changedInteractionIds.add(interaction.id);
-      changedVendorIds.add(interaction.vendorId);
+      if (linkedVendorId != null) changedVendorIds.add(linkedVendorId);
     }
   }
 
@@ -167,7 +190,7 @@ export function slicePropertyChanges(
   const vendorPhotos = full.vendorPhotos.filter(
     (p) =>
       isNewerThan(p, sinceISO) ||
-      changedVendorIds.has(p.vendorId) ||
+      (p.vendorId != null && changedVendorIds.has(p.vendorId)) ||
       (p.interactionId != null && changedInteractionIds.has(p.interactionId))
   );
 
@@ -210,6 +233,7 @@ export function slicePropertyChanges(
     vendorPhotos,
     vendorInteractions,
     propertyTodos,
+    projectPunchItems,
   };
 }
 
@@ -352,6 +376,7 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
   const vendorPhotoIds = new Set(local.vendorPhotos.map((p) => p.id));
   const vendorInteractionIds = new Set(local.vendorInteractions.map((i) => i.id));
   const propertyTodoIds = new Set((local.propertyTodos ?? []).map((t) => t.id));
+  const projectPunchItemIds = new Set((local.projectPunchItems ?? []).map((t) => t.id));
 
   return {
     version: 1,
@@ -399,6 +424,10 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
       ...(local.propertyTodos ?? []),
       ...((incoming.propertyTodos ?? []).filter((t) => !propertyTodoIds.has(t.id))),
     ],
+    projectPunchItems: [
+      ...(local.projectPunchItems ?? []),
+      ...((incoming.projectPunchItems ?? []).filter((t) => !projectPunchItemIds.has(t.id))),
+    ],
   };
 }
 
@@ -407,6 +436,510 @@ export type CollaborativeMergeSummary = {
   updated: number;
   deleted: number;
 };
+
+export type ImportPreviewSummary = {
+  added: number;
+  updated: number;
+  unchanged: number;
+  deleted: number;
+};
+
+export type ImportChangeAction = 'added' | 'updated' | 'deleted';
+
+export type ImportChangeKind =
+  | 'property'
+  | 'room'
+  | 'item'
+  | 'event'
+  | 'project'
+  | 'vendor'
+  | 'interaction'
+  | 'todo'
+  | 'punch'
+  | 'photo'
+  | 'document';
+
+export type ImportChangeEntry = {
+  action: ImportChangeAction;
+  kind: ImportChangeKind;
+  id: string;
+  label: string;
+};
+
+export type ImportPreviewResult = {
+  summary: ImportPreviewSummary;
+  entries: ImportChangeEntry[];
+};
+
+type TimedRecord = { id: string; updatedAtISO?: string; createdAtISO?: string };
+
+function classifyUpsert(
+  local: TimedRecord[],
+  incoming: TimedRecord[]
+): { added: TimedRecord[]; updated: TimedRecord[]; unchanged: TimedRecord[] } {
+  const localMap = new Map(local.map((r) => [r.id, r]));
+  const added: TimedRecord[] = [];
+  const updated: TimedRecord[] = [];
+  const unchanged: TimedRecord[] = [];
+  for (const remote of incoming) {
+    const existing = localMap.get(remote.id);
+    if (!existing) {
+      added.push(remote);
+      continue;
+    }
+    if (recordUpdatedAt(remote) > recordUpdatedAt(existing)) {
+      updated.push(remote);
+    } else {
+      unchanged.push(remote);
+    }
+  }
+  return { added, updated, unchanged };
+}
+
+function joinLabel(...parts: (string | undefined | null)[]): string {
+  return parts.map((p) => p?.trim()).filter(Boolean).join(' · ');
+}
+
+function labelForDeletedId(
+  local: AppState,
+  kind: ImportChangeKind,
+  id: string
+): string {
+  switch (kind) {
+    case 'property':
+      return local.properties.find((p) => p.id === id)?.name ?? 'Property';
+    case 'room': {
+      const room = local.rooms.find((r) => r.id === id);
+      if (!room) return 'Room';
+      const property = local.properties.find((p) => p.id === room.propertyId);
+      return joinLabel(property?.name, room.name) || 'Room';
+    }
+    case 'item': {
+      const item = local.items.find((i) => i.id === id);
+      if (!item) return 'Asset';
+      const room = local.rooms.find((r) => r.id === item.roomId);
+      return joinLabel(room?.name, itemDisplayLabel(item)) || 'Asset';
+    }
+    case 'event': {
+      const event = local.events.find((e) => e.id === id);
+      if (!event) return 'Event';
+      const item = local.items.find((i) => i.id === event.itemId);
+      return joinLabel(item ? itemDisplayLabel(item) : undefined, event.title) || 'Event';
+    }
+    case 'project':
+      return local.projects.find((p) => p.id === id)?.name ?? 'Project';
+    case 'vendor': {
+      const vendor = local.projectVendors.find((v) => v.id === id);
+      if (!vendor) return 'Vendor';
+      const project = local.projects.find((p) => p.id === vendor.projectId);
+      return joinLabel(project?.name, vendor.name) || 'Vendor';
+    }
+    case 'interaction': {
+      const interaction = local.vendorInteractions.find((i) => i.id === id);
+      if (!interaction) return 'Interaction';
+      const vendor = interaction.vendorId
+        ? local.projectVendors.find((v) => v.id === interaction.vendorId)
+        : undefined;
+      return (
+        joinLabel(
+          vendor?.name ?? interaction.contactName,
+          vendorContactMethodLabel(interaction.contactMethod),
+          formatDisplayDate(interaction.occurredAtISO)
+        ) || 'Interaction'
+      );
+    }
+    case 'todo': {
+      const todo = (local.propertyTodos ?? []).find((t) => t.id === id);
+      return todo?.title?.trim() || 'To-do';
+    }
+    case 'punch': {
+      const item = (local.projectPunchItems ?? []).find((t) => t.id === id);
+      return item?.title?.trim() || 'Punch item';
+    }
+    case 'photo': {
+      return labelForPhoto(local, null, id);
+    }
+    case 'document': {
+      const document = local.documents.find((d) => d.id === id);
+      return document?.fileName?.trim() || 'Document';
+    }
+    default:
+      return 'Record';
+  }
+}
+
+function labelForPhoto(local: AppState, incoming: AppState | null, id: string): string {
+  const states = incoming ? [incoming, local] : [local];
+
+  for (const state of states) {
+    const itemPhoto = state.photos.find((p) => p.id === id);
+    if (itemPhoto) {
+      const item =
+        (incoming?.items.find((i) => i.id === itemPhoto.itemId) ??
+          local.items.find((i) => i.id === itemPhoto.itemId));
+      const room = item
+        ? (incoming?.rooms.find((r) => r.id === item.roomId) ??
+          local.rooms.find((r) => r.id === item.roomId))
+        : undefined;
+      if (itemPhoto.eventId) {
+        const event =
+          incoming?.events.find((e) => e.id === itemPhoto.eventId) ??
+          local.events.find((e) => e.id === itemPhoto.eventId);
+        return (
+          joinLabel(
+            'Event photo',
+            item ? itemDisplayLabel(item) : undefined,
+            event?.title,
+            itemPhoto.caption
+          ) || 'Event photo'
+        );
+      }
+      return (
+        joinLabel(
+          'Asset photo',
+          room?.name,
+          item ? itemDisplayLabel(item) : undefined,
+          itemPhoto.caption
+        ) || 'Asset photo'
+      );
+    }
+
+    const propertyPhoto = state.propertyPhotos.find((p) => p.id === id);
+    if (propertyPhoto) {
+      const property =
+        incoming?.properties.find((p) => p.id === propertyPhoto.propertyId) ??
+        local.properties.find((p) => p.id === propertyPhoto.propertyId);
+      if (propertyPhoto.todoId) {
+        const todo =
+          (incoming?.propertyTodos ?? []).find((t) => t.id === propertyPhoto.todoId) ??
+          (local.propertyTodos ?? []).find((t) => t.id === propertyPhoto.todoId);
+        return (
+          joinLabel(
+            'To-do photo',
+            property?.name,
+            todo?.title,
+            propertyPhoto.caption
+          ) || 'To-do photo'
+        );
+      }
+      return (
+        joinLabel('Property photo', property?.name, propertyPhoto.caption) || 'Property photo'
+      );
+    }
+
+    const roomPhoto = state.roomPhotos.find((p) => p.id === id);
+    if (roomPhoto) {
+      const room =
+        incoming?.rooms.find((r) => r.id === roomPhoto.roomId) ??
+        local.rooms.find((r) => r.id === roomPhoto.roomId);
+      const property = room
+        ? (incoming?.properties.find((p) => p.id === room.propertyId) ??
+          local.properties.find((p) => p.id === room.propertyId))
+        : undefined;
+      return (
+        joinLabel('Room photo', property?.name, room?.name, roomPhoto.caption) || 'Room photo'
+      );
+    }
+
+    const projectPhoto = state.projectPhotos.find((p) => p.id === id);
+    if (projectPhoto) {
+      const project =
+        incoming?.projects.find((p) => p.id === projectPhoto.projectId) ??
+        local.projects.find((p) => p.id === projectPhoto.projectId);
+      return (
+        joinLabel('Project photo', project?.name, projectPhoto.caption) || 'Project photo'
+      );
+    }
+
+    const vendorPhoto = state.vendorPhotos.find((p) => p.id === id);
+    if (vendorPhoto) {
+      const vendor =
+        incoming?.projectVendors.find((v) => v.id === vendorPhoto.vendorId) ??
+        local.projectVendors.find((v) => v.id === vendorPhoto.vendorId);
+      if (vendorPhoto.interactionId) {
+        const interaction =
+          incoming?.vendorInteractions.find((i) => i.id === vendorPhoto.interactionId) ??
+          local.vendorInteractions.find((i) => i.id === vendorPhoto.interactionId);
+        return (
+          joinLabel(
+            'Interaction photo',
+            vendor?.name,
+            interaction ? vendorContactMethodLabel(interaction.contactMethod) : undefined,
+            interaction ? formatDisplayDate(interaction.occurredAtISO) : undefined,
+            vendorPhoto.caption
+          ) || 'Interaction photo'
+        );
+      }
+      return joinLabel('Vendor photo', vendor?.name, vendorPhoto.caption) || 'Vendor photo';
+    }
+  }
+
+  return 'Photo';
+}
+
+function labelForIncoming(
+  local: AppState,
+  incoming: AppState,
+  kind: ImportChangeKind,
+  id: string
+): string {
+  switch (kind) {
+    case 'property':
+      return (
+        incoming.properties.find((p) => p.id === id)?.name ??
+        local.properties.find((p) => p.id === id)?.name ??
+        'Property'
+      );
+    case 'room': {
+      const room =
+        incoming.rooms.find((r) => r.id === id) ?? local.rooms.find((r) => r.id === id);
+      if (!room) return 'Room';
+      const property =
+        incoming.properties.find((p) => p.id === room.propertyId) ??
+        local.properties.find((p) => p.id === room.propertyId);
+      return joinLabel(property?.name, room.name) || 'Room';
+    }
+    case 'item': {
+      const item =
+        incoming.items.find((i) => i.id === id) ?? local.items.find((i) => i.id === id);
+      if (!item) return 'Asset';
+      const room =
+        incoming.rooms.find((r) => r.id === item.roomId) ??
+        local.rooms.find((r) => r.id === item.roomId);
+      return joinLabel(room?.name, itemDisplayLabel(item)) || 'Asset';
+    }
+    case 'event': {
+      const event =
+        incoming.events.find((e) => e.id === id) ?? local.events.find((e) => e.id === id);
+      if (!event) return 'Event';
+      const item =
+        incoming.items.find((i) => i.id === event.itemId) ??
+        local.items.find((i) => i.id === event.itemId);
+      return joinLabel(item ? itemDisplayLabel(item) : undefined, event.title) || 'Event';
+    }
+    case 'project':
+      return (
+        incoming.projects.find((p) => p.id === id)?.name ??
+        local.projects.find((p) => p.id === id)?.name ??
+        'Project'
+      );
+    case 'vendor': {
+      const vendor =
+        incoming.projectVendors.find((v) => v.id === id) ??
+        local.projectVendors.find((v) => v.id === id);
+      if (!vendor) return 'Vendor';
+      const project =
+        incoming.projects.find((p) => p.id === vendor.projectId) ??
+        local.projects.find((p) => p.id === vendor.projectId);
+      return joinLabel(project?.name, vendor.name) || 'Vendor';
+    }
+    case 'interaction': {
+      const interaction =
+        incoming.vendorInteractions.find((i) => i.id === id) ??
+        local.vendorInteractions.find((i) => i.id === id);
+      if (!interaction) return 'Interaction';
+      const vendor = interaction.vendorId
+        ? (incoming.projectVendors.find((v) => v.id === interaction.vendorId) ??
+          local.projectVendors.find((v) => v.id === interaction.vendorId))
+        : undefined;
+      return (
+        joinLabel(
+          vendor?.name ?? interaction.contactName,
+          vendorContactMethodLabel(interaction.contactMethod),
+          formatDisplayDate(interaction.occurredAtISO)
+        ) || 'Interaction'
+      );
+    }
+    case 'todo': {
+      const todo =
+        (incoming.propertyTodos ?? []).find((t) => t.id === id) ??
+        (local.propertyTodos ?? []).find((t) => t.id === id);
+      return todo?.title?.trim() || 'To-do';
+    }
+    case 'punch': {
+      const item =
+        (incoming.projectPunchItems ?? []).find((t) => t.id === id) ??
+        (local.projectPunchItems ?? []).find((t) => t.id === id);
+      return item?.title?.trim() || 'Punch item';
+    }
+    case 'photo': {
+      return labelForPhoto(local, incoming, id);
+    }
+    case 'document': {
+      const document =
+        incoming.documents.find((d) => d.id === id) ??
+        local.documents.find((d) => d.id === id);
+      return document?.fileName?.trim() || 'Document';
+    }
+    default:
+      return 'Record';
+  }
+}
+
+function pushClassified(
+  entries: ImportChangeEntry[],
+  summary: ImportPreviewSummary,
+  local: AppState,
+  incoming: AppState,
+  kind: ImportChangeKind,
+  localRows: TimedRecord[],
+  incomingRows: TimedRecord[]
+) {
+  const { added, updated, unchanged } = classifyUpsert(localRows, incomingRows);
+  summary.added += added.length;
+  summary.updated += updated.length;
+  summary.unchanged += unchanged.length;
+  for (const row of added) {
+    entries.push({
+      action: 'added',
+      kind,
+      id: row.id,
+      label: labelForIncoming(local, incoming, kind, row.id),
+    });
+  }
+  for (const row of updated) {
+    entries.push({
+      action: 'updated',
+      kind,
+      id: row.id,
+      label: labelForIncoming(local, incoming, kind, row.id),
+    });
+  }
+}
+
+function pushDeleted(
+  entries: ImportChangeEntry[],
+  local: AppState,
+  kind: ImportChangeKind,
+  ids: string[] | undefined
+) {
+  for (const id of ids ?? []) {
+    entries.push({
+      action: 'deleted',
+      kind,
+      id,
+      label: labelForDeletedId(local, kind, id),
+    });
+  }
+}
+
+/**
+ * Dry-run of collaborative merge: counts plus labeled added/updated/deleted entries.
+ * Does not mutate app state.
+ */
+export function previewCollaborativeImport(
+  local: AppState,
+  incoming: AppState,
+  deletedIds: SyncDeletedIds = {}
+): ImportPreviewResult {
+  const summary: ImportPreviewSummary = {
+    added: 0,
+    updated: 0,
+    unchanged: 0,
+    deleted: countDeletedIds(deletedIds),
+  };
+  const entries: ImportChangeEntry[] = [];
+
+  pushClassified(entries, summary, local, incoming, 'property', local.properties, incoming.properties);
+  pushClassified(entries, summary, local, incoming, 'room', local.rooms, incoming.rooms);
+  pushClassified(entries, summary, local, incoming, 'item', local.items, incoming.items);
+  pushClassified(entries, summary, local, incoming, 'event', local.events, incoming.events);
+  pushClassified(entries, summary, local, incoming, 'project', local.projects, incoming.projects ?? []);
+  pushClassified(
+    entries,
+    summary,
+    local,
+    incoming,
+    'vendor',
+    local.projectVendors,
+    incoming.projectVendors ?? []
+  );
+  pushClassified(
+    entries,
+    summary,
+    local,
+    incoming,
+    'interaction',
+    local.vendorInteractions,
+    incoming.vendorInteractions ?? []
+  );
+  pushClassified(
+    entries,
+    summary,
+    local,
+    incoming,
+    'todo',
+    local.propertyTodos ?? [],
+    incoming.propertyTodos ?? []
+  );
+  pushClassified(
+    entries,
+    summary,
+    local,
+    incoming,
+    'punch',
+    local.projectPunchItems ?? [],
+    incoming.projectPunchItems ?? []
+  );
+
+  const localPhotos = [
+    ...local.photos,
+    ...local.propertyPhotos,
+    ...local.roomPhotos,
+    ...local.projectPhotos,
+    ...local.vendorPhotos,
+  ];
+  const incomingPhotos = [
+    ...incoming.photos,
+    ...(incoming.propertyPhotos ?? []),
+    ...(incoming.roomPhotos ?? []),
+    ...(incoming.projectPhotos ?? []),
+    ...(incoming.vendorPhotos ?? []),
+  ];
+  pushClassified(entries, summary, local, incoming, 'photo', localPhotos, incomingPhotos);
+  pushClassified(
+    entries,
+    summary,
+    local,
+    incoming,
+    'document',
+    local.documents,
+    incoming.documents ?? []
+  );
+
+  pushDeleted(entries, local, 'property', deletedIds.properties);
+  pushDeleted(entries, local, 'room', deletedIds.rooms);
+  pushDeleted(entries, local, 'item', deletedIds.items);
+  pushDeleted(entries, local, 'event', deletedIds.events);
+  pushDeleted(entries, local, 'project', deletedIds.projects);
+  pushDeleted(entries, local, 'vendor', deletedIds.projectVendors);
+  pushDeleted(entries, local, 'interaction', deletedIds.vendorInteractions);
+  pushDeleted(entries, local, 'todo', deletedIds.propertyTodos);
+  pushDeleted(entries, local, 'punch', deletedIds.projectPunchItems);
+  pushDeleted(entries, local, 'photo', [
+    ...(deletedIds.photos ?? []),
+    ...(deletedIds.propertyPhotos ?? []),
+    ...(deletedIds.roomPhotos ?? []),
+    ...(deletedIds.projectPhotos ?? []),
+    ...(deletedIds.vendorPhotos ?? []),
+  ]);
+  pushDeleted(entries, local, 'document', deletedIds.documents);
+
+  const actionOrder: Record<ImportChangeAction, number> = {
+    added: 0,
+    updated: 1,
+    deleted: 2,
+  };
+  entries.sort((a, b) => {
+    const byAction = actionOrder[a.action] - actionOrder[b.action];
+    if (byAction !== 0) return byAction;
+    const byKind = a.kind.localeCompare(b.kind);
+    if (byKind !== 0) return byKind;
+    return a.label.localeCompare(b.label);
+  });
+
+  return { summary, entries };
+}
 
 function upsertById<T extends { id: string; updatedAtISO?: string; createdAtISO?: string }>(
   local: T[],
@@ -447,6 +980,7 @@ function applyDeletedIds(state: AppState, deleted: SyncDeletedIds): AppState {
     vendorPhotos: new Set(deleted.vendorPhotos ?? []),
     vendorInteractions: new Set(deleted.vendorInteractions ?? []),
     propertyTodos: new Set(deleted.propertyTodos ?? []),
+    projectPunchItems: new Set(deleted.projectPunchItems ?? []),
   };
 
   return {
@@ -467,6 +1001,9 @@ function applyDeletedIds(state: AppState, deleted: SyncDeletedIds): AppState {
       (i) => !drop.vendorInteractions.has(i.id)
     ),
     propertyTodos: (state.propertyTodos ?? []).filter((t) => !drop.propertyTodos.has(t.id)),
+    projectPunchItems: (state.projectPunchItems ?? []).filter(
+      (t) => !drop.projectPunchItems.has(t.id)
+    ),
   };
 }
 
@@ -502,6 +1039,11 @@ export function mergeCollaborativeState(
       summary
     ),
     propertyTodos: upsertById(local.propertyTodos ?? [], incoming.propertyTodos ?? [], summary),
+    projectPunchItems: upsertById(
+      local.projectPunchItems ?? [],
+      incoming.projectPunchItems ?? [],
+      summary
+    ),
   };
 
   if (countDeletedIds(deletedIds) > 0) {
@@ -513,6 +1055,17 @@ export function mergeCollaborativeState(
 
 export function replaceImportState(incoming: AppState): AppState {
   return incoming.version === 1 ? incoming : { ...EMPTY_APP_STATE };
+}
+
+/** Wipe one local property, then insert the incoming slice (other properties untouched). */
+export function replacePropertyImportState(
+  local: AppState,
+  incoming: AppState,
+  propertyId: string,
+  deletedIds: SyncDeletedIds = {}
+): AppState {
+  const without = deletePropertyCascade(local, propertyId);
+  return mergeCollaborativeState(without, incoming, deletedIds).state;
 }
 
 export function summarizeChanges(state: AppState, deletedIds: SyncDeletedIds = {}): string {
@@ -528,6 +1081,8 @@ export function summarizeChanges(state: AppState, deletedIds: SyncDeletedIds = {
       `${state.vendorInteractions.length} interaction${state.vendorInteractions.length === 1 ? '' : 's'}`,
     (state.propertyTodos?.length ?? 0) &&
       `${state.propertyTodos!.length} to-do${state.propertyTodos!.length === 1 ? '' : 's'}`,
+    (state.projectPunchItems?.length ?? 0) &&
+      `${state.projectPunchItems!.length} punch item${state.projectPunchItems!.length === 1 ? '' : 's'}`,
     (state.photos.length +
       state.propertyPhotos.length +
       state.roomPhotos.length +

@@ -18,6 +18,7 @@ import {
 } from '../roomPhotos';
 import { setRoomPhotoCaptionAndNotes, setRoomPhotoFavorite, setRoomPhotoNotes } from '../photoMeta';
 import { hideRoomPhotoSlotKey, restoreRoomHiddenPhotoSlots } from '../hiddenPhotoSlots';
+import { withReorderedRoomPhotoIds } from '../photoReorder';
 
 export function RoomPhotosSection(props: {
   state: AppState;
@@ -27,8 +28,22 @@ export function RoomPhotosSection(props: {
   onActiveHeroLabelChange?: (label: string | undefined) => void;
   children?: ReactNode;
   childrenGesture?: ReturnType<typeof Gesture.Pan>;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
+  showReorderArrows?: boolean;
 }) {
-  const { state, roomId, room, onSave, onActiveHeroLabelChange, children, childrenGesture } = props;
+  const {
+    state,
+    roomId,
+    room,
+    onSave,
+    onActiveHeroLabelChange,
+    children,
+    childrenGesture,
+    expanded,
+    onToggleExpanded,
+    showReorderArrows,
+  } = props;
 
   const extraPhotos = photosForRoom(state, roomId);
   const roomSlots = useMemo(() => roomPhotoSlotsForRoom(room), [room]);
@@ -94,6 +109,17 @@ export function RoomPhotosSection(props: {
         onDeleteExtra: (photoId) => {
           void removeRoomPhoto(state, roomId, photoId).then(onSave);
         },
+        onReorderExtra: (photoId, direction) => {
+          onSave(
+            withReorderedRoomPhotoIds(
+              state,
+              roomId,
+              photoId,
+              direction,
+              extraPhotos.map((p) => p.id)
+            )
+          );
+        },
         onLabelExtra: (photoId, caption, notes) => {
           onSave(setRoomPhotoCaptionAndNotes(state, photoId, caption, notes));
         },
@@ -119,6 +145,9 @@ export function RoomPhotosSection(props: {
       childrenGesture={childrenGesture}
       hasHiddenSlots={hasHiddenSlots}
       onRestoreHiddenSlots={() => onSave(restoreRoomHiddenPhotoSlots(state, roomId))}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
+      showReorderArrows={showReorderArrows}
     >
       {children}
     </PhotoSection>
