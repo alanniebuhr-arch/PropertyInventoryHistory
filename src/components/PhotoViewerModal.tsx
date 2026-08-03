@@ -1,9 +1,12 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Alert, Modal, Pressable, useWindowDimensions, View } from 'react-native';
 import { Text } from '../textScale';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ZoomablePhotoImage } from './ZoomablePhotoImage';
+
+/** Second Back within this window closes the slideshow; first advances. */
+export const SLIDESHOW_DOUBLE_BACK_MS = 500;
 
 export type ViewerPhoto = {
   id: string;
@@ -24,19 +27,25 @@ export function PhotoViewerModal(props: {
   index: number | null;
   onIndexChange: (index: number | null) => void;
   onEditLabel?: (photo: ViewerPhoto) => void;
-  /** When true, hide Delete and label editing (Slideshow browse mode). */
+  /**
+   * Slideshow browse mode: no delete/label edit.
+   * Renders embedded in the parent (parent owns ← Back: single = next, double = close).
+   */
   browseOnly?: boolean;
 }) {
   const { photos, index, onIndexChange, onEditLabel, browseOnly = false } = props;
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const landscapeSlideshow = browseOnly && width > height;
+  const [stageSize, setStageSize] = useState({ width, height });
 
   const currentPhoto = index != null ? photos[index] : null;
   const currentNotes = currentPhoto?.notes?.trim() || undefined;
   const imageMaxH = landscapeSlideshow
-    ? height
-    : height - insets.top - insets.bottom - (currentNotes ? 168 : 120);
+    ? stageSize.height
+    : browseOnly
+      ? Math.max(120, stageSize.height - (currentNotes ? 100 : 56))
+      : height - insets.top - insets.bottom - (currentNotes ? 168 : 120);
   const hasMultiple = photos.length > 1;
 
   function slideshowLabelText(): string | undefined {
@@ -114,7 +123,9 @@ export function PhotoViewerModal(props: {
     return caption;
   }
 
-  const closeViewer = useCallback(() => onIndexChange(null), [onIndexChange]);
+  const closeViewer = useCallback(() => {
+    onIndexChange(null);
+  }, [onIndexChange]);
 
   const showPrev = useCallback(() => {
     if (!hasMultiple || index == null) return;
@@ -143,6 +154,102 @@ export function PhotoViewerModal(props: {
 
   const landscapeLabel = slideshowLabelText();
 
+  // Slideshow: embedded under the screen ← Back header (iPhone has no system back).
+  if (browseOnly) {
+    if (currentPhoto == null) return null;
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
+        <View
+          style={{ flex: 1 }}
+          onLayout={(e) => {
+            const { width: w, height: h } = e.nativeEvent.layout;
+            if (w > 0 && h > 0) setStageSize({ width: w, height: h });
+          }}
+        >
+          {landscapeSlideshow ? (
+            <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ZoomablePhotoImage
+                  key={currentPhoto.id}
+                  uri={currentPhoto.uri}
+                  width={stageSize.width}
+                  height={
+                    landscapeLabel
+                      ? Math.max(120, stageSize.height - Math.max(insets.bottom, 12) - 40)
+                      : stageSize.height
+                  }
+                  resizeMode="contain"
+                  onSwipeLeft={hasMultiple ? showNext : undefined}
+                  onSwipeRight={hasMultiple ? showPrev : undefined}
+                />
+              </View>
+              {landscapeLabel ? (
+                <View
+                  style={{
+                    paddingTop: 10,
+                    paddingBottom: Math.max(insets.bottom, 10),
+                    paddingHorizontal: 24,
+                    backgroundColor: 'rgba(0,0,0,0.45)',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: '#fff',
+                      fontSize: 15,
+                      fontWeight: '600',
+                      textAlign: 'center',
+                    }}
+                    numberOfLines={2}
+                  >
+                    {landscapeLabel}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <View style={{ flex: 1, paddingBottom: Math.max(insets.bottom, 8) }}>
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ZoomablePhotoImage
+                  key={currentPhoto.id}
+                  uri={currentPhoto.uri}
+                  width={stageSize.width}
+                  height={imageMaxH}
+                  onSwipeLeft={hasMultiple ? showNext : undefined}
+                  onSwipeRight={hasMultiple ? showPrev : undefined}
+                />
+              </View>
+              {hasMultiple ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 24,
+                    paddingBottom: 8,
+                    gap: 8,
+                  }}
+                >
+                  <Pressable onPress={showPrev} hitSlop={8}>
+                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Previous</Text>
+                  </Pressable>
+                  {renderCaption(false)}
+                  <Pressable onPress={showNext} hitSlop={8}>
+                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Next</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={{ paddingBottom: 8, alignItems: 'center', paddingHorizontal: 24 }}>
+                  {renderCaption(true)}
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      </GestureHandlerRootView>
+    );
+  }
+
   return (
     <Modal
       visible={currentPhoto != null}
@@ -159,139 +266,86 @@ export function PhotoViewerModal(props: {
       ]}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
-        {landscapeSlideshow ? (
-          <View style={{ flex: 1, backgroundColor: '#000' }}>
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              {currentPhoto ? (
-                <ZoomablePhotoImage
-                  key={currentPhoto.id}
-                  uri={currentPhoto.uri}
-                  width={width}
-                  height={
-                    landscapeLabel
-                      ? Math.max(120, height - Math.max(insets.bottom, 12) - 48)
-                      : height
-                  }
-                  resizeMode="contain"
-                  onSwipeLeft={hasMultiple ? showNext : undefined}
-                  onSwipeRight={hasMultiple ? showPrev : undefined}
-                />
-              ) : null}
-            </View>
-            {landscapeLabel ? (
-              <Pressable
-                onPress={closeViewer}
-                accessibilityRole="button"
-                accessibilityLabel={`${landscapeLabel}. Tap to close.`}
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  paddingTop: 12,
-                  paddingBottom: Math.max(insets.bottom, 12),
-                  paddingHorizontal: 24,
-                  backgroundColor: 'rgba(0,0,0,0.45)',
-                  alignItems: 'center',
-                }}
-              >
-                <Text
-                  style={{
-                    color: '#fff',
-                    fontSize: 15,
-                    fontWeight: '600',
-                    textAlign: 'center',
-                  }}
-                  numberOfLines={2}
-                >
-                  {landscapeLabel}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : (
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: '#000',
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          }}
+        >
           <View
             style={{
-              flex: 1,
-              backgroundColor: '#000',
-              paddingTop: insets.top,
-              paddingBottom: insets.bottom,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 16,
+              paddingVertical: 12,
             }}
           >
+            <Pressable onPress={closeViewer} hitSlop={12}>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Close</Text>
+            </Pressable>
+            {hasMultiple && index != null ? (
+              <Text style={{ color: '#ccc', fontSize: 15 }}>
+                {index + 1} / {photos.length}
+              </Text>
+            ) : (
+              <View style={{ width: 48 }} />
+            )}
+            {currentPhoto?.onDelete ? (
+              <Pressable onPress={confirmDelete} hitSlop={12}>
+                <Text style={{ color: '#ff8a80', fontSize: 17, fontWeight: '600' }}>Delete</Text>
+              </Pressable>
+            ) : (
+              <View style={{ width: 48 }} />
+            )}
+          </View>
+
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            {currentPhoto ? (
+              <ZoomablePhotoImage
+                key={currentPhoto.id}
+                uri={currentPhoto.uri}
+                width={width}
+                height={imageMaxH}
+                onSwipeLeft={hasMultiple ? showNext : undefined}
+                onSwipeRight={hasMultiple ? showPrev : undefined}
+              />
+            ) : null}
+          </View>
+
+          {hasMultiple ? (
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
+                paddingHorizontal: 24,
+                paddingBottom: 16,
+                gap: 8,
               }}
             >
-              <Pressable onPress={closeViewer} hitSlop={12}>
-                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Close</Text>
+              <Pressable onPress={showPrev} hitSlop={8}>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Previous</Text>
               </Pressable>
-              {hasMultiple && index != null ? (
-                <Text style={{ color: '#ccc', fontSize: 15 }}>
-                  {index + 1} / {photos.length}
-                </Text>
-              ) : (
-                <View style={{ width: 48 }} />
-              )}
-              {currentPhoto?.onDelete && !browseOnly ? (
-                <Pressable onPress={confirmDelete} hitSlop={12}>
-                  <Text style={{ color: '#ff8a80', fontSize: 17, fontWeight: '600' }}>Delete</Text>
-                </Pressable>
-              ) : (
-                <View style={{ width: 48 }} />
-              )}
+              {renderCaption(false)}
+              <Pressable onPress={showNext} hitSlop={8}>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Next</Text>
+              </Pressable>
             </View>
-
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              {currentPhoto ? (
-                <ZoomablePhotoImage
-                  key={currentPhoto.id}
-                  uri={currentPhoto.uri}
-                  width={width}
-                  height={imageMaxH}
-                  onSwipeLeft={hasMultiple ? showNext : undefined}
-                  onSwipeRight={hasMultiple ? showPrev : undefined}
-                />
+          ) : (
+            <View style={{ paddingBottom: 16, alignItems: 'center', paddingHorizontal: 24 }}>
+              {renderCaption(true)}
+              {!currentPhoto?.editableLabel ? (
+                <Text style={{ color: '#888', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+                  Pinch to zoom
+                </Text>
               ) : null}
             </View>
-
-            {hasMultiple ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingHorizontal: 24,
-                  paddingBottom: 16,
-                  gap: 8,
-                }}
-              >
-                <Pressable onPress={showPrev} hitSlop={8}>
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Previous</Text>
-                </Pressable>
-                {renderCaption(false)}
-                <Pressable onPress={showNext} hitSlop={8}>
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Next</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <View style={{ paddingBottom: 16, alignItems: 'center', paddingHorizontal: 24 }}>
-                {renderCaption(true)}
-                {!browseOnly && !currentPhoto?.editableLabel ? (
-                  <Text style={{ color: '#888', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
-                    Pinch to zoom
-                  </Text>
-                ) : null}
-              </View>
-            )}
-          </View>
-        )}
+          )}
+        </View>
       </GestureHandlerRootView>
     </Modal>
   );
 }
-

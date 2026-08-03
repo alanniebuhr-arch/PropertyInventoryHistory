@@ -122,9 +122,13 @@ function propertyIdForVendor(state: AppState, vendorId: string | undefined): str
 
 function propertyIdForInteractionRecord(
   state: AppState,
-  interaction: { vendorId?: string; propertyId?: string }
+  interaction: { vendorId?: string; propertyId?: string; projectId?: string }
 ): string | undefined {
   if (interaction.propertyId) return interaction.propertyId;
+  if (interaction.projectId) {
+    const fromProject = propertyIdForProject(state, interaction.projectId);
+    if (fromProject) return fromProject;
+  }
   return propertyIdForVendor(state, interaction.vendorId);
 }
 

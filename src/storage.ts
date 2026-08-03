@@ -1208,6 +1208,10 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     return {
       ...i,
       vendorId: i.vendorId || undefined,
+      projectId:
+        typeof i.projectId === 'string' && i.projectId && projectIds.has(i.projectId)
+          ? i.projectId
+          : undefined,
       propertyId: typeof i.propertyId === 'string' && i.propertyId ? i.propertyId : undefined,
       important: i.important === true ? true : undefined,
       photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
@@ -1619,16 +1623,30 @@ export function interactionsForVendor(state: AppState, vendorId: string): Vendor
     .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
 }
 
-/** Resolve the property for an interaction (explicit propertyId or via vendor → project). */
+/** Resolve the property for an interaction (explicit propertyId, project, or vendor → project). */
 export function propertyIdForInteraction(
   state: AppState,
   interaction: VendorInteraction
 ): string | undefined {
   if (interaction.propertyId) return interaction.propertyId;
+  if (interaction.projectId) {
+    const fromProject = projectById(state, interaction.projectId)?.propertyId;
+    if (fromProject) return fromProject;
+  }
   if (!interaction.vendorId) return undefined;
   const vendor = vendorById(state, interaction.vendorId);
   if (!vendor) return undefined;
   return projectById(state, vendor.projectId)?.propertyId;
+}
+
+/** Resolve project for an interaction (explicit projectId or via vendor). */
+export function projectIdForInteraction(
+  state: AppState,
+  interaction: VendorInteraction
+): string | undefined {
+  if (interaction.projectId) return interaction.projectId;
+  if (!interaction.vendorId) return undefined;
+  return vendorById(state, interaction.vendorId)?.projectId;
 }
 
 /** All vendor interactions across every property, newest first. */
@@ -1648,6 +1666,7 @@ export function interactionsForProperty(
   return sortInteractionsNewestFirst(
     state.vendorInteractions.filter((i) => {
       if (i.propertyId === propertyId) return true;
+      if (i.projectId && projectIds.has(i.projectId)) return true;
       return Boolean(i.vendorId && vendorIds.has(i.vendorId));
     })
   );
@@ -1662,7 +1681,10 @@ export function interactionsForProject(
     state.projectVendors.filter((v) => v.projectId === projectId).map((v) => v.id)
   );
   return sortInteractionsNewestFirst(
-    state.vendorInteractions.filter((i) => Boolean(i.vendorId && vendorIds.has(i.vendorId)))
+    state.vendorInteractions.filter(
+      (i) =>
+        i.projectId === projectId || Boolean(i.vendorId && vendorIds.has(i.vendorId))
+    )
   );
 }
 
@@ -1928,7 +1950,8 @@ export function deleteProjectCascade(state: AppState, projectId: string): AppSta
       (p) => !(p.vendorId != null && vendorIds.has(p.vendorId))
     ),
     vendorInteractions: state.vendorInteractions.filter(
-      (i) => !(i.vendorId != null && vendorIds.has(i.vendorId))
+      (i) =>
+        i.projectId !== projectId && !(i.vendorId != null && vendorIds.has(i.vendorId))
     ),
     projectPunchItems: state.projectPunchItems.filter((item) => item.projectId !== projectId),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),

@@ -35,6 +35,10 @@ export const colors = {
   calendarPopupBg: '#dde8f4',
   /** Search-hit substring highlight on read-only detail rows. */
   searchHighlight: '#f0e6a8',
+  /** Edit pencil — warm yellow so edit actions stand out from ink icons. */
+  editIcon: '#d4a017',
+  /** Slim banner when running outside TestFlight / App Store (Expo Go / Metro). */
+  devBanner: '#d4a017',
 };
 
 export const sharedStyles = StyleSheet.create({

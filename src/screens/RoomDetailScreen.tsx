@@ -335,8 +335,9 @@ export function RoomDetailScreen(props: {
             expanded={remindersExpanded}
             count={upcomingEvents.length}
             onExpand={() => {
-              setRemindersExpanded(true);
-              void setRoomSectionExpand({ reminders: true });
+              const next = !remindersExpanded;
+              setRemindersExpanded(next);
+              void setRoomSectionExpand({ reminders: next });
             }}
             containerStyle={{ flex: 1 }}
           />
@@ -436,8 +437,9 @@ export function RoomDetailScreen(props: {
               expanded={assetsExpanded}
               count={items.length}
               onExpand={() => {
-                setAssetsExpanded(true);
-                void setRoomSectionExpand({ assets: true });
+                const next = !assetsExpanded;
+                setAssetsExpanded(next);
+                void setRoomSectionExpand({ assets: next });
               }}
             />
             <Pressable

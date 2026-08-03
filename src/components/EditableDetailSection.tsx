@@ -43,8 +43,8 @@ export function EditableDetailSection(props: {
     !isEditing && showExpandControl
       ? collapsedSectionLabel(title, expanded, collapsedCount)
       : title;
-  const canExpandFromHeading =
-    showExpandControl && !expanded && collapsedCount > 0 && onToggleExpanded != null;
+  const canToggleFromHeading =
+    showExpandControl && collapsedCount > 0 && onToggleExpanded != null;
 
   const shareButton =
     onShare != null ? (
@@ -91,11 +91,12 @@ export function EditableDetailSection(props: {
     ) : null;
 
   const editControl = useEditIcon ? (
-    <MaterialIcons name="edit" size={22} color={colors.primary} />
+    <MaterialIcons name="edit" size={22} color={colors.editIcon} />
   ) : (
     <Text style={sharedStyles.textLink}>Edit</Text>
   );
 
+  const showEditControl = !showExpandControl || expanded;
   const showBody = isEditing || expanded || !showExpandControl;
   const hasBodyContent = React.Children.toArray(children).length > 0;
 
@@ -133,10 +134,17 @@ export function EditableDetailSection(props: {
 
   return (
     <Pressable
-      onPress={canExpandFromHeading ? onToggleExpanded : onPress}
+      onPress={canToggleFromHeading ? onToggleExpanded : onPress}
       style={({ pressed }) => [sharedStyles.catalogSection, pressed && sharedStyles.cardPressed]}
       accessibilityRole="button"
-      accessibilityLabel={canExpandFromHeading ? `Show ${title}` : `Edit ${title}`}
+      accessibilityLabel={
+        canToggleFromHeading
+          ? expanded
+            ? `Hide ${title}`
+            : `Show ${title}`
+          : `Edit ${title}`
+      }
+      accessibilityState={canToggleFromHeading ? { expanded } : undefined}
     >
       <View
         style={{
@@ -153,21 +161,23 @@ export function EditableDetailSection(props: {
           {shareButton}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Pressable
-            onPress={(e) => {
-              e?.stopPropagation?.();
-              onPress();
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`Edit ${title}`}
-            hitSlop={8}
-            style={({ pressed }) => ({
-              padding: 4,
-              opacity: pressed ? 0.7 : 1,
-            })}
-          >
-            {editControl}
-          </Pressable>
+          {showEditControl ? (
+            <Pressable
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                onPress();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${title}`}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              {editControl}
+            </Pressable>
+          ) : null}
           {expandControl}
         </View>
       </View>

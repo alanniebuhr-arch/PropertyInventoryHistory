@@ -222,6 +222,55 @@ export function findAssetSearchMatch(args: {
   return undefined;
 }
 
+/** Fields searched on to-dos / ideas / punch items in Search All (priority order). */
+export type TodoSearchMatchField = 'notes' | 'title' | 'date' | 'property' | 'project';
+
+export type TodoSearchMatch = {
+  field: TodoSearchMatchField;
+  searchSnippet?: string;
+  matchHint?: string;
+};
+
+const TODO_MATCH_HINTS: Record<Exclude<TodoSearchMatchField, 'notes'>, string> = {
+  title: 'Matched in title',
+  date: 'Matched in date',
+  property: 'Matched in property',
+  project: 'Matched in project',
+};
+
+/** First matching field for a property to-do, idea, or punch-list item. */
+export function findTodoSearchMatch(args: {
+  query: string;
+  title?: string;
+  notes?: string;
+  dateLabel?: string;
+  propertyName?: string;
+  projectName?: string;
+}): TodoSearchMatch | undefined {
+  const q = args.query.trim().toLowerCase();
+  if (!q) return undefined;
+
+  if (fieldIncludes(args.notes, q)) {
+    return {
+      field: 'notes',
+      searchSnippet: snippetAround(args.notes!, args.query),
+    };
+  }
+  if (fieldIncludes(args.title, q)) {
+    return { field: 'title', matchHint: TODO_MATCH_HINTS.title };
+  }
+  if (fieldIncludes(args.dateLabel, q)) {
+    return { field: 'date', matchHint: TODO_MATCH_HINTS.date };
+  }
+  if (fieldIncludes(args.propertyName, q)) {
+    return { field: 'property', matchHint: TODO_MATCH_HINTS.property };
+  }
+  if (fieldIncludes(args.projectName, q)) {
+    return { field: 'project', matchHint: TODO_MATCH_HINTS.project };
+  }
+  return undefined;
+}
+
 export type HighlightPart = { text: string; highlight: boolean };
 
 /** Split text for first case-insensitive substring match (same as includes search). */

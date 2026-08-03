@@ -462,7 +462,7 @@ export function AddEditProjectPunchItemScreen(props: {
               hitSlop={8}
               style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
             >
-              <MaterialIcons name="edit" size={22} color={colors.primary} />
+              <MaterialIcons name="edit" size={22} color={colors.editIcon} />
             </Pressable>
           )}
         </View>

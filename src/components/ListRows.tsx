@@ -5,6 +5,7 @@ import { sharedStyles, colors } from '../theme';
 import { Text } from '../textScale';
 import { splitHighlightParts } from '../searchSnippet';
 import { formatDisplayDateParts, formatPhoneNumber } from '../utils';
+import { boldTodayNodes } from './TextWithBoldToday';
 
 /** Calendar date accented; weekday / relative age inherit (or use restStyle). */
 export function InteractionDateText(props: {
@@ -21,7 +22,19 @@ export function InteractionDateText(props: {
   return (
     <Text style={style} numberOfLines={numberOfLines}>
       <Text style={[{ fontWeight: '700', color: colors.interactionDate }, dateStyle]}>{date}</Text>
-      {rest ? (restStyle ? <Text style={restStyle}>{` ${rest}`}</Text> : ` ${rest}`) : null}
+      {rest ? (
+        restStyle ? (
+          <Text style={restStyle}>
+            {' '}
+            {boldTodayNodes(rest)}
+          </Text>
+        ) : (
+          <>
+            {' '}
+            {boldTodayNodes(rest)}
+          </>
+        )
+      ) : null}
     </Text>
   );
 }
@@ -364,7 +377,7 @@ export function ItemListRow(props: {
               ]}
               numberOfLines={1}
             >
-              {lastServiceDate ?? ''}
+              {boldTodayNodes(lastServiceDate ?? '')}
             </Text>
             {lastServiceLine ? (
               <Text
@@ -396,7 +409,7 @@ export function ItemListRow(props: {
             },
           ]}
         >
-          Next due: {nextDueLabel}
+          Next due: {boldTodayNodes(nextDueLabel)}
         </Text>
       ) : null}
     </Pressable>
@@ -501,7 +514,7 @@ export function ItemGalleryTile(props: {
           ]}
           numberOfLines={1}
         >
-          {overdue ? 'Overdue' : 'Next due'}: {nextDueLabel}
+          {overdue ? 'Overdue' : 'Next due'}: {boldTodayNodes(nextDueLabel)}
         </Text>
       ) : null}
     </Pressable>
@@ -536,7 +549,9 @@ export function EventListRow(props: {
           letterSpacing: -0.1,
         }}
       >
-        {[dateLabel, title, costText].filter(Boolean).join(' · ')}
+        {boldTodayNodes(dateLabel)}
+        {title ? ` · ${title}` : ''}
+        {costText ? ` · ${costText}` : ''}
       </Text>
       {thumbnailUri || notesText ? (
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
@@ -686,6 +701,8 @@ export function PropertyTodoListRow(props: {
   cardBackgroundColor?: string;
   /** When set, draw a list divider under the row (Property section style). */
   dividerColor?: string;
+  /** Optional type glyph in the top-right of the card (e.g. notes for Search all). */
+  cornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
 }) {
   const {
     title,
@@ -697,6 +714,7 @@ export function PropertyTodoListRow(props: {
     variant = 'todo',
     cardBackgroundColor,
     dividerColor,
+    cornerIcon,
   } = props;
   const isIdea = variant === 'idea';
   const notesText = notes?.trim();
@@ -745,24 +763,36 @@ export function PropertyTodoListRow(props: {
           style={{ marginTop: 1 }}
         />
         <View style={{ flex: 1 }}>
-          <Text
+          <View
             style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: 8,
+              marginBottom: dueLabel || thumbnailUri || notesText ? 6 : 0,
+            }}
+          >
+            <Text
+              style={{
+                flex: 1,
                 fontSize: 15,
                 fontWeight: '600',
                 color: titleColor,
                 textDecorationLine: dimmed ? 'line-through' : 'none',
-                marginBottom: dueLabel || thumbnailUri || notesText ? 6 : 0,
               }}
-            numberOfLines={2}
-          >
-            {title}
-          </Text>
+              numberOfLines={2}
+            >
+              {title}
+            </Text>
+            {cornerIcon ? (
+              <MaterialIcons name={cornerIcon} size={22} color={colors.primary} />
+            ) : null}
+          </View>
           {dueLabel ? (
             <Text
               style={[sharedStyles.cardMeta, { marginTop: 0, color: metaColor, marginBottom: 6 }]}
               numberOfLines={1}
             >
-              Due {dueLabel}
+              Due {boldTodayNodes(dueLabel)}
             </Text>
           ) : null}
           {thumbnailUri || notesText ? (
@@ -1625,7 +1655,7 @@ export function PropertyServiceListRow(props: {
                 },
               ]}
             >
-              {dateLabel}
+              {boldTodayNodes(dateLabel)}
             </Text>
             <Text
               style={[

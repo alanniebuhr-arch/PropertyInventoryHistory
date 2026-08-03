@@ -58,13 +58,16 @@ import { firstPhotoUriForProject } from '../projectPhotos';
 import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
-import { slideshowPhotosForProperty } from '../propertyFavoritePhotos';
-import { PhotoViewerModal, type ViewerPhoto } from '../components/PhotoViewerModal';
+import { slideshowPhotosForProperty, type PropertyCatalogPhoto } from '../propertyFavoritePhotos';
+import { PhotoViewerModal, SLIDESHOW_DOUBLE_BACK_MS, type ViewerPhoto } from '../components/PhotoViewerModal';
 import { SlideshowEditorModal } from '../components/SlideshowEditorModal';
+import { PropertyAllPhotosModal } from '../components/PropertyAllPhotosModal';
 import {
   filterInteractionsByHorizon,
   filterTodosByHorizon,
   filterUpcomingByHorizon,
+  isAfterToday,
+  isToday,
   serviceListDateISO,
   upcomingDueAtISO,
   upcomingHorizonLabel,
@@ -117,9 +120,12 @@ import {
 } from '../sectionHelpPrefs';
 import {
   getPropertySectionExpand,
-  loadPropertySectionExpand,
   setPropertySectionExpand,
 } from '../propertySectionExpandPrefs';
+import {
+  consumeSearchPhotosReopen,
+  markSearchPhotosReopen,
+} from '../propertySearchPhotosPrefs';
 
 export function PropertyDetailScreen(props: {
   state: AppState;
@@ -196,8 +202,14 @@ export function PropertyDetailScreen(props: {
   const [showReorderArrows, setShowReorderArrows] = useState(false);
   const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null);
   const [slideshowEditorOpen, setSlideshowEditorOpen] = useState(false);
+  const [allPhotosOpen, setAllPhotosOpen] = useState(() =>
+    consumeSearchPhotosReopen(propertyId)
+  );
   /** Snapshot used while the viewer is open so Play uses the order just committed. */
   const [slideshowPlayPhotos, setSlideshowPlayPhotos] = useState<ViewerPhoto[] | null>(null);
+  const slideshowBackPressAtRef = useRef(0);
+  /** When Play was started from Search photos, ← Back returns there. */
+  const slideshowReturnToSearchPhotosRef = useRef(false);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
@@ -206,18 +218,26 @@ export function PropertyDetailScreen(props: {
     getPropertyProjectViewMode
   );
   const [helpVisible, setHelpVisible] = useState(getSectionHelpVisible);
-  const [photosExpanded, setPhotosExpanded] = useState(() => getPropertySectionExpand().photos);
+  const [photosExpanded, setPhotosExpanded] = useState(
+    () => getPropertySectionExpand(propertyId).photos
+  );
   const [remindersExpanded, setRemindersExpanded] = useState(
-    () => getPropertySectionExpand().reminders
+    () => getPropertySectionExpand(propertyId).reminders
   );
   const [projectsExpanded, setProjectsExpanded] = useState(
-    () => getPropertySectionExpand().projects
+    () => getPropertySectionExpand(propertyId).projects
   );
-  const [roomsExpanded, setRoomsExpanded] = useState(() => getPropertySectionExpand().rooms);
-  const [todosExpanded, setTodosExpanded] = useState(() => getPropertySectionExpand().todos);
-  const [ideasExpanded, setIdeasExpanded] = useState(() => getPropertySectionExpand().ideas);
+  const [roomsExpanded, setRoomsExpanded] = useState(
+    () => getPropertySectionExpand(propertyId).rooms
+  );
+  const [todosExpanded, setTodosExpanded] = useState(
+    () => getPropertySectionExpand(propertyId).todos
+  );
+  const [ideasExpanded, setIdeasExpanded] = useState(
+    () => getPropertySectionExpand(propertyId).ideas
+  );
   const [recentActivityExpanded, setRecentActivityExpanded] = useState(
-    () => getPropertySectionExpand().recentActivity
+    () => getPropertySectionExpand(propertyId).recentActivity
   );
   const textScaleControls = useTextScaleControls();
 
@@ -244,6 +264,7 @@ export function PropertyDetailScreen(props: {
       onSearchInteractions,
       onSearchServiceHistory,
       onSearchActivity,
+      onSearchPhotos: openAllPhotos,
       onOpenProject,
       onOpenItem,
       onSave,
@@ -295,20 +316,21 @@ export function PropertyDetailScreen(props: {
     void loadSectionHelpVisible().then((visible) => {
       if (!cancelled) setHelpVisible(visible);
     });
-    void loadPropertySectionExpand().then((expand) => {
-      if (cancelled) return;
-      setPhotosExpanded(expand.photos);
-      setRemindersExpanded(expand.reminders);
-      setProjectsExpanded(expand.projects);
-      setRoomsExpanded(expand.rooms);
-      setTodosExpanded(expand.todos);
-      setIdeasExpanded(expand.ideas);
-      setRecentActivityExpanded(expand.recentActivity);
-    });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const expand = getPropertySectionExpand(propertyId);
+    setPhotosExpanded(expand.photos);
+    setRemindersExpanded(expand.reminders);
+    setProjectsExpanded(expand.projects);
+    setRoomsExpanded(expand.rooms);
+    setTodosExpanded(expand.todos);
+    setIdeasExpanded(expand.ideas);
+    setRecentActivityExpanded(expand.recentActivity);
+  }, [propertyId]);
 
   const openShareOptions = useCallback(() => {
     setShareInclude({ ...PROPERTY_SHARE_PRESET_ALL });
@@ -391,6 +413,44 @@ export function PropertyDetailScreen(props: {
     setSlideshowEditorOpen(true);
   }
 
+  function openAllPhotos() {
+    setAllPhotosOpen(true);
+  }
+
+  function closeSlideshow() {
+    slideshowBackPressAtRef.current = 0;
+    setSlideshowIndex(null);
+    setSlideshowPlayPhotos(null);
+    if (slideshowReturnToSearchPhotosRef.current) {
+      slideshowReturnToSearchPhotosRef.current = false;
+      setAllPhotosOpen(true);
+    }
+  }
+
+  /** Favorite slideshow: ← Back advances; double-tap closes. Search photos Play: ← Back returns to Search. */
+  function handleHeaderBack() {
+    if (slideshowIndex == null) {
+      onBack();
+      return;
+    }
+    if (slideshowReturnToSearchPhotosRef.current) {
+      closeSlideshow();
+      return;
+    }
+    const length = slideshowPhotos.length;
+    if (length <= 1) {
+      closeSlideshow();
+      return;
+    }
+    const now = Date.now();
+    if (now - slideshowBackPressAtRef.current < SLIDESHOW_DOUBLE_BACK_MS) {
+      closeSlideshow();
+      return;
+    }
+    slideshowBackPressAtRef.current = now;
+    setSlideshowIndex((slideshowIndex + 1) % length);
+  }
+
   function playFavoriteSlideshow(playState?: AppState) {
     const source = playState ?? state;
     const photos = slideshowPhotosForProperty(source, propertyId);
@@ -404,6 +464,7 @@ export function PropertyDetailScreen(props: {
     if (playState) {
       onSave(playState);
     }
+    slideshowReturnToSearchPhotosRef.current = false;
     setSlideshowPlayPhotos(
       photos.map((photo) => ({
         id: photo.id,
@@ -414,7 +475,42 @@ export function PropertyDetailScreen(props: {
       }))
     );
     setSlideshowEditorOpen(false);
+    setAllPhotosOpen(false);
+    slideshowBackPressAtRef.current = 0;
     setSlideshowIndex(0);
+  }
+
+  function viewAllPropertyPhotos(photos: PropertyCatalogPhoto[], startIndex = 0) {
+    if (photos.length === 0) {
+      Alert.alert('No photos', 'Add photos on this property, its rooms, or assets first.');
+      return;
+    }
+    const safeIndex = Math.max(0, Math.min(startIndex, photos.length - 1));
+    slideshowReturnToSearchPhotosRef.current = true;
+    setSlideshowPlayPhotos(
+      photos.map((photo) => ({
+        id: photo.id,
+        uri: photo.uri,
+        label: photo.label,
+        notes: photo.notes,
+        onDelete: () => {},
+      }))
+    );
+    setAllPhotosOpen(false);
+    slideshowBackPressAtRef.current = 0;
+    setSlideshowIndex(safeIndex);
+  }
+
+  function openPhotoOwner(photo: PropertyCatalogPhoto) {
+    markSearchPhotosReopen(propertyId);
+    setAllPhotosOpen(false);
+    if (photo.itemId) {
+      onOpenItem(photo.itemId);
+      return;
+    }
+    if (photo.roomId) {
+      onOpenRoom(photo.roomId);
+    }
   }
 
   const upcomingEvents = filterUpcomingByHorizon(
@@ -489,6 +585,38 @@ export function PropertyDetailScreen(props: {
     })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   const recentActivity = recentActivityAll.slice(0, 10);
+
+  type ActivityBucket = 'future' | 'today' | 'history';
+  type ActivityListRow =
+    | { kind: 'header'; id: string; label: string }
+    | { kind: 'item'; entry: ActivityEntry };
+
+  function activityBucket(at: string): ActivityBucket {
+    if (isAfterToday(at)) return 'future';
+    if (isToday(at)) return 'today';
+    return 'history';
+  }
+
+  const ACTIVITY_BUCKET_LABEL: Record<ActivityBucket, string> = {
+    future: 'Future Activity',
+    today: 'Today',
+    history: 'History',
+  };
+
+  const recentActivityRows: ActivityListRow[] = [];
+  let lastBucket: ActivityBucket | null = null;
+  for (const entry of recentActivity) {
+    const bucket = activityBucket(entry.at);
+    if (bucket !== lastBucket) {
+      recentActivityRows.push({
+        kind: 'header',
+        id: `header:${bucket}`,
+        label: ACTIVITY_BUCKET_LABEL[bucket],
+      });
+      lastBucket = bucket;
+    }
+    recentActivityRows.push({ kind: 'item', entry });
+  }
 
   function selectUpcomingHorizon(horizon: UpcomingHorizon) {
     setUpcomingHorizon(horizon);
@@ -639,9 +767,24 @@ export function PropertyDetailScreen(props: {
     void setSectionHelpVisible(next);
   }
 
+  const slideshowOpen = slideshowIndex != null;
+
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
-      <ScreenBackHeader onPress={onBack}>
+      <ScreenBackHeader onPress={handleHeaderBack}>
+        {slideshowOpen ? (
+          <Text
+            style={{
+              marginLeft: 'auto',
+              color: colors.textMuted,
+              fontSize: 15,
+              fontWeight: '600',
+            }}
+            accessibilityLabel={`Slide ${(slideshowIndex ?? 0) + 1} of ${slideshowPhotos.length}`}
+          >
+            {(slideshowIndex ?? 0) + 1} / {slideshowPhotos.length}
+          </Text>
+        ) : (
         <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable
             onPress={toggleHelp}
@@ -693,8 +836,9 @@ export function PropertyDetailScreen(props: {
             <MaterialIcons name="settings" size={24} color={colors.primary} />
           </Pressable>
         </View>
+        )}
       </ScreenBackHeader>
-      {helpVisible ? (
+      {helpVisible && !slideshowOpen ? (
         <Text
           style={{
             marginHorizontal: 20,
@@ -713,6 +857,20 @@ export function PropertyDetailScreen(props: {
           {propertySearchItems.length > 0 ? ' | Search' : ''} | Utilities
         </Text>
       ) : null}
+      {slideshowOpen ? (
+        <PhotoViewerModal
+          photos={slideshowPhotos}
+          index={slideshowIndex}
+          onIndexChange={(index) => {
+            if (index == null) {
+              closeSlideshow();
+              return;
+            }
+            setSlideshowIndex(index);
+          }}
+          browseOnly
+        />
+      ) : (
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
@@ -748,7 +906,7 @@ export function PropertyDetailScreen(props: {
           onToggleExpanded={() => {
             const next = !photosExpanded;
             setPhotosExpanded(next);
-            void setPropertySectionExpand({ photos: next });
+            void setPropertySectionExpand(propertyId, { photos: next });
           }}
         >
           <Pressable
@@ -793,8 +951,9 @@ export function PropertyDetailScreen(props: {
               expanded={remindersExpanded}
               count={upcomingReminders.length}
               onExpand={() => {
-                setRemindersExpanded(true);
-                void setPropertySectionExpand({ reminders: true });
+                const next = !remindersExpanded;
+                setRemindersExpanded(next);
+                void setPropertySectionExpand(propertyId, { reminders: next });
               }}
             />
             <Pressable
@@ -837,7 +996,7 @@ export function PropertyDetailScreen(props: {
                 onPress={() => {
                   const next = !remindersExpanded;
                   setRemindersExpanded(next);
-                  void setPropertySectionExpand({ reminders: next });
+                  void setPropertySectionExpand(propertyId, { reminders: next });
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={remindersExpanded ? 'Hide reminders' : 'Show reminders'}
@@ -958,8 +1117,9 @@ export function PropertyDetailScreen(props: {
               expanded={projectsExpanded}
               count={projects.length}
               onExpand={() => {
-                setProjectsExpanded(true);
-                void setPropertySectionExpand({ projects: true });
+                const next = !projectsExpanded;
+                setProjectsExpanded(next);
+                void setPropertySectionExpand(propertyId, { projects: next });
               }}
             />
             <Pressable
@@ -1021,7 +1181,7 @@ export function PropertyDetailScreen(props: {
                 onPress={() => {
                   const next = !projectsExpanded;
                   setProjectsExpanded(next);
-                  void setPropertySectionExpand({ projects: next });
+                  void setPropertySectionExpand(propertyId, { projects: next });
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={projectsExpanded ? 'Hide projects' : 'Show projects'}
@@ -1124,8 +1284,9 @@ export function PropertyDetailScreen(props: {
               expanded={roomsExpanded}
               count={rooms.length}
               onExpand={() => {
-                setRoomsExpanded(true);
-                void setPropertySectionExpand({ rooms: true });
+                const next = !roomsExpanded;
+                setRoomsExpanded(next);
+                void setPropertySectionExpand(propertyId, { rooms: next });
               }}
             />
             <Pressable
@@ -1187,7 +1348,7 @@ export function PropertyDetailScreen(props: {
                 onPress={() => {
                   const next = !roomsExpanded;
                   setRoomsExpanded(next);
-                  void setPropertySectionExpand({ rooms: next });
+                  void setPropertySectionExpand(propertyId, { rooms: next });
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={roomsExpanded ? 'Hide rooms' : 'Show rooms'}
@@ -1270,8 +1431,9 @@ export function PropertyDetailScreen(props: {
             expanded={todosExpanded}
             count={todos.length}
             onExpand={() => {
-              setTodosExpanded(true);
-              void setPropertySectionExpand({ todos: true });
+              const next = !todosExpanded;
+              setTodosExpanded(next);
+              void setPropertySectionExpand(propertyId, { todos: next });
             }}
           />
           <Pressable
@@ -1291,7 +1453,7 @@ export function PropertyDetailScreen(props: {
               onPress={() => {
                 const next = !todosExpanded;
                 setTodosExpanded(next);
-                void setPropertySectionExpand({ todos: next });
+                void setPropertySectionExpand(propertyId, { todos: next });
               }}
               accessibilityRole="button"
               accessibilityLabel={todosExpanded ? 'Hide to do' : 'Show to do'}
@@ -1359,8 +1521,9 @@ export function PropertyDetailScreen(props: {
             expanded={ideasExpanded}
             count={ideas.length}
             onExpand={() => {
-              setIdeasExpanded(true);
-              void setPropertySectionExpand({ ideas: true });
+              const next = !ideasExpanded;
+              setIdeasExpanded(next);
+              void setPropertySectionExpand(propertyId, { ideas: next });
             }}
           />
           <Pressable
@@ -1380,7 +1543,7 @@ export function PropertyDetailScreen(props: {
               onPress={() => {
                 const next = !ideasExpanded;
                 setIdeasExpanded(next);
-                void setPropertySectionExpand({ ideas: next });
+                void setPropertySectionExpand(propertyId, { ideas: next });
               }}
               accessibilityRole="button"
               accessibilityLabel={ideasExpanded ? 'Hide ideas' : 'Show ideas'}
@@ -1443,12 +1606,13 @@ export function PropertyDetailScreen(props: {
             }}
           >
             <CollapsibleSectionTitle
-              title="Recent activity"
+              title="What's happening"
               expanded={recentActivityExpanded}
               count={recentActivityAll.length}
               onExpand={() => {
-                setRecentActivityExpanded(true);
-                void setPropertySectionExpand({ recentActivity: true });
+                const next = !recentActivityExpanded;
+                setRecentActivityExpanded(next);
+                void setPropertySectionExpand(propertyId, { recentActivity: next });
               }}
             />
             {recentActivityAll.length > 0 ? (
@@ -1456,7 +1620,7 @@ export function PropertyDetailScreen(props: {
                 onPress={() => {
                   const next = !recentActivityExpanded;
                   setRecentActivityExpanded(next);
-                  void setPropertySectionExpand({ recentActivity: next });
+                  void setPropertySectionExpand(propertyId, { recentActivity: next });
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -1493,7 +1657,38 @@ export function PropertyDetailScreen(props: {
                   borderTopColor: colors.text,
                 }}
               >
-                {recentActivity.map((entry) => {
+                {recentActivityRows.map((row) => {
+                  if (row.kind === 'header') {
+                    const isTodayHeader = row.id === 'header:today';
+                    return (
+                      <View
+                        key={row.id}
+                        style={{
+                          marginTop: 10,
+                          marginBottom: 6,
+                          paddingVertical: 3,
+                          paddingHorizontal: 10,
+                          backgroundColor: isTodayHeader ? colors.danger : colors.sectionTitle,
+                          borderRadius: 4,
+                        }}
+                        accessibilityRole="header"
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: '600',
+                            letterSpacing: 1.2,
+                            textTransform: 'uppercase',
+                            color: colors.card,
+                            textAlign: 'center',
+                          }}
+                        >
+                          {row.label}
+                        </Text>
+                      </View>
+                    );
+                  }
+                  const entry = row.entry;
                   if (entry.kind === 'interaction') {
                     const interaction = entry.interaction;
                     const vendor = interaction.vendorId
@@ -1576,6 +1771,7 @@ export function PropertyDetailScreen(props: {
         </View>
 
       </ScrollView>
+      )}
 
       {exportSnapshot ? (
         <View
@@ -1801,14 +1997,13 @@ export function PropertyDetailScreen(props: {
         onPlay={playFavoriteSlideshow}
       />
 
-      <PhotoViewerModal
-        photos={slideshowPhotos}
-        index={slideshowIndex}
-        onIndexChange={(index) => {
-          setSlideshowIndex(index);
-          if (index == null) setSlideshowPlayPhotos(null);
-        }}
-        browseOnly
+      <PropertyAllPhotosModal
+        visible={allPhotosOpen}
+        state={state}
+        propertyId={propertyId}
+        onClose={() => setAllPhotosOpen(false)}
+        onView={viewAllPropertyPhotos}
+        onOpenOwner={openPhotoOwner}
       />
     </View>
   );

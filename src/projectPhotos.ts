@@ -57,8 +57,16 @@ export async function removeProjectPhoto(
   return {
     ...state,
     projectPhotos: state.projectPhotos.filter((p) => p.id !== photoId),
-    projects: state.projects.map((p) =>
-      p.id === projectId ? { ...p, photoIds: p.photoIds.filter((id) => id !== photoId) } : p
-    ),
+    projects: state.projects.map((p) => {
+      if (p.id !== projectId) return p;
+      const next: typeof p = {
+        ...p,
+        photoIds: p.photoIds.filter((id) => id !== photoId),
+      };
+      if (p.slideshowPhotoIds !== undefined) {
+        next.slideshowPhotoIds = p.slideshowPhotoIds.filter((id) => id !== photoId);
+      }
+      return next;
+    }),
   };
 }

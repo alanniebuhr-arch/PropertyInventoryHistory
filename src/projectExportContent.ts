@@ -1,5 +1,6 @@
 import type { AppState, ProjectVendor, VendorInteraction } from './types';
 import { photosForProject } from './projectPhotos';
+import { slideshowPhotosForProject } from './projectFavoritePhotos';
 import { photosForVendor, vendorPhotoDisplayLabel } from './vendorPhotos';
 import {
   interactionsForProject,
@@ -17,7 +18,7 @@ import { projectStatusLabel } from './projectStatus';
 import { vendorContactMethodLabel } from './vendorContactMethod';
 import { formatCurrency, formatDate, formatDisplayDate, formatPhoneNumber, nowISO } from './utils';
 import { isOverdue } from './eventRecurrence';
-import { applySharePhotoMode, type SharePhotoMode } from './sharePhotoMode';
+import { type SharePhotoMode } from './sharePhotoMode';
 
 export type ProjectExportRow = { label: string; value: string };
 export type ProjectExportSection = { title: string; rows: ProjectExportRow[] };
@@ -203,11 +204,17 @@ export function buildProjectExportSnapshot(
 
   const photoMode = options?.photoMode ?? 'all';
   const photos = include.photos
-    ? applySharePhotoMode(photosForProject(state, projectId), photoMode).map((photo) => ({
-        uri: photo.localUri,
-        label: photo.caption?.trim() || 'Photo',
-        notes: photo.notes?.trim() || undefined,
-      }))
+    ? (photoMode === 'favorites'
+        ? slideshowPhotosForProject(state, projectId).map((photo) => ({
+            uri: photo.uri,
+            label: photo.label,
+            notes: photo.notes?.trim() || undefined,
+          }))
+        : photosForProject(state, projectId).map((photo) => ({
+            uri: photo.localUri,
+            label: photo.caption?.trim() || 'Photo',
+            notes: photo.notes?.trim() || undefined,
+          })))
     : [];
 
   const punchItems: ProjectExportListItem[] = include.punchList

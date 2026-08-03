@@ -65,8 +65,10 @@ export type PropertyGearNavActions = {
   onSearchAssets: () => void;
   onSearchInteractions: () => void;
   onSearchServiceHistory: () => void;
-  /** When set, shows Search Activity (Property Detail only). */
+  /** When set, shows Search Activity. */
   onSearchActivity?: () => void;
+  /** When set, shows Search Photos (Property / Project Detail). */
+  onSearchPhotos?: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenItem: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
   onSave: (state: AppState) => void;
@@ -327,6 +329,17 @@ export function usePropertyGearNav(options: {
             icon: 'handyman' as const,
             helpText: 'on Assets',
             onPress: () => runMenuAction(actions.onSearchServiceHistory),
+          },
+        ]
+      : []),
+    ...(actions.onSearchPhotos
+      ? [
+          {
+            key: 'searchPhotos',
+            prefix: 'Search' as const,
+            keyword: 'Photos',
+            icon: 'photo-library' as const,
+            onPress: () => runMenuAction(actions.onSearchPhotos!),
           },
         ]
       : []),

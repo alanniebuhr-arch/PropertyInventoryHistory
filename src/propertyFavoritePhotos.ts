@@ -37,6 +37,8 @@ export type PropertyCatalogPhoto = FavoriteHeroPhoto & {
   favorite?: boolean;
   source: 'property' | 'room' | 'item';
   contextLabel: string;
+  roomId?: string;
+  itemId?: string;
 };
 
 type SlotDef = { key: string; shortLabel: string };
@@ -135,7 +137,8 @@ export function allHeroPhotosForProperty(
     photo: Pick<PropertyPhoto | RoomPhoto | ItemPhoto, 'id' | 'localUri' | 'caption' | 'notes' | 'favorite'>,
     label: string,
     source: PropertyCatalogPhoto['source'],
-    contextLabel: string
+    contextLabel: string,
+    owner?: { roomId?: string; itemId?: string }
   ) {
     if (!photo.localUri || seen.has(photo.id)) return;
     seen.add(photo.id);
@@ -147,6 +150,8 @@ export function allHeroPhotosForProperty(
       favorite: photo.favorite === true,
       source,
       contextLabel,
+      roomId: owner?.roomId,
+      itemId: owner?.itemId,
     });
   }
 
@@ -166,11 +171,11 @@ export function allHeroPhotosForProperty(
       const attachment = room.slotAttachments?.[slot.key as RoomSlotKey];
       if (!attachment || attachment.kind !== 'photo') continue;
       const photo = state.roomPhotos.find((entry) => entry.id === attachment.id);
-      if (photo) push(photo, slot.shortLabel, 'room', room.name);
+      if (photo) push(photo, slot.shortLabel, 'room', room.name, { roomId: room.id });
     }
 
     for (const photo of photosForRoom(state, room.id)) {
-      push(photo, photo.caption?.trim() || room.name, 'room', room.name);
+      push(photo, photo.caption?.trim() || room.name, 'room', room.name, { roomId: room.id });
     }
 
     for (const item of itemsForRoom(state, room.id)) {
@@ -178,12 +183,13 @@ export function allHeroPhotosForProperty(
       const slotIds = new Set<string>();
       const slots = itemPhotoSlots(item);
       const assetLabel = itemLabel(item);
+      const owner = { roomId: room.id, itemId: item.id };
       for (const slot of slots) {
         const photoId = slotPhotoIdFromDetails(item, slot.key);
         if (!photoId) continue;
         slotIds.add(photoId);
         const photo = itemPhotos.find((entry) => entry.id === photoId);
-        if (photo) push(photo, slot.shortLabel, 'item', assetLabel);
+        if (photo) push(photo, slot.shortLabel, 'item', assetLabel, owner);
       }
 
       for (const photo of itemPhotos) {
@@ -193,7 +199,8 @@ export function allHeroPhotosForProperty(
           photo,
           caption === 'receipt' ? 'Receipt' : caption || assetLabel,
           'item',
-          assetLabel
+          assetLabel,
+          owner
         );
       }
     }

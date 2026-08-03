@@ -1,5 +1,6 @@
 import type { AppState } from './types';
 import { syncSlideshowAfterFavoriteChange } from './propertyFavoritePhotos';
+import { syncProjectSlideshowAfterFavoriteChange } from './projectFavoritePhotos';
 
 /** Update caption and notes on an item (or event) photo. */
 export function setItemPhotoCaptionAndNotes(
@@ -188,7 +189,7 @@ export function setProjectPhotoFavorite(
   photoId: string,
   favorite: boolean
 ): AppState {
-  return {
+  const next = {
     ...state,
     projectPhotos: state.projectPhotos.map((photo) =>
       photo.id === photoId
@@ -196,6 +197,7 @@ export function setProjectPhotoFavorite(
         : photo
     ),
   };
+  return syncProjectSlideshowAfterFavoriteChange(next, photoId, favorite);
 }
 
 export function setVendorPhotoCaptionAndNotes(

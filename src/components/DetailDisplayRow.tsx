@@ -4,6 +4,7 @@ import { Text } from '../textScale';
 import { sharedStyles, colors } from '../theme';
 import { splitHighlightParts } from '../searchSnippet';
 import { formatPhoneNumber, formatCurrencyDisplay } from '../utils';
+import { boldTodayNodes } from './TextWithBoldToday';
 
 /** Fits longest detail card labels on one line. */
 export const DETAIL_LABEL_COLUMN_WIDTH = 136;
@@ -62,10 +63,10 @@ export function DetailDisplayRow(props: {
                 {part.text}
               </Text>
             ) : (
-              <Text key={i}>{part.text}</Text>
+              <Text key={i}>{boldTodayNodes(part.text)}</Text>
             )
           )
-        : value}
+        : boldTodayNodes(value)}
     </Text>
   );
 

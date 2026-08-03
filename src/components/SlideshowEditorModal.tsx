@@ -20,22 +20,33 @@ import {
   setSlideshowPhotoIds,
   slideshowPhotosForProperty,
 } from '../propertyFavoritePhotos';
+import {
+  allGalleryPhotosForProject,
+  ensureProjectSlideshowPhotoIds,
+  moveProjectSlideshowPhotoToOrder,
+  setProjectSlideshowPhotoIncluded,
+  setProjectSlideshowPhotoIds,
+  slideshowPhotosForProject,
+} from '../projectFavoritePhotos';
 import { useKeyboardDoneAccessory } from './KeyboardDoneAccessory';
 import { useKeyboardSheetScroll } from './useKeyboardSheetScroll';
 import { sharedStyles, colors } from '../theme';
 
 const THUMB = 64;
 
-export function SlideshowEditorModal(props: {
+type SlideshowEditorModalProps = {
   visible: boolean;
   state: AppState;
-  propertyId: string;
   onSave: (state: AppState) => void;
   onClose: () => void;
   /** Optional override state so Play uses the order just committed from drafts. */
   onPlay: (playState?: AppState) => void;
-}) {
-  const { visible, state, propertyId, onSave, onClose, onPlay } = props;
+} & ({ propertyId: string; projectId?: never } | { projectId: string; propertyId?: never });
+
+export function SlideshowEditorModal(props: SlideshowEditorModalProps) {
+  const { visible, state, onSave, onClose, onPlay } = props;
+  const isProject = 'projectId' in props && props.projectId != null;
+  const entityId = isProject ? props.projectId! : props.propertyId!;
   const insets = useSafeAreaInsets();
   const rowRefs = useRef<Record<string, View | null>>({});
   const {
@@ -52,13 +63,19 @@ export function SlideshowEditorModal(props: {
     variant: 'overlay',
   });
   const selected = useMemo(
-    () => slideshowPhotosForProperty(state, propertyId),
-    [state, propertyId]
+    () =>
+      isProject
+        ? slideshowPhotosForProject(state, entityId)
+        : slideshowPhotosForProperty(state, entityId),
+    [state, entityId, isProject]
   );
   const selectedIds = useMemo(() => new Set(selected.map((photo) => photo.id)), [selected]);
   const catalog = useMemo(
-    () => allHeroPhotosForProperty(state, propertyId),
-    [state, propertyId]
+    () =>
+      isProject
+        ? allGalleryPhotosForProject(state, entityId)
+        : allHeroPhotosForProperty(state, entityId),
+    [state, entityId, isProject]
   );
   const [orderDrafts, setOrderDrafts] = useState<Record<string, string>>({});
 
@@ -81,12 +98,18 @@ export function SlideshowEditorModal(props: {
       }));
       return;
     }
-    onSave(moveSlideshowPhotoToOrder(state, propertyId, photoId, parsed));
+    onSave(
+      isProject
+        ? moveProjectSlideshowPhotoToOrder(state, entityId, photoId, parsed)
+        : moveSlideshowPhotoToOrder(state, entityId, photoId, parsed)
+    );
   }
 
   /** Commit any number-field edits that were not yet blurred into slideshowPhotoIds. */
   function stateWithFlushedOrderDrafts(): AppState {
-    let next = ensureSlideshowPhotoIds(state, propertyId);
+    let next = isProject
+      ? ensureProjectSlideshowPhotoIds(state, entityId)
+      : ensureSlideshowPhotoIds(state, entityId);
     const dirty = selected
       .map((photo, index) => {
         const parsed = Number.parseInt((orderDrafts[photo.id] ?? '').trim(), 10);
@@ -98,25 +121,42 @@ export function SlideshowEditorModal(props: {
 
     if (dirty.length === 0) {
       // Still persist explicit ids so Play never falls back to favorite traversal order.
-      const property = next.properties.find((p) => p.id === propertyId);
-      if (property?.slideshowPhotoIds === undefined) {
-        next = setSlideshowPhotoIds(
-          next,
-          propertyId,
-          selected.map((photo) => photo.id)
-        );
+      if (isProject) {
+        const project = next.projects.find((p) => p.id === entityId);
+        if (project?.slideshowPhotoIds === undefined) {
+          next = setProjectSlideshowPhotoIds(
+            next,
+            entityId,
+            selected.map((photo) => photo.id)
+          );
+        }
+      } else {
+        const property = next.properties.find((p) => p.id === entityId);
+        if (property?.slideshowPhotoIds === undefined) {
+          next = setSlideshowPhotoIds(
+            next,
+            entityId,
+            selected.map((photo) => photo.id)
+          );
+        }
       }
       return next;
     }
 
     for (const { photoId, parsed } of dirty) {
-      next = moveSlideshowPhotoToOrder(next, propertyId, photoId, parsed);
+      next = isProject
+        ? moveProjectSlideshowPhotoToOrder(next, entityId, photoId, parsed)
+        : moveSlideshowPhotoToOrder(next, entityId, photoId, parsed);
     }
     return next;
   }
 
   function toggleIncluded(photoId: string, included: boolean) {
-    onSave(setSlideshowPhotoIncluded(state, propertyId, photoId, included));
+    onSave(
+      isProject
+        ? setProjectSlideshowPhotoIncluded(state, entityId, photoId, included)
+        : setSlideshowPhotoIncluded(state, entityId, photoId, included)
+    );
   }
 
   function handlePlay() {
@@ -125,6 +165,13 @@ export function SlideshowEditorModal(props: {
     onSave(next);
     onPlay(next);
   }
+
+  const emptySelectedCopy = isProject
+    ? 'No photos in the slideshow yet. Select photos below, or star photos on this project.'
+    : 'No photos in the slideshow yet. Select photos below, or star heroes on property, room, and asset screens.';
+  const emptyCatalogCopy = isProject
+    ? 'No photos on this project yet.'
+    : 'No photos on this property yet.';
 
   return (
     <Modal
@@ -199,10 +246,7 @@ export function SlideshowEditorModal(props: {
             </Text>
 
             {selected.length === 0 ? (
-              <Text style={sharedStyles.emptyText}>
-                No photos in the slideshow yet. Select photos below, or star heroes on property,
-                room, and asset screens.
-              </Text>
+              <Text style={sharedStyles.emptyText}>{emptySelectedCopy}</Text>
             ) : (
               selected.map((photo, index) => (
                 <View
@@ -280,7 +324,7 @@ export function SlideshowEditorModal(props: {
             </Text>
 
             {catalog.length === 0 ? (
-              <Text style={sharedStyles.emptyText}>No photos on this property yet.</Text>
+              <Text style={sharedStyles.emptyText}>{emptyCatalogCopy}</Text>
             ) : (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                 {catalog.map((photo) => {

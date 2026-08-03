@@ -48,6 +48,7 @@ import { AddEditEventScreen } from './src/screens/AddEditEventScreen';
 import { TransferScreen } from './src/screens/TransferScreen';
 import type { ApplianceEditingSection } from './src/components/ApplianceDisplayView';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
+import { DevBuildBanner } from './src/components/DevBuildBanner';
 import { sharedStyles } from './src/theme';
 
 type Route =
@@ -428,11 +429,7 @@ export default function App() {
             state={state}
             propertyId={route.propertyId}
             onBack={pop}
-            onGoToProperty={
-              route.propertyId
-                ? () => goToProperty(route.propertyId!)
-                : undefined
-            }
+            onGoToProperty={(id) => goToProperty(id)}
             onOpenInteraction={(vendorId, interactionId, options) =>
               push({
                 name: 'vendorInteraction',
@@ -445,6 +442,25 @@ export default function App() {
             }
             onOpenEvent={(itemId, eventId) => push({ name: 'event', itemId, eventId })}
             onOpenItem={(itemId) => push({ name: 'item', itemId })}
+            onOpenTodo={(todoId, options) => {
+              const todo = state.propertyTodos.find((t) => t.id === todoId);
+              if (!todo) return;
+              push({
+                name: 'propertyTodo',
+                propertyId: todo.propertyId,
+                todoId,
+                kind: options?.kind ?? (todo.kind === 'idea' ? 'idea' : 'todo'),
+              });
+            }}
+            onOpenPunchItem={(punchItemId) => {
+              const punchItem = state.projectPunchItems.find((item) => item.id === punchItemId);
+              if (!punchItem) return;
+              push({
+                name: 'projectPunchItem',
+                projectId: punchItem.projectId,
+                punchItemId,
+              });
+            }}
             onOpenVendor={(vendorId) => push({ name: 'vendor', vendorId })}
           />
         );
@@ -1205,6 +1221,9 @@ export default function App() {
             completeFromEventId={route.completeFromEventId}
             onBack={pop}
             onSave={(next) => void persist(next)}
+            onOpenRoom={(roomId) =>
+              void openRoom(roomId, (id) => push({ name: 'room', roomId: id }))
+            }
           />
         );
         break;
@@ -1229,7 +1248,10 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <TextScaleProvider scale={textScale} step={textScaleStep} setStep={setTextScaleStep}>
-          <AppErrorBoundary onReset={resetApp}>{screen}</AppErrorBoundary>
+          <View style={{ flex: 1 }}>
+            <AppErrorBoundary onReset={resetApp}>{screen}</AppErrorBoundary>
+            <DevBuildBanner />
+          </View>
         </TextScaleProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

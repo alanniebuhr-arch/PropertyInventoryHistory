@@ -9,6 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, AirConditionerDetails, ApplianceDetails, AutomobileDetails, ElectricPanelDetails, EvChargerDetails, FurnaceDetails, GarageDoorDetails, GeneratorDetails, HotTubDetails, InventoryItem, IrrigationDetails, ItemDetails, ItemPhoto, PoolDetails, RadonMitigationDetails, RoofDetails, SecuritySystemDetails, SolarDetails, SumpPumpDetails, WasteWaterDetails, WaterHeaterDetails, WaterMainDetails, WaterTreatmentDetails, WellPumpDetails } from '../types';
 import { EventListRow } from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
+import { CollapsibleSectionTitle } from '../components/CollapsibleSectionTitle';
 import { ItemDisplayView } from '../components/ItemDisplayView';
 import {
   ApplianceDisplayView,
@@ -179,6 +180,7 @@ export function ItemDetailScreen(props: {
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
     getPropertyUpcomingHorizon
   );
+  const [serviceHistoryExpanded, setServiceHistoryExpanded] = useState(false);
   const exportRef = useRef<View>(null);
 
   useEffect(() => {
@@ -825,7 +827,7 @@ export function ItemDetailScreen(props: {
         )}
       </View>
 
-      <View style={sharedStyles.sectionFrame}>
+      <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
             flexDirection: 'row',
@@ -834,9 +836,12 @@ export function ItemDetailScreen(props: {
             marginBottom: 8,
           }}
         >
-          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
-            Service history
-          </Text>
+          <CollapsibleSectionTitle
+            title="Service history"
+            expanded={serviceHistoryExpanded}
+            count={historyEvents.length}
+            onExpand={() => setServiceHistoryExpanded((v) => !v)}
+          />
           <Pressable
             onPress={onAddEvent}
             accessibilityRole="button"
@@ -849,13 +854,40 @@ export function ItemDetailScreen(props: {
           >
             <MaterialIcons name="add" size={24} color={colors.primary} />
           </Pressable>
+          {historyEvents.length > 0 ? (
+            <Pressable
+              onPress={() => setServiceHistoryExpanded((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                serviceHistoryExpanded ? 'Hide service history' : 'Show service history'
+              }
+              accessibilityState={{ expanded: serviceHistoryExpanded }}
+              hitSlop={6}
+              style={({ pressed }) => ({
+                marginLeft: 'auto',
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons
+                name={serviceHistoryExpanded ? 'expand-less' : 'expand-more'}
+                size={24}
+                color={colors.primary}
+              />
+            </Pressable>
+          ) : null}
         </View>
         {historyEvents.length === 0 ? (
           <Text style={[sharedStyles.cardMeta, { marginTop: 0 }]}>
             No service events yet — tap + to log maintenance, repairs, or inspections.
           </Text>
-        ) : (
-          <View>
+        ) : serviceHistoryExpanded ? (
+          <View
+            style={{
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.text,
+            }}
+          >
             {historyEvents.map((e) => {
               const eventPhotos = photosForEvent(state, e.id);
               return (
@@ -872,7 +904,7 @@ export function ItemDetailScreen(props: {
               );
             })}
           </View>
-        )}
+        ) : null}
       </View>
 
     </View>

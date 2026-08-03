@@ -480,6 +480,14 @@ export function VendorDetailScreen(props: {
               <MaterialIcons name="ios-share" size={22} color={colors.primary} />
             )}
           </Pressable>
+          {propertyId ? (
+            <ToolbarNewSearchControls
+              title={vnd.name}
+              newItems={propertyNewItems}
+              searchItems={propertySearchItems}
+              disabled={exporting}
+            />
+          ) : null}
           {isEditing ? (
             <Pressable
               onPress={finishEditing}
@@ -517,17 +525,9 @@ export function VendorDetailScreen(props: {
                 pressed && !exporting && { opacity: 0.8 },
               ]}
             >
-              <MaterialIcons name="edit" size={22} color={colors.primary} />
+              <MaterialIcons name="edit" size={22} color={colors.editIcon} />
             </Pressable>
           )}
-          {propertyId ? (
-            <ToolbarNewSearchControls
-              title={vnd.name}
-              newItems={propertyNewItems}
-              searchItems={propertySearchItems}
-              disabled={exporting}
-            />
-          ) : null}
           <Pressable
             onPress={() => setMenuOpen(true)}
             disabled={exporting}

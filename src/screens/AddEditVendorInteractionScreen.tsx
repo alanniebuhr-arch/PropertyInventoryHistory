@@ -217,16 +217,17 @@ export function AddEditVendorInteractionScreen(props: {
     });
     return () => cancelAnimationFrame(frame);
   }, [keyboardHeight, scrollFieldIntoView]);
-  /** Project/Vendor pickers when opened from a property (not locked vendor-detail create). */
-  const showLinkPickers = Boolean(propertyId);
+  /** Project/Vendor pickers when a property is known; hide for vendor-detail “new” (locked vendor). */
+  const lockedToVendorCreate = !existing && Boolean(vendorId) && !propertyId;
 
   const initialVendorId = vendorId ?? existing?.vendorId;
   const initialVendor = initialVendorId ? vendorById(state, initialVendorId) : undefined;
 
   const [draftVendorId, setDraftVendorId] = useState<string | undefined>(initialVendorId);
-  const [draftProjectId, setDraftProjectId] = useState<string | null>(
-    () => initialVendor?.projectId ?? initialProjectId ?? null
-  );
+  const [draftProjectId, setDraftProjectId] = useState<string | null>(() => {
+    if (existing?.projectId) return existing.projectId;
+    return initialVendor?.projectId ?? initialProjectId ?? null;
+  });
 
   const draftVendor = draftVendorId ? vendorById(state, draftVendorId) : undefined;
   const resolvedPropertyId =
@@ -235,7 +236,12 @@ export function AddEditVendorInteractionScreen(props: {
     (draftVendor
       ? projectById(state, draftVendor.projectId)?.propertyId
       : undefined) ??
-    (existing ? propertyIdForInteraction(state, existing) : undefined);
+    (existing?.projectId
+      ? projectById(state, existing.projectId)?.propertyId
+      : undefined) ??
+    (existing ? propertyIdForInteraction(state, existing) : undefined) ??
+    (initialProjectId ? projectById(state, initialProjectId)?.propertyId : undefined);
+  const showLinkPickers = Boolean(resolvedPropertyId) && !lockedToVendorCreate;
   const property = resolvedPropertyId ? propertyById(state, resolvedPropertyId) : undefined;
   const gearPropertyId = resolvedPropertyId ?? '';
   const showPropertyGearNav = Boolean(gearPropertyId);
@@ -339,6 +345,7 @@ export function AddEditVendorInteractionScreen(props: {
         state,
         vendorId: draftVendorId,
         propertyId: resolvedPropertyId,
+        projectId: draftProjectId ?? undefined,
         occurredAtISO,
         contactMethod,
         contactName: contactName.trim() || undefined,
@@ -513,7 +520,9 @@ export function AddEditVendorInteractionScreen(props: {
       ? vendorById(state, existing.vendorId)
       : undefined;
     setDraftVendorId(existing.vendorId);
-    setDraftProjectId(existingVendor?.projectId ?? null);
+    setDraftProjectId(
+      existing.projectId ?? existingVendor?.projectId ?? null
+    );
     setContactName(existing.contactName ?? existingVendor?.contactName ?? '');
     setNotes(existing.notes ?? '');
     setImportant(existing.important === true);
@@ -679,6 +688,7 @@ export function AddEditVendorInteractionScreen(props: {
       const updated: VendorInteraction = {
         ...existing,
         vendorId: draftVendorId,
+        projectId: draftProjectId ?? undefined,
         propertyId: resolvedPropertyId,
         contactMethod,
         contactName: trimmedContact || undefined,
@@ -710,6 +720,7 @@ export function AddEditVendorInteractionScreen(props: {
       const interaction: VendorInteraction = {
         id: newInteractionId,
         vendorId: draftVendorId,
+        projectId: draftProjectId ?? undefined,
         propertyId: resolvedPropertyId,
         contactMethod,
         contactName: trimmedContact || undefined,
@@ -805,6 +816,14 @@ export function AddEditVendorInteractionScreen(props: {
           ) : (
             <View style={{ width: 42, height: 36 }} />
           )}
+          {gearPropertyId ? (
+            <ToolbarNewSearchControls
+              title={partyLabel}
+              newItems={propertyNewItems}
+              searchItems={propertySearchItems}
+              disabled={sharingPng}
+            />
+          ) : null}
           {isEditing ? (
             <Pressable
               onPress={() => void saveInteraction()}
@@ -834,17 +853,9 @@ export function AddEditVendorInteractionScreen(props: {
               hitSlop={8}
               style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
             >
-              <MaterialIcons name="edit" size={22} color={colors.primary} />
+              <MaterialIcons name="edit" size={22} color={colors.editIcon} />
             </Pressable>
           )}
-          {gearPropertyId ? (
-            <ToolbarNewSearchControls
-              title={partyLabel}
-              newItems={propertyNewItems}
-              searchItems={propertySearchItems}
-              disabled={sharingPng}
-            />
-          ) : null}
           <Pressable
             onPress={() => setMenuOpen(true)}
             disabled={sharingPng}

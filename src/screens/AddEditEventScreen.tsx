@@ -22,6 +22,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, ItemEvent, ItemEventRecurrence, ItemEventType, ItemPhoto } from '../types';
 import { EventPhotoSection } from '../components/EventPhotoSection';
 import { EventListRow } from '../components/ListRows';
+import { boldTodayNodes } from '../components/TextWithBoldToday';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { EventExportSheet } from '../components/EventExportSheet';
 import { SharePhotoModeModal } from '../components/SharePhotoModeModal';
@@ -139,6 +140,7 @@ export function AddEditEventScreen(props: {
   completeFromEventId?: string;
   onBack: () => void;
   onSave: (state: AppState) => void;
+  onOpenRoom?: (roomId: string) => void;
 }) {
   const {
     state,
@@ -149,6 +151,7 @@ export function AddEditEventScreen(props: {
     completeFromEventId,
     onBack,
     onSave,
+    onOpenRoom,
   } = props;
   const insets = useSafeAreaInsets();
   /** Create from Property (or similar): pick Property → Room → Asset before save. */
@@ -513,11 +516,16 @@ export function AddEditEventScreen(props: {
   const itemProperty = itemRoom
     ? propertyById(state, itemRoom.propertyId)
     : undefined;
-  /** Locked-asset path has no property picker — always surface which property this service belongs to. */
+  /** Locked-asset path has no property picker — always surface which property/room this service belongs to. */
   const contextPropertyName =
     !showLocationPickers
       ? (itemProperty?.name ?? selectedProperty?.name)
       : undefined;
+  const contextRoomName = !showLocationPickers ? itemRoom?.name : undefined;
+  const contextLocationLabel = [contextPropertyName, contextRoomName]
+    .filter(Boolean)
+    .join(' · ');
+  const canOpenRoom = Boolean(onOpenRoom && itemRoom);
   const dateFieldLabel =
     showServiceCompletedToggle && !serviceCompleted ? 'Next service date' : 'Date';
   const costNum = costStr.trim() ? parseFloat(costStr) : undefined;
@@ -1160,7 +1168,7 @@ export function AddEditEventScreen(props: {
               hitSlop={8}
               style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
             >
-              <MaterialIcons name="edit" size={22} color={colors.primary} />
+              <MaterialIcons name="edit" size={22} color={colors.editIcon} />
             </Pressable>
           )}
         </View>
@@ -1238,13 +1246,25 @@ export function AddEditEventScreen(props: {
           </>
         ) : (
           <>
-            <View
-              style={{
+            <Pressable
+              onPress={
+                canOpenRoom && itemRoom ? () => onOpenRoom?.(itemRoom.id) : undefined
+              }
+              disabled={!canOpenRoom}
+              accessibilityRole={canOpenRoom ? 'button' : undefined}
+              accessibilityLabel={
+                canOpenRoom && itemRoom ? `Open room ${itemRoom.name}` : undefined
+              }
+              accessibilityHint={
+                canOpenRoom ? 'Opens the room for this asset.' : undefined
+              }
+              style={({ pressed }) => ({
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 12,
                 marginBottom: 8,
-              }}
+                opacity: canOpenRoom && pressed ? 0.7 : 1,
+              })}
             >
               {itemThumbUri ? (
                 <Image
@@ -1262,16 +1282,26 @@ export function AddEditEventScreen(props: {
                 <Text style={[sharedStyles.title, { marginBottom: 0 }]} numberOfLines={2}>
                   {itemLabel}
                 </Text>
-                {contextPropertyName ? (
+                {contextLocationLabel ? (
                   <Text
-                    style={[sharedStyles.subtitle, { marginBottom: 0, marginTop: 2 }]}
+                    style={[
+                      sharedStyles.subtitle,
+                      {
+                        marginBottom: 0,
+                        marginTop: 2,
+                        ...(canOpenRoom ? { color: colors.primary } : null),
+                      },
+                    ]}
                     numberOfLines={2}
                   >
-                    {contextPropertyName}
+                    {contextLocationLabel}
                   </Text>
                 ) : null}
               </View>
-            </View>
+              {canOpenRoom ? (
+                <MaterialIcons name="chevron-right" size={22} color={colors.primary} />
+              ) : null}
+            </Pressable>
             <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>{screenTitle}</Text>
           </>
         )}
@@ -1288,7 +1318,7 @@ export function AddEditEventScreen(props: {
             }}
           >
             <Text style={{ color: colors.overdue, fontWeight: '800', fontSize: 15 }}>
-              Missed service — due {formatDisplayDate(activeDueAt)}
+              Missed service — due {boldTodayNodes(formatDisplayDate(activeDueAt))}
               {activeDaysLate > 0
                 ? ` · ${activeDaysLate} day${activeDaysLate === 1 ? '' : 's'} late`
                 : ''}

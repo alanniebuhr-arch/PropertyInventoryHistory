@@ -793,6 +793,11 @@ export type Project = {
   /** Optional total / budgeted project cost. */
   totalCost?: number;
   photoIds: string[];
+  /**
+   * Ordered photo ids for the project Slideshow (and Project Share favorites).
+   * When undefined, Slideshow falls back to photos marked favorite in gallery order.
+   */
+  slideshowPhotoIds?: string[];
   sortOrder: number;
   createdAtISO: string;
   updatedAtISO?: string;
@@ -853,6 +858,11 @@ export type VendorInteraction = {
   id: string;
   /** When set, interaction is tied to a project vendor. Omit for property-only contacts. */
   vendorId?: string;
+  /**
+   * Optional project link when vendorId is omitted (or to mirror the vendor’s project).
+   * Older rows without this field still resolve project via vendor → project.
+   */
+  projectId?: string;
   /**
    * Property this interaction belongs to. Required when vendorId is omitted.
    * Optional on legacy vendor-linked rows (inferred via vendor → project).

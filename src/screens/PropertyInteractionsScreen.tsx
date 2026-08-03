@@ -37,6 +37,7 @@ import {
   projectsForProperty,
   propertyById,
   propertyIdForInteraction,
+  projectIdForInteraction,
   vendorById,
 } from '../storage';
 import { firstPhotoUriForVendor } from '../vendorPhotos';
@@ -249,8 +250,10 @@ export function PropertyInteractionsScreen(props: {
         .filter((vendor) => vendor.projectId === selectedProjectId)
         .map((vendor) => vendor.id)
     );
-    return propertyScopedInteractions.filter((interaction) =>
-      Boolean(interaction.vendorId && vendorIds.has(interaction.vendorId))
+    return propertyScopedInteractions.filter(
+      (interaction) =>
+        interaction.projectId === selectedProjectId ||
+        Boolean(interaction.vendorId && vendorIds.has(interaction.vendorId))
     );
   }, [propertyScopedInteractions, selectedProjectId, state.projectVendors]);
 
@@ -494,7 +497,10 @@ export function PropertyInteractionsScreen(props: {
       const vendor = interaction.vendorId
         ? vendorById(state, interaction.vendorId)
         : undefined;
-      const vendorProject = vendor ? projectById(state, vendor.projectId) : undefined;
+      const interactionProjectId = projectIdForInteraction(state, interaction);
+      const vendorProject = interactionProjectId
+        ? projectById(state, interactionProjectId)
+        : undefined;
       const propertyIdValue = propertyIdForInteraction(state, interaction);
       const vendorProperty = propertyIdValue
         ? propertyById(state, propertyIdValue)
@@ -1491,7 +1497,10 @@ export function PropertyInteractionsScreen(props: {
                 ? vendorById(state, interaction.vendorId)
                 : undefined;
               const photo = photosForVendorInteraction(state, interaction.id)[0];
-              const vendorProject = vendor ? projectById(state, vendor.projectId) : undefined;
+              const interactionProjectId = projectIdForInteraction(state, interaction);
+              const vendorProject = interactionProjectId
+                ? projectById(state, interactionProjectId)
+                : undefined;
               const vendorProperty = vendorProject
                 ? propertyById(state, vendorProject.propertyId)
                 : interaction.propertyId

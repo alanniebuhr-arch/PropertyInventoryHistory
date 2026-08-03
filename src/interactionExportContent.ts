@@ -31,6 +31,7 @@ export function buildInteractionExportSnapshot(params: {
   state: AppState;
   vendorId?: string;
   propertyId?: string;
+  projectId?: string;
   occurredAtISO: string;
   contactMethod: VendorContactMethod;
   contactName?: string;
@@ -39,7 +40,9 @@ export function buildInteractionExportSnapshot(params: {
   photos: VendorPhoto[];
 }): InteractionExportSnapshot | null {
   const vendor = params.vendorId ? vendorById(params.state, params.vendorId) : undefined;
-  const project = vendor ? projectById(params.state, vendor.projectId) : undefined;
+  const project =
+    (params.projectId ? projectById(params.state, params.projectId) : undefined) ??
+    (vendor ? projectById(params.state, vendor.projectId) : undefined);
   const property =
     (params.propertyId ? propertyById(params.state, params.propertyId) : undefined) ??
     (project ? propertyById(params.state, project.propertyId) : undefined);

@@ -45,6 +45,17 @@ import {
   vendorsForProject,
 } from '../storage';
 import { photosForProject } from '../projectPhotos';
+import {
+  slideshowPhotosForProject,
+  type ProjectCatalogPhoto,
+} from '../projectFavoritePhotos';
+import { PhotoViewerModal, SLIDESHOW_DOUBLE_BACK_MS, type ViewerPhoto } from '../components/PhotoViewerModal';
+import { SlideshowEditorModal } from '../components/SlideshowEditorModal';
+import { ProjectAllPhotosModal } from '../components/ProjectAllPhotosModal';
+import {
+  consumeProjectSearchPhotosReopen,
+  markProjectSearchPhotosReopen,
+} from '../projectSearchPhotosPrefs';
 import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { deletePhotoFile } from '../photoStorage';
 import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
@@ -193,6 +204,15 @@ export function ProjectDetailScreen(props: {
   const [helpVisible, setHelpVisible] = useState(getSectionHelpVisible);
   const [hideRejected, setHideRejected] = useState(getHideRejectedVendors);
   const [showReorderArrows, setShowReorderArrows] = useState(false);
+  const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null);
+  const [slideshowEditorOpen, setSlideshowEditorOpen] = useState(false);
+  const [slideshowPlayPhotos, setSlideshowPlayPhotos] = useState<ViewerPhoto[] | null>(null);
+  const [allPhotosOpen, setAllPhotosOpen] = useState(() =>
+    consumeProjectSearchPhotosReopen(projectId)
+  );
+  /** When Play was started from Search photos, ← Back returns there. */
+  const slideshowReturnToSearchPhotosRef = useRef(false);
+  const slideshowBackPressAtRef = useRef(0);
   const exportRef = useRef<View>(null);
 
   const project = projectById(state, projectId);
@@ -229,6 +249,7 @@ export function ProjectDetailScreen(props: {
       onSearchInteractions,
       onSearchServiceHistory,
       onSearchActivity,
+      onSearchPhotos: openAllPhotos,
       onOpenProject,
       onOpenItem,
       onSave,
@@ -525,6 +546,125 @@ export function ProjectDetailScreen(props: {
   const property = propertyById(state, proj.propertyId);
   const subtitleParts = [property?.name].filter(Boolean);
 
+  const favoritePhotos = slideshowPhotosForProject(state, projectId);
+  const slideshowPhotosFromState: ViewerPhoto[] = favoritePhotos.map((photo) => ({
+    id: photo.id,
+    uri: photo.uri,
+    label: photo.label,
+    notes: photo.notes,
+    onDelete: () => {},
+  }));
+  const slideshowPhotos = slideshowPlayPhotos ?? slideshowPhotosFromState;
+  const slideshowOpen = slideshowIndex != null;
+
+  function openSlideshowEditor() {
+    setSlideshowEditorOpen(true);
+  }
+
+  function openAllPhotos() {
+    setAllPhotosOpen(true);
+  }
+
+  function closeSlideshow() {
+    slideshowBackPressAtRef.current = 0;
+    setSlideshowIndex(null);
+    setSlideshowPlayPhotos(null);
+    if (slideshowReturnToSearchPhotosRef.current) {
+      slideshowReturnToSearchPhotosRef.current = false;
+      setAllPhotosOpen(true);
+    }
+  }
+
+  /** Favorite slideshow: ← Back advances; double-tap closes. Search photos Play: ← Back returns to Search. */
+  function handleHeaderBack() {
+    if (slideshowIndex == null) {
+      onBack();
+      return;
+    }
+    if (slideshowReturnToSearchPhotosRef.current) {
+      closeSlideshow();
+      return;
+    }
+    const length = slideshowPhotos.length;
+    if (length <= 1) {
+      closeSlideshow();
+      return;
+    }
+    const now = Date.now();
+    if (now - slideshowBackPressAtRef.current < SLIDESHOW_DOUBLE_BACK_MS) {
+      closeSlideshow();
+      return;
+    }
+    slideshowBackPressAtRef.current = now;
+    setSlideshowIndex((slideshowIndex + 1) % length);
+  }
+
+  function playFavoriteSlideshow(playState?: AppState) {
+    const source = playState ?? state;
+    const photos = slideshowPhotosForProject(source, projectId);
+    if (photos.length === 0) {
+      Alert.alert(
+        'No slideshow photos',
+        'Add photos in Slideshow, or mark project photos as favorites with the star.'
+      );
+      return;
+    }
+    if (playState) {
+      onSave(playState);
+    }
+    slideshowReturnToSearchPhotosRef.current = false;
+    setSlideshowPlayPhotos(
+      photos.map((photo) => ({
+        id: photo.id,
+        uri: photo.uri,
+        label: photo.label,
+        notes: photo.notes,
+        onDelete: () => {},
+      }))
+    );
+    setSlideshowEditorOpen(false);
+    setAllPhotosOpen(false);
+    slideshowBackPressAtRef.current = 0;
+    setSlideshowIndex(0);
+  }
+
+  function viewAllProjectPhotos(photos: ProjectCatalogPhoto[], startIndex = 0) {
+    if (photos.length === 0) {
+      Alert.alert('No photos', 'Add photos on this project or its punch list first.');
+      return;
+    }
+    const safeIndex = Math.max(0, Math.min(startIndex, photos.length - 1));
+    slideshowReturnToSearchPhotosRef.current = true;
+    setSlideshowPlayPhotos(
+      photos.map((photo) => ({
+        id: photo.id,
+        uri: photo.uri,
+        label: photo.label,
+        notes: photo.notes,
+        onDelete: () => {},
+      }))
+    );
+    setAllPhotosOpen(false);
+    slideshowBackPressAtRef.current = 0;
+    setSlideshowIndex(safeIndex);
+  }
+
+  function openPhotoOwner(photo: ProjectCatalogPhoto) {
+    markProjectSearchPhotosReopen(projectId);
+    setAllPhotosOpen(false);
+    if (photo.punchItemId) {
+      onOpenPunchItem(photo.punchItemId);
+      return;
+    }
+    if (photo.interactionId) {
+      onOpenInteraction(photo.vendorId, photo.interactionId);
+      return;
+    }
+    if (photo.vendorId) {
+      onOpenVendor(photo.vendorId);
+    }
+  }
+
   function saveProjectField(
     patch: Partial<
       Pick<
@@ -743,8 +883,9 @@ export function ProjectDetailScreen(props: {
             expanded={vendorsExpanded}
             count={visibleVendors.length}
             onExpand={() => {
-              setVendorsExpanded(true);
-              void setProjectSectionExpand({ vendors: true });
+              const next = !vendorsExpanded;
+              setVendorsExpanded(next);
+              void setProjectSectionExpand({ vendors: next });
             }}
           />
           <Pressable
@@ -915,7 +1056,20 @@ export function ProjectDetailScreen(props: {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={insets.top}
     >
-      <ScreenBackHeader onPress={onBack}>
+      <ScreenBackHeader onPress={handleHeaderBack}>
+        {slideshowOpen ? (
+          <Text
+            style={{
+              marginLeft: 'auto',
+              color: colors.textMuted,
+              fontSize: 15,
+              fontWeight: '600',
+            }}
+            accessibilityLabel={`Slide ${(slideshowIndex ?? 0) + 1} of ${slideshowPhotos.length}`}
+          >
+            {(slideshowIndex ?? 0) + 1} / {slideshowPhotos.length}
+          </Text>
+        ) : (
         <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Pressable
             onPress={toggleHelp}
@@ -980,7 +1134,7 @@ export function ProjectDetailScreen(props: {
             onPress={() => setMenuOpen(true)}
             accessibilityRole="button"
             accessibilityLabel="Project options"
-            accessibilityHint="Opens actions like share and delete project."
+            accessibilityHint="Opens actions like play slideshow, share, and delete project."
             hitSlop={6}
             style={({ pressed }) => ({
               padding: 4,
@@ -990,8 +1144,9 @@ export function ProjectDetailScreen(props: {
             <MaterialIcons name="settings" size={24} color={colors.primary} />
           </Pressable>
         </View>
+        )}
       </ScreenBackHeader>
-      {helpVisible ? (
+      {helpVisible && !slideshowOpen ? (
         <Text
           style={{
             marginHorizontal: 20,
@@ -1010,6 +1165,17 @@ export function ProjectDetailScreen(props: {
           {projectSearchItems.length > 0 ? ' | Search' : ''} | Utilities
         </Text>
       ) : null}
+      {slideshowOpen ? (
+        <PhotoViewerModal
+          photos={slideshowPhotos}
+          index={slideshowIndex}
+          onIndexChange={(index) => {
+            setSlideshowIndex(index);
+            if (index == null) setSlideshowPlayPhotos(null);
+          }}
+          browseOnly
+        />
+      ) : (
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
@@ -1092,11 +1258,29 @@ export function ProjectDetailScreen(props: {
               expanded={statusExpanded}
               count={1}
               onExpand={() => {
-                setStatusExpanded(true);
-                void setProjectSectionExpand({ status: true });
+                const next = !statusExpanded;
+                setStatusExpanded(next);
+                void setProjectSectionExpand({ status: next });
               }}
               showCountWhenCollapsed={false}
             />
+            {!statusExpanded ? (
+              <Text
+                style={{
+                  flex: 1,
+                  marginLeft: 8,
+                  fontSize: 15,
+                  fontWeight: '600',
+                  color: projectStatusColor(proj.status ?? 'research'),
+                }}
+                numberOfLines={1}
+                accessibilityLabel={`Status: ${projectStatusLabel(proj.status ?? 'research')}`}
+              >
+                {projectStatusLabel(proj.status ?? 'research')}
+              </Text>
+            ) : (
+              <View style={{ flex: 1 }} />
+            )}
             <Pressable
               onPress={() => {
                 const next = !statusExpanded;
@@ -1108,7 +1292,6 @@ export function ProjectDetailScreen(props: {
               accessibilityState={{ expanded: statusExpanded }}
               hitSlop={6}
               style={({ pressed }) => ({
-                marginLeft: 'auto',
                 padding: 4,
                 opacity: pressed ? 0.7 : 1,
               })}
@@ -1189,8 +1372,9 @@ export function ProjectDetailScreen(props: {
                 expanded={remindersExpanded}
                 count={upcomingInteractions.length}
                 onExpand={() => {
-                  setRemindersExpanded(true);
-                  void setProjectSectionExpand({ reminders: true });
+                  const next = !remindersExpanded;
+                  setRemindersExpanded(next);
+                  void setProjectSectionExpand({ reminders: next });
                 }}
               />
               <Pressable
@@ -1401,8 +1585,9 @@ export function ProjectDetailScreen(props: {
               expanded={punchListExpanded}
               count={punchItems.length}
               onExpand={() => {
-                setPunchListExpanded(true);
-                void setProjectSectionExpand({ punchList: true });
+                const next = !punchListExpanded;
+                setPunchListExpanded(next);
+                void setProjectSectionExpand({ punchList: next });
               }}
             />
             <Pressable
@@ -1489,8 +1674,9 @@ export function ProjectDetailScreen(props: {
               expanded={recentInteractionsExpanded}
               count={projectInteractions.length}
               onExpand={() => {
-                setRecentInteractionsExpanded(true);
-                void setProjectSectionExpand({ recentInteractions: true });
+                const next = !recentInteractionsExpanded;
+                setRecentInteractionsExpanded(next);
+                void setProjectSectionExpand({ recentInteractions: next });
               }}
             />
             {projectInteractions.length > 0 ? (
@@ -1582,6 +1768,7 @@ export function ProjectDetailScreen(props: {
           ) : null}
         </View>
       </ScrollView>
+      )}
 
       {keyboardDone.accessory}
 
@@ -1634,6 +1821,39 @@ export function ProjectDetailScreen(props: {
               <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
                 Share
               </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => runMenuAction(() => playFavoriteSlideshow())}
+              accessibilityRole="button"
+              accessibilityLabel="Play slideshow"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Play slideshow
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => runMenuAction(openSlideshowEditor)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit slideshow"
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialIcons name="star" size={20} color={colors.primary} />
+                <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                  Edit slideshow
+                </Text>
+              </View>
             </Pressable>
             {hasRejectedVendor ? (
               <Pressable
@@ -1806,6 +2026,24 @@ export function ProjectDetailScreen(props: {
           </View>
         </View>
       </Modal>
+
+      <SlideshowEditorModal
+        visible={slideshowEditorOpen}
+        state={state}
+        projectId={projectId}
+        onSave={onSave}
+        onClose={() => setSlideshowEditorOpen(false)}
+        onPlay={playFavoriteSlideshow}
+      />
+
+      <ProjectAllPhotosModal
+        visible={allPhotosOpen}
+        state={state}
+        projectId={projectId}
+        onClose={() => setAllPhotosOpen(false)}
+        onView={viewAllProjectPhotos}
+        onOpenOwner={openPhotoOwner}
+      />
 
       {exporting ? (
         <View

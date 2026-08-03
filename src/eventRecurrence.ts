@@ -464,6 +464,21 @@ export function isAfterToday(
   return calendarKey(due) > calendarKey(today);
 }
 
+/** True when the stored calendar date is the same local calendar day as today. */
+export function isToday(
+  iso: string | null | undefined,
+  now: Date = new Date()
+): boolean {
+  const due = calendarYmdFromISO(iso);
+  if (!due) return false;
+  const today = {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+  };
+  return calendarKey(due) === calendarKey(today);
+}
+
 /** True when the stored calendar date is today or later (vs local today). */
 export function isOnOrAfterToday(
   iso: string | null | undefined,

@@ -42,7 +42,9 @@ export function buildInteractionsExportSnapshot(args: {
 
   const entries = interactions.flatMap((interaction) => {
     const vendor = interaction.vendorId ? vendorById(state, interaction.vendorId) : undefined;
-    const vendorProject = vendor ? projectById(state, vendor.projectId) : undefined;
+    const vendorProject =
+      (interaction.projectId ? projectById(state, interaction.projectId) : undefined) ??
+      (vendor ? projectById(state, vendor.projectId) : undefined);
     const propertyId = propertyIdForInteraction(state, interaction);
     const property = propertyId ? propertyById(state, propertyId) : undefined;
     if (!vendor && !property) return [];

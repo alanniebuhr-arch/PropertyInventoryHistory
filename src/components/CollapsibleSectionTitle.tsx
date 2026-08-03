@@ -5,13 +5,13 @@ import { sharedStyles } from '../theme';
 import { collapsedSectionLabel } from '../utils';
 
 /**
- * Blue section heading. When collapsed with count > 0, tapping the title expands.
- * Expand/collapse chevron remains the control for toggling (including collapse).
+ * Blue section heading. When count > 0, tapping the title expands or collapses.
+ * Expand/collapse chevron remains an alternate toggle control.
  */
 export function CollapsibleSectionTitle(props: {
   title: string;
   expanded: boolean;
-  /** Item count; heading expands only when collapsed and count > 0. */
+  /** Item count; heading toggles only when count > 0. */
   count: number;
   onExpand: () => void;
   style?: StyleProp<TextStyle>;
@@ -32,7 +32,7 @@ export function CollapsibleSectionTitle(props: {
   const label = showCountWhenCollapsed
     ? collapsedSectionLabel(title, expanded, count)
     : title;
-  const canExpandFromHeading = !expanded && count > 0;
+  const canToggleFromHeading = count > 0;
 
   const text = (
     <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }, style]}>
@@ -40,7 +40,7 @@ export function CollapsibleSectionTitle(props: {
     </Text>
   );
 
-  if (!canExpandFromHeading) {
+  if (!canToggleFromHeading) {
     return containerStyle ? <View style={containerStyle}>{text}</View> : text;
   }
 
@@ -48,7 +48,8 @@ export function CollapsibleSectionTitle(props: {
     <Pressable
       onPress={onExpand}
       accessibilityRole="button"
-      accessibilityLabel={`Show ${title}`}
+      accessibilityLabel={expanded ? `Hide ${title}` : `Show ${title}`}
+      accessibilityState={{ expanded }}
       hitSlop={6}
       style={({ pressed }) => [containerStyle, { opacity: pressed ? 0.7 : 1 }]}
     >

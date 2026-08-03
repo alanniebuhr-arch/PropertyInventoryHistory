@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState as RnAppState,
   Dimensions,
+  Image,
   Keyboard,
   Modal,
   Platform,
@@ -15,12 +16,20 @@ import type { ScrollView as RNScrollView, TextInput as RNTextInput } from 'react
 import { MaterialIcons } from '@expo/vector-icons';
 import { Text, TextInput, useTextScaleControls } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { AppState, InventoryItem, ItemEvent, VendorInteraction } from '../types';
+import type {
+  AppState,
+  InventoryItem,
+  ItemEvent,
+  ProjectPunchItem,
+  PropertyTodo,
+  VendorInteraction,
+} from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import {
   ItemListRow,
   PropertyInteractionListRow,
   PropertyServiceListRow,
+  PropertyTodoListRow,
 } from '../components/ListRows';
 import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
 import { sharedStyles, colors } from '../theme';
@@ -33,6 +42,7 @@ import {
   findAssetSearchMatch,
   findInteractionSearchMatch,
   findServiceSearchMatch,
+  findTodoSearchMatch,
   type InteractionSearchMatchField,
 } from '../searchSnippet';
 import {
@@ -41,16 +51,24 @@ import {
   allVendorInteractions,
   eventsForProperty,
   firstPhotoUriForItem,
+  ideasForProperty,
   interactionsForProperty,
+  interactionsForProject,
   itemById,
   itemsForProperty,
   photosForEvent,
+  photosForPropertyTodo,
+  photosForPunchItem,
   photosForVendorInteraction,
   projectById,
+  projectsForProperty,
   propertyById,
   propertyIdForInteraction,
+  projectIdForInteraction,
+  punchItemsForProject,
   roomById,
   serviceHistoryEventsForItem,
+  todosForProperty,
   vendorById,
 } from '../storage';
 import {
@@ -65,6 +83,7 @@ import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
 import { isRoomUnlocked } from '../roomAuth';
+import { propertyCoverPhotoUri } from '../propertyPhotos';
 import {
   activitySearchScopeKey,
   getActivitySearchPrefs,
@@ -86,14 +105,16 @@ type ActivityEntry =
 
 type SearchResultEntry =
   | ActivityEntry
-  | { kind: 'asset'; id: string; item: InventoryItem };
+  | { kind: 'asset'; id: string; item: InventoryItem }
+  | { kind: 'todo' | 'idea'; id: string; todo: PropertyTodo }
+  | { kind: 'punch'; id: string; punchItem: ProjectPunchItem };
 
 export function PropertyActivitySearchScreen(props: {
   state: AppState;
   /** When omitted, search across all properties. */
   propertyId?: string;
   onBack: () => void;
-  onGoToProperty?: () => void;
+  onGoToProperty?: (propertyId: string) => void;
   onOpenInteraction: (
     vendorId: string | undefined,
     interactionId: string,
@@ -105,16 +126,20 @@ export function PropertyActivitySearchScreen(props: {
   ) => void;
   onOpenEvent: (itemId: string, eventId: string) => void;
   onOpenItem: (itemId: string) => void;
+  onOpenTodo: (todoId: string, options?: { kind?: 'todo' | 'idea' }) => void;
+  onOpenPunchItem: (punchItemId: string) => void;
   onOpenVendor: (vendorId: string) => void;
 }) {
   const {
     state,
-    propertyId,
+    propertyId: routePropertyId,
     onBack,
     onGoToProperty,
     onOpenInteraction,
     onOpenEvent,
     onOpenItem,
+    onOpenTodo,
+    onOpenPunchItem,
     onOpenVendor,
   } = props;
   const insets = useSafeAreaInsets();
@@ -127,7 +152,13 @@ export function PropertyActivitySearchScreen(props: {
   const searchInputRef = useRef<RNTextInput>(null);
   const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const scopeKey = activitySearchScopeKey(propertyId);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(
+    () => routePropertyId ?? null
+  );
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [propertyMenuOpen, setPropertyMenuOpen] = useState(false);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const scopeKey = activitySearchScopeKey(selectedPropertyId ?? undefined);
   const savedPrefs = getActivitySearchPrefs(scopeKey);
   const scrollYRef = useRef(savedPrefs.scrollY);
   const pendingRestoreScrollYRef = useRef<number | null>(
@@ -139,8 +170,65 @@ export function PropertyActivitySearchScreen(props: {
   /** Bumps when room unlock session may have changed (resume). */
   const [roomAuthEpoch, setRoomAuthEpoch] = useState(0);
 
-  const isAllScope = !propertyId;
-  const property = propertyId ? propertyById(state, propertyId) : undefined;
+  const propertiesInList = useMemo(
+    () => [...state.properties].sort((a, b) => a.name.localeCompare(b.name)),
+    [state.properties]
+  );
+  const showPropertyPicker = propertiesInList.length > 1;
+
+  const projectsInList = useMemo(() => {
+    if (!selectedPropertyId) return [];
+    return projectsForProperty(state, selectedPropertyId);
+  }, [selectedPropertyId, state]);
+  const showProjectPicker = Boolean(selectedPropertyId) && projectsInList.length > 0;
+
+  const isAllScope = selectedPropertyId == null;
+  const property = selectedPropertyId
+    ? propertyById(state, selectedPropertyId)
+    : undefined;
+  const routeProperty = routePropertyId
+    ? propertyById(state, routePropertyId)
+    : undefined;
+
+  const selectedPropertyLabel =
+    selectedPropertyId == null
+      ? 'All properties'
+      : (propertiesInList.find((entry) => entry.id === selectedPropertyId)?.name ??
+        'All properties');
+  const selectedPropertyCoverUri = property
+    ? propertyCoverPhotoUri(state, property)
+    : undefined;
+  const selectedProjectLabel =
+    selectedProjectId == null
+      ? 'All projects'
+      : (projectsInList.find((entry) => entry.id === selectedProjectId)?.name ??
+        'All projects');
+
+  useEffect(() => {
+    if (
+      selectedPropertyId &&
+      !propertiesInList.some((entry) => entry.id === selectedPropertyId)
+    ) {
+      setSelectedPropertyId(null);
+      setSelectedProjectId(null);
+    }
+  }, [propertiesInList, selectedPropertyId]);
+
+  useEffect(() => {
+    if (
+      selectedProjectId &&
+      !projectsInList.some((entry) => entry.id === selectedProjectId)
+    ) {
+      setSelectedProjectId(null);
+    }
+  }, [projectsInList, selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setSelectedProjectId(null);
+      setProjectMenuOpen(false);
+    }
+  }, [selectedPropertyId]);
 
   useEffect(() => {
     const prefs = getActivitySearchPrefs(scopeKey);
@@ -171,11 +259,13 @@ export function PropertyActivitySearchScreen(props: {
 
   const activityAll = useMemo((): ActivityEntry[] => {
     void roomAuthEpoch;
-    const interactions = propertyId
-      ? interactionsForProperty(state, propertyId)
-      : allVendorInteractions(state);
-    const events = (propertyId
-      ? eventsForProperty(state, propertyId)
+    const interactions = selectedProjectId
+      ? interactionsForProject(state, selectedProjectId)
+      : selectedPropertyId
+        ? interactionsForProperty(state, selectedPropertyId)
+        : allVendorInteractions(state);
+    const events = (selectedPropertyId
+      ? eventsForProperty(state, selectedPropertyId)
       : allItemEvents(state)
     ).filter((event) => {
       const item = itemById(state, event.itemId);
@@ -195,7 +285,7 @@ export function PropertyActivitySearchScreen(props: {
         event,
       })),
     ].sort((a, b) => b.at.localeCompare(a.at));
-  }, [state, propertyId, roomAuthEpoch]);
+  }, [state, selectedPropertyId, selectedProjectId, roomAuthEpoch]);
 
   const filteredResults = useMemo((): SearchResultEntry[] => {
     void roomAuthEpoch;
@@ -208,7 +298,10 @@ export function PropertyActivitySearchScreen(props: {
         const vendor = interaction.vendorId
           ? vendorById(state, interaction.vendorId)
           : undefined;
-        const vendorProject = vendor ? projectById(state, vendor.projectId) : undefined;
+        const vendorProjectId = projectIdForInteraction(state, interaction);
+        const vendorProject = vendorProjectId
+          ? projectById(state, vendorProjectId)
+          : undefined;
         const interactionPropertyId = propertyIdForInteraction(state, interaction);
         const interactionProperty = interactionPropertyId
           ? propertyById(state, interactionPropertyId)
@@ -247,8 +340,8 @@ export function PropertyActivitySearchScreen(props: {
       );
     });
 
-    const assetPool = propertyId
-      ? itemsForProperty(state, propertyId)
+    const assetPool = selectedPropertyId
+      ? itemsForProperty(state, selectedPropertyId)
       : allItems(state);
     const matchedAssets = assetPool
       .filter((item) => itemVisibleWithRoomAuth(state, item))
@@ -279,15 +372,86 @@ export function PropertyActivitySearchScreen(props: {
       .sort((a, b) => itemDisplayLabel(a).localeCompare(itemDisplayLabel(b)))
       .map((item) => ({ kind: 'asset' as const, id: item.id, item }));
 
-    return [...matchedActivity, ...matchedAssets];
-  }, [activityAll, property?.name, propertyId, roomAuthEpoch, searchQuery, state]);
+    const todoPool = selectedPropertyId
+      ? [
+          ...todosForProperty(state, selectedPropertyId),
+          ...ideasForProperty(state, selectedPropertyId),
+        ]
+      : state.propertyTodos.slice();
+    const matchedTodos = todoPool
+      .filter((todo) => {
+        const todoProperty = propertyById(state, todo.propertyId);
+        return Boolean(
+          findTodoSearchMatch({
+            query,
+            title: todo.title,
+            notes: todo.notes,
+            dateLabel: todo.dueAtISO
+              ? formatDisplayDate(todo.dueAtISO)
+              : undefined,
+            propertyName: todoProperty?.name ?? property?.name,
+          })
+        );
+      })
+      .slice()
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map((todo) => ({
+        kind: (todo.kind === 'idea' ? 'idea' : 'todo') as 'todo' | 'idea',
+        id: todo.id,
+        todo,
+      }));
+
+    const punchPool = selectedProjectId
+      ? punchItemsForProject(state, selectedProjectId)
+      : selectedPropertyId
+        ? projectsForProperty(state, selectedPropertyId).flatMap((project) =>
+            punchItemsForProject(state, project.id)
+          )
+        : state.projectPunchItems.slice();
+    const matchedPunchItems = punchPool
+      .filter((punchItem) => {
+        const punchProject = projectById(state, punchItem.projectId);
+        const punchProperty = punchProject
+          ? propertyById(state, punchProject.propertyId)
+          : undefined;
+        return Boolean(
+          findTodoSearchMatch({
+            query,
+            title: punchItem.title,
+            notes: punchItem.notes,
+            dateLabel: punchItem.dueAtISO
+              ? formatDisplayDate(punchItem.dueAtISO)
+              : undefined,
+            propertyName: punchProperty?.name ?? property?.name,
+            projectName: punchProject?.name,
+          })
+        );
+      })
+      .slice()
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map((punchItem) => ({
+        kind: 'punch' as const,
+        id: punchItem.id,
+        punchItem,
+      }));
+
+    return [...matchedActivity, ...matchedAssets, ...matchedTodos, ...matchedPunchItems];
+  }, [
+    activityAll,
+    property?.name,
+    selectedProjectId,
+    selectedPropertyId,
+    roomAuthEpoch,
+    searchQuery,
+    state,
+  ]);
 
   /** True when locked-room assets/events are omitted from what would otherwise appear. */
   const skippedLockedContent = useMemo(() => {
     void roomAuthEpoch;
     const query = searchQuery.trim();
-    const eventPool = propertyId
-      ? eventsForProperty(state, propertyId)
+    const eventPool = selectedPropertyId
+      ? eventsForProperty(state, selectedPropertyId)
       : allItemEvents(state);
     const lockedEvents = eventPool.filter((event) => {
       const item = itemById(state, event.itemId);
@@ -319,8 +483,8 @@ export function PropertyActivitySearchScreen(props: {
       }
     }
 
-    const assetPool = propertyId
-      ? itemsForProperty(state, propertyId)
+    const assetPool = selectedPropertyId
+      ? itemsForProperty(state, selectedPropertyId)
       : allItems(state);
     for (const item of assetPool) {
       if (itemVisibleWithRoomAuth(state, item)) continue;
@@ -349,7 +513,7 @@ export function PropertyActivitySearchScreen(props: {
       }
     }
     return false;
-  }, [property?.name, propertyId, roomAuthEpoch, searchQuery, state]);
+  }, [property?.name, selectedPropertyId, roomAuthEpoch, searchQuery, state]);
 
   // Fallback if content never grows past saved y (shorter result set).
   useEffect(() => {
@@ -415,7 +579,7 @@ export function PropertyActivitySearchScreen(props: {
     return () => cancelAnimationFrame(frame);
   }, [keyboardHeight, scrollFieldIntoView]);
 
-  if (propertyId && !property) {
+  if (routePropertyId && !routeProperty) {
     return (
       <View style={[sharedStyles.screen, { paddingTop: insets.top, padding: 16 }]}>
         <Text style={sharedStyles.emptyText}>Property not found.</Text>
@@ -437,9 +601,9 @@ export function PropertyActivitySearchScreen(props: {
             gap: 4,
           }}
         >
-          {onGoToProperty ? (
+          {selectedPropertyId && onGoToProperty ? (
             <Pressable
-              onPress={onGoToProperty}
+              onPress={() => onGoToProperty(selectedPropertyId)}
               accessibilityRole="button"
               accessibilityLabel="Go to property"
               hitSlop={8}
@@ -510,38 +674,307 @@ export function PropertyActivitySearchScreen(props: {
         scrollEventThrottle={16}
       >
         <Text style={sharedStyles.title}>Search all</Text>
-        <Text style={sharedStyles.subtitle}>
-          {property?.name ?? (isAllScope ? 'All properties' : '')}
-        </Text>
+        {!showPropertyPicker ? (
+          <Text style={sharedStyles.subtitle}>
+            {property?.name ?? (isAllScope ? 'All properties' : '')}
+          </Text>
+        ) : null}
+
+        {showPropertyPicker ? (
+          <View style={{ marginTop: 4, marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              {selectedPropertyCoverUri ? (
+                <Image
+                  source={{ uri: selectedPropertyCoverUri }}
+                  style={{
+                    width: 73,
+                    height: 73,
+                    borderRadius: 2,
+                    backgroundColor: colors.photoPlaceholder,
+                  }}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: 73,
+                    height: 73,
+                    borderRadius: 2,
+                    backgroundColor: colors.photoPlaceholder,
+                  }}
+                />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={sharedStyles.fieldLabel}>Property</Text>
+                <Pressable
+                  onPress={() => {
+                    setProjectMenuOpen(false);
+                    setPropertyMenuOpen((open) => !open);
+                  }}
+                  style={({ pressed }) => [
+                    sharedStyles.input,
+                    {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Filter by property"
+                  accessibilityHint="Opens a list of properties"
+                  accessibilityState={{ expanded: propertyMenuOpen }}
+                >
+                  <Text style={{ fontSize: 16, color: colors.text, flex: 1 }} numberOfLines={1}>
+                    {selectedPropertyLabel}
+                  </Text>
+                  <MaterialIcons
+                    name={propertyMenuOpen ? 'arrow-drop-up' : 'arrow-drop-down'}
+                    size={24}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
+              </View>
+            </View>
+            {propertyMenuOpen ? (
+              <View
+                style={{
+                  marginTop: 4,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  backgroundColor: colors.card,
+                  overflow: 'hidden',
+                }}
+              >
+                <Pressable
+                  onPress={() => {
+                    setSelectedPropertyId(null);
+                    setSelectedProjectId(null);
+                    setPropertyMenuOpen(false);
+                  }}
+                  style={({ pressed }) => [
+                    {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                      backgroundColor: pressed ? colors.bg : 'transparent',
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedPropertyId == null }}
+                >
+                  <Text style={{ fontSize: 16, color: colors.text, flex: 1 }}>All properties</Text>
+                  {selectedPropertyId == null ? (
+                    <MaterialIcons name="check" size={20} color={colors.primary} />
+                  ) : null}
+                </Pressable>
+                {propertiesInList.map((entry, index) => {
+                  const selected = selectedPropertyId === entry.id;
+                  const rowCoverUri = propertyCoverPhotoUri(state, entry);
+                  return (
+                    <Pressable
+                      key={entry.id}
+                      onPress={() => {
+                        setSelectedPropertyId(entry.id);
+                        setSelectedProjectId(null);
+                        setPropertyMenuOpen(false);
+                      }}
+                      style={({ pressed }) => [
+                        {
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          paddingHorizontal: 12,
+                          paddingVertical: 12,
+                          borderBottomWidth: index < propertiesInList.length - 1 ? 1 : 0,
+                          borderBottomColor: colors.border,
+                          backgroundColor: pressed ? colors.bg : 'transparent',
+                        },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      {rowCoverUri ? (
+                        <Image
+                          source={{ uri: rowCoverUri }}
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 2,
+                            backgroundColor: colors.photoPlaceholder,
+                          }}
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 2,
+                            backgroundColor: colors.photoPlaceholder,
+                          }}
+                        />
+                      )}
+                      <Text style={{ fontSize: 16, color: colors.text, flex: 1 }} numberOfLines={1}>
+                        {entry.name}
+                      </Text>
+                      {selected ? (
+                        <MaterialIcons name="check" size={20} color={colors.primary} />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {showProjectPicker ? (
+          <View style={{ marginTop: showPropertyPicker ? 0 : 4, marginBottom: 8 }}>
+            <Text style={sharedStyles.fieldLabel}>Project</Text>
+            <Pressable
+              onPress={() => {
+                setPropertyMenuOpen(false);
+                setProjectMenuOpen((open) => !open);
+              }}
+              style={({ pressed }) => [
+                sharedStyles.input,
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Filter by project"
+              accessibilityHint="Opens a list of projects"
+              accessibilityState={{ expanded: projectMenuOpen }}
+            >
+              <Text style={{ fontSize: 16, color: colors.text, flex: 1 }} numberOfLines={1}>
+                {selectedProjectLabel}
+              </Text>
+              <MaterialIcons
+                name={projectMenuOpen ? 'arrow-drop-up' : 'arrow-drop-down'}
+                size={24}
+                color={colors.textMuted}
+              />
+            </Pressable>
+            {projectMenuOpen ? (
+              <View
+                style={{
+                  marginTop: 4,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  backgroundColor: colors.card,
+                  overflow: 'hidden',
+                }}
+              >
+                <Pressable
+                  onPress={() => {
+                    setSelectedProjectId(null);
+                    setProjectMenuOpen(false);
+                  }}
+                  style={({ pressed }) => [
+                    {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                      backgroundColor: pressed ? colors.bg : 'transparent',
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedProjectId == null }}
+                >
+                  <Text style={{ fontSize: 16, color: colors.text, flex: 1 }}>All projects</Text>
+                  {selectedProjectId == null ? (
+                    <MaterialIcons name="check" size={20} color={colors.primary} />
+                  ) : null}
+                </Pressable>
+                {projectsInList.map((entry, index) => {
+                  const selected = selectedProjectId === entry.id;
+                  return (
+                    <Pressable
+                      key={entry.id}
+                      onPress={() => {
+                        setSelectedProjectId(entry.id);
+                        setProjectMenuOpen(false);
+                      }}
+                      style={({ pressed }) => [
+                        {
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingHorizontal: 12,
+                          paddingVertical: 12,
+                          borderBottomWidth: index < projectsInList.length - 1 ? 1 : 0,
+                          borderBottomColor: colors.border,
+                          backgroundColor: pressed ? colors.bg : 'transparent',
+                        },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      <Text style={{ fontSize: 16, color: colors.text, flex: 1 }} numberOfLines={1}>
+                        {entry.name}
+                      </Text>
+                      {selected ? (
+                        <MaterialIcons name="check" size={20} color={colors.primary} />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={{ marginBottom: 8 }}>
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
+              justifyContent: 'space-between',
               gap: 4,
               marginBottom: 6,
-              marginTop: 12,
+              marginTop: showPropertyPicker || showProjectPicker ? 4 : 12,
             }}
           >
-            <Text style={[sharedStyles.fieldLabel, { marginBottom: 0, marginTop: 0 }]}>
-              Search
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={[sharedStyles.fieldLabel, { marginBottom: 0, marginTop: 0 }]}>
+                Search
+              </Text>
+              {skippedLockedContent ? (
+                <MaterialIcons
+                  name="lock"
+                  size={16}
+                  color={colors.textMuted}
+                  accessibilityLabel="Some matching results are hidden in locked rooms"
+                />
+              ) : null}
+            </View>
+            <Text
+              style={[sharedStyles.fieldLabel, { marginBottom: 0, marginTop: 0 }]}
+              accessibilityLabel={`${filteredResults.length} results`}
+            >
+              ({filteredResults.length})
             </Text>
-            {skippedLockedContent ? (
-              <MaterialIcons
-                name="lock"
-                size={16}
-                color={colors.textMuted}
-                accessibilityLabel="Some matching results are hidden in locked rooms"
-              />
-            ) : null}
           </View>
           <TextInput
             ref={searchInputRef}
             style={sharedStyles.input}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Interactions, services, assets…"
+            placeholder="Interactions, services, assets, to-dos, punch list…"
             placeholderTextColor={colors.textMuted}
             autoCorrect={false}
             clearButtonMode="while-editing"
@@ -566,8 +999,9 @@ export function PropertyActivitySearchScreen(props: {
                   ? vendorById(state, interaction.vendorId)
                   : undefined;
                 const photo = photosForVendorInteraction(state, interaction.id)[0];
-                const vendorProject = vendor
-                  ? projectById(state, vendor.projectId)
+                const vendorProjectId = projectIdForInteraction(state, interaction);
+                const vendorProject = vendorProjectId
+                  ? projectById(state, vendorProjectId)
                   : undefined;
                 const interactionPropertyId = propertyIdForInteraction(state, interaction);
                 const interactionProperty = interactionPropertyId
@@ -635,6 +1069,70 @@ export function PropertyActivitySearchScreen(props: {
                     onPressVendor={vendor ? () => onOpenVendor(vendor.id) : undefined}
                     cardBackgroundColor={colors.helpBg}
                     cornerIcon="forum"
+                  />
+                );
+              }
+
+              if (entry.kind === 'todo' || entry.kind === 'idea') {
+                const todo = entry.todo;
+                const todoProperty = propertyById(state, todo.propertyId);
+                const photo = photosForPropertyTodo(state, todo.id)[0];
+                const dueLabel = todo.dueAtISO
+                  ? formatDisplayDate(todo.dueAtISO)
+                  : undefined;
+                const notes =
+                  isAllScope && todoProperty
+                    ? [todoProperty.name, todo.notes?.trim()]
+                        .filter(Boolean)
+                        .join(' · ')
+                    : todo.notes;
+                return (
+                  <PropertyTodoListRow
+                    key={`${entry.kind}:${todo.id}`}
+                    title={todo.title}
+                    dueLabel={dueLabel}
+                    notes={notes}
+                    done={todo.done}
+                    thumbnailUri={photo?.localUri}
+                    variant={entry.kind}
+                    onPress={() => onOpenTodo(todo.id, { kind: entry.kind })}
+                    cardBackgroundColor={colors.historyCardBg}
+                    cornerIcon={entry.kind === 'idea' ? 'notes' : 'checklist'}
+                  />
+                );
+              }
+
+              if (entry.kind === 'punch') {
+                const punchItem = entry.punchItem;
+                const punchProject = projectById(state, punchItem.projectId);
+                const punchProperty = punchProject
+                  ? propertyById(state, punchProject.propertyId)
+                  : undefined;
+                const photo = photosForPunchItem(state, punchItem.id)[0];
+                const dueLabel = punchItem.dueAtISO
+                  ? formatDisplayDate(punchItem.dueAtISO)
+                  : undefined;
+                const scopeParts =
+                  selectedProjectId == null
+                    ? [
+                        isAllScope ? punchProperty?.name : undefined,
+                        punchProject?.name,
+                      ].filter(Boolean)
+                    : [];
+                const notes = [...scopeParts, punchItem.notes?.trim()]
+                  .filter(Boolean)
+                  .join(' · ');
+                return (
+                  <PropertyTodoListRow
+                    key={`punch:${punchItem.id}`}
+                    title={punchItem.title}
+                    dueLabel={dueLabel}
+                    notes={notes || undefined}
+                    done={punchItem.done}
+                    thumbnailUri={photo?.localUri}
+                    onPress={() => onOpenPunchItem(punchItem.id)}
+                    cardBackgroundColor={colors.historyCardBg}
+                    cornerIcon="assignment"
                   />
                 );
               }

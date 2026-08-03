@@ -6,6 +6,7 @@ import { sharedStyles, colors } from '../theme';
 import { formatDisplayDate, formatDisplayDateParts } from '../utils';
 import { isOverdue, upcomingDueAtISO } from '../eventRecurrence';
 import { EVENT_LIST_THUMB_SIZE } from './ListRows';
+import { boldTodayNodes } from './TextWithBoldToday';
 import { Text } from '../textScale';
 
 /** Shared card for Reminders (service events and dated to-dos). */
@@ -92,11 +93,14 @@ export function UpcomingReminderCard(props: {
             <>
               <Text style={{ fontWeight: '700', color: colors.interactionDate }}>{dateParts.date}</Text>
               {dateParts.rest ? (
-                <Text style={{ fontWeight: '500', color: colors.textMuted }}>{` ${dateParts.rest}`}</Text>
+                <Text style={{ fontWeight: '500', color: colors.textMuted }}>
+                  {' '}
+                  {boldTodayNodes(dateParts.rest)}
+                </Text>
               ) : null}
             </>
           ) : (
-            dateLabel
+            boldTodayNodes(dateLabel)
           )}
         </Text>
       </View>
