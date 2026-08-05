@@ -6,7 +6,7 @@ import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handl
 import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import type { AppState, AirConditionerDetails, ApplianceDetails, AutomobileDetails, ElectricPanelDetails, EvChargerDetails, FurnaceDetails, GarageDoorDetails, GeneratorDetails, HotTubDetails, InventoryItem, IrrigationDetails, ItemDetails, ItemPhoto, PoolDetails, RadonMitigationDetails, RoofDetails, SecuritySystemDetails, SolarDetails, SumpPumpDetails, WasteWaterDetails, WaterHeaterDetails, WaterMainDetails, WaterTreatmentDetails, WellPumpDetails } from '../types';
+import type { AppState, AirConditionerDetails, ApplianceDetails, AutomobileDetails, ElectricPanelDetails, EvChargerDetails, FurnaceDetails, GarageDoorDetails, GeneratorDetails, HotTubDetails, InventoryItem, IrrigationDetails, ItemDetails, ItemPhoto, PoolDetails, RadonMitigationDetails, RoofDetails, SecuritySystemDetails, SolarDetails, SumpPumpDetails, ToiletDetails, WasteWaterDetails, WaterHeaterDetails, WaterMainDetails, WaterTreatmentDetails, WellPumpDetails } from '../types';
 import { EventListRow } from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { CollapsibleSectionTitle } from '../components/CollapsibleSectionTitle';
@@ -48,6 +48,7 @@ import {
   setPropertyUpcomingHorizon,
 } from '../upcomingHorizonPrefs';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { deleteDocumentFile } from '../documentStorage';
 import { updateApplianceDetails } from '../appliancePhotos';
 import { updateWaterMainDetails, applyWaterMainDetailsChange } from '../waterMainPhotos';
@@ -71,6 +72,7 @@ import { updateIrrigationDetails } from '../irrigationPhotos';
 import { updateEvChargerDetails } from '../evChargerPhotos';
 import { updateSolarDetails } from '../solarPhotos';
 import { updateHotTubDetails } from '../hotTubPhotos';
+import { updateToiletDetails } from '../toiletPhotos';
 import {
   addItemExtraDocuments,
   itemExtraDocumentRows,
@@ -96,6 +98,7 @@ import { IrrigationDisplayView } from '../components/IrrigationDisplayView';
 import { EvChargerDisplayView } from '../components/EvChargerDisplayView';
 import { SolarDisplayView } from '../components/SolarDisplayView';
 import { HotTubDisplayView } from '../components/HotTubDisplayView';
+import { ToiletDisplayView } from '../components/ToiletDisplayView';
 import { ItemExportSheet } from '../components/ItemExportSheet';
 import { SharePhotoModeModal } from '../components/SharePhotoModeModal';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
@@ -105,6 +108,7 @@ import {
   usePropertyGearNav,
 } from '../components/PropertyGearNavItems';
 import { ItemDetailScrollContext } from '../itemDetailScrollContext';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import {
   KeyboardDoneTextInputContext,
   useKeyboardDoneAccessory,
@@ -404,6 +408,7 @@ export function ItemDetailScreen(props: {
   const isEvCharger = inv.itemTypeId === 'ev_charger';
   const isSolar = inv.itemTypeId === 'solar';
   const isHotTub = inv.itemTypeId === 'hot_tub';
+  const isToilet = inv.itemTypeId === 'toilet';
   const applianceDetails = details.kind === 'appliance' ? details : null;
   const waterMainDetails = details.kind === 'water_main' ? details : null;
   const wasteWaterDetails = details.kind === 'waste_water' ? details : null;
@@ -425,6 +430,7 @@ export function ItemDetailScreen(props: {
   const evChargerDetails = details.kind === 'ev_charger' ? details : null;
   const solarDetails = details.kind === 'solar' ? details : null;
   const hotTubDetails = details.kind === 'hot_tub' ? details : null;
+  const toiletDetails = details.kind === 'toilet' ? details : null;
   const photos = photosForItem(state, itemId);
   const events = eventsForItem(state, itemId);
   const historyEvents = serviceHistoryEventsForItem(state, itemId);
@@ -646,6 +652,11 @@ export function ItemDetailScreen(props: {
     onSave(updateHotTubDetails(state, itemId, next));
   }
 
+  function handleToiletDetailsChange(next: ToiletDetails) {
+    setDetails(next);
+    onSave(updateToiletDetails(state, itemId, next));
+  }
+
   async function addPhoto(sourceUri: string) {
     await addPhotos([sourceUri]);
   }
@@ -656,12 +667,12 @@ export function ItemDetailScreen(props: {
       sourceUris.map(async (sourceUri) => {
         const photoId = uid('photo');
         const localUri = await persistPhotoFromUri(sourceUri, photoId);
-        return {
+        return withReusePhotoMeta(sourceUri, {
           id: photoId,
           itemId,
           localUri,
           createdAtISO: nowISO(),
-        };
+        });
       })
     );
     const newPhotoIds = newPhotos.map((p) => p.id);
@@ -698,7 +709,7 @@ export function ItemDetailScreen(props: {
         itemId,
         photoId,
         direction,
-        inv.photoIds
+        photos.map((photo) => photo.id)
       )
     );
   }
@@ -913,6 +924,7 @@ export function ItemDetailScreen(props: {
   return (
     <ItemDetailScrollContext.Provider value={handleFieldFocus}>
       <KeyboardDoneTextInputContext.Provider value={keyboardDone.contextValue}>
+      <ReuseExistingPhotosProvider state={state} propertyId={propertyId}>
       <KeyboardAvoidingView
         style={[sharedStyles.screen, { paddingTop: insets.top }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1027,6 +1039,7 @@ export function ItemDetailScreen(props: {
             initialEditingSection={startEditingSection}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isWaterMain && waterMainDetails ? (
           <WaterMainDisplayView
@@ -1037,6 +1050,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleWaterMainDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isFurnace && furnaceDetails ? (
           <FurnaceDisplayView
@@ -1047,6 +1061,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleFurnaceDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isAirConditioner && airConditionerDetails ? (
           <AirConditionerDisplayView
@@ -1057,6 +1072,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleAirConditionerDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isAutomobile && automobileDetails ? (
           <AutomobileDisplayView
@@ -1067,6 +1083,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleAutomobileDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isWasteWater && wasteWaterDetails ? (
           <WasteWaterDisplayView
@@ -1077,6 +1094,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleWasteWaterDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isElectricPanel && electricPanelDetails ? (
           <ElectricPanelDisplayView
@@ -1087,6 +1105,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleElectricPanelDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isWaterHeater && waterHeaterDetails ? (
           <WaterHeaterDisplayView
@@ -1097,6 +1116,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleWaterHeaterDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isWaterTreatment && waterTreatmentDetails ? (
           <WaterTreatmentDisplayView
@@ -1107,6 +1127,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleWaterTreatmentDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isSecuritySystem && securitySystemDetails ? (
           <SecuritySystemDisplayView
@@ -1117,6 +1138,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleSecuritySystemDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isRadonMitigation && radonMitigationDetails ? (
           <RadonMitigationDisplayView
@@ -1127,6 +1149,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleRadonMitigationDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isWellPump && wellPumpDetails ? (
           <WellPumpDisplayView
@@ -1137,6 +1160,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleWellPumpDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isGenerator && generatorDetails ? (
           <GeneratorDisplayView
@@ -1147,6 +1171,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleGeneratorDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isSumpPump && sumpPumpDetails ? (
           <SumpPumpDisplayView
@@ -1157,6 +1182,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleSumpPumpDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isGarageDoor && garageDoorDetails ? (
           <GarageDoorDisplayView
@@ -1167,6 +1193,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleGarageDoorDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isRoof && roofDetails ? (
           <RoofDisplayView
@@ -1177,6 +1204,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleRoofDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isPool && poolDetails ? (
           <PoolDisplayView
@@ -1187,6 +1215,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handlePoolDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isIrrigation && irrigationDetails ? (
           <IrrigationDisplayView
@@ -1197,6 +1226,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleIrrigationDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isEvCharger && evChargerDetails ? (
           <EvChargerDisplayView
@@ -1207,6 +1237,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleEvChargerDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isSolar && solarDetails ? (
           <SolarDisplayView
@@ -1217,6 +1248,7 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleSolarDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : isHotTub && hotTubDetails ? (
           <HotTubDisplayView
@@ -1227,6 +1259,18 @@ export function ItemDetailScreen(props: {
             onDetailsChange={handleHotTubDetailsChange}
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
+          />
+        ) : isToilet && toiletDetails ? (
+          <ToiletDisplayView
+            state={state}
+            details={toiletDetails}
+            itemId={itemId}
+            onSave={onSave}
+            onDetailsChange={handleToiletDetailsChange}
+            photoHeader={itemPhotoHeader}
+            showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         ) : (
           <ItemDisplayView
@@ -1248,6 +1292,7 @@ export function ItemDetailScreen(props: {
             }
             photoHeader={itemPhotoHeader}
             showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           />
         )}
 
@@ -1430,6 +1475,7 @@ export function ItemDetailScreen(props: {
           <ActivityIndicator size="large" color="#fff" />
         </View>
       ) : null}
+      </ReuseExistingPhotosProvider>
       </KeyboardDoneTextInputContext.Provider>
     </ItemDetailScrollContext.Provider>
   );

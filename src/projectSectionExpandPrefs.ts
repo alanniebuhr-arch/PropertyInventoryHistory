@@ -10,9 +10,9 @@ export type ProjectSectionExpandPrefs = {
   recentInteractions: boolean;
 };
 
-/** Session default: all collapsed until the user expands. */
+/** Session default: photos expanded; other sections collapsed until the user expands. */
 const DEFAULT_PROJECT_SECTION_EXPAND: ProjectSectionExpandPrefs = {
-  photos: false,
+  photos: true,
   status: false,
   reminders: false,
   description: false,
@@ -25,7 +25,7 @@ const DEFAULT_PROJECT_SECTION_EXPAND: ProjectSectionExpandPrefs = {
 
 let cachedExpand: ProjectSectionExpandPrefs = { ...DEFAULT_PROJECT_SECTION_EXPAND };
 
-/** Sync read of project section expand prefs (session memory, default collapsed). Shared across projects. */
+/** Sync read of project section expand prefs (session memory; photos default expanded). Shared across projects. */
 export function getProjectSectionExpand(): ProjectSectionExpandPrefs {
   return { ...cachedExpand };
 }
@@ -38,4 +38,39 @@ export async function setProjectSectionExpand(
   partial: Partial<ProjectSectionExpandPrefs>
 ): Promise<void> {
   cachedExpand = { ...cachedExpand, ...partial };
+}
+
+/** What's happening bucket expand, keyed by project id. */
+export type ProjectActivityBucketExpandPrefs = {
+  activityFuture: boolean;
+  activityToday: boolean;
+  activityHistory: boolean;
+};
+
+const DEFAULT_PROJECT_ACTIVITY_BUCKET_EXPAND: ProjectActivityBucketExpandPrefs = {
+  activityFuture: false,
+  activityToday: true,
+  activityHistory: true,
+};
+
+const activityBucketByProjectId = new Map<string, ProjectActivityBucketExpandPrefs>();
+
+export function getProjectActivityBucketExpand(
+  projectId: string
+): ProjectActivityBucketExpandPrefs {
+  const saved = activityBucketByProjectId.get(projectId);
+  return saved
+    ? { ...DEFAULT_PROJECT_ACTIVITY_BUCKET_EXPAND, ...saved }
+    : { ...DEFAULT_PROJECT_ACTIVITY_BUCKET_EXPAND };
+}
+
+export function setProjectActivityBucketExpand(
+  projectId: string,
+  partial: Partial<ProjectActivityBucketExpandPrefs>
+): void {
+  const merged: ProjectActivityBucketExpandPrefs = {
+    ...getProjectActivityBucketExpand(projectId),
+    ...partial,
+  };
+  activityBucketByProjectId.set(projectId, merged);
 }

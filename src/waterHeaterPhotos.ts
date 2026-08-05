@@ -1,5 +1,6 @@
 import type { AppState, InventoryItem, ItemPhoto, WaterHeaterDetails } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { WATER_HEATER_PHOTO_SLOTS, type WaterHeaterPhotoSlotKey } from './waterHeaterSlots';
@@ -68,12 +69,12 @@ export async function addWaterHeaterExtraPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         itemId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 
@@ -132,12 +133,12 @@ export async function setWaterHeaterSlotPhoto(
 
   const photoId = uid('photo');
   const localUri = await persistPhotoFromUri(sourceUri, photoId);
-  const photo: ItemPhoto = {
+  const photo = withReusePhotoMeta(sourceUri, {
     id: photoId,
     itemId,
     localUri,
     createdAtISO: nowISO(),
-  };
+  });
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asWaterHeaterDetails(currentItem.details);

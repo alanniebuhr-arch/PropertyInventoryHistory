@@ -1,5 +1,6 @@
 import type { AppState, InventoryItem, ItemPhoto, RoofDetails } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { ROOF_PHOTO_SLOTS, type RoofPhotoSlotKey } from './roofSlots';
@@ -68,12 +69,12 @@ export async function addRoofExtraPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         itemId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 
@@ -132,12 +133,12 @@ export async function setRoofSlotPhoto(
 
   const photoId = uid('photo');
   const localUri = await persistPhotoFromUri(sourceUri, photoId);
-  const photo: ItemPhoto = {
+  const photo = withReusePhotoMeta(sourceUri, {
     id: photoId,
     itemId,
     localUri,
     createdAtISO: nowISO(),
-  };
+  });
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asRoofDetails(currentItem.details);

@@ -19,6 +19,7 @@ import { IrrigationForm } from './screens/itemDetails/IrrigationForm';
 import { EvChargerForm } from './screens/itemDetails/EvChargerForm';
 import { SolarForm } from './screens/itemDetails/SolarForm';
 import { HotTubForm } from './screens/itemDetails/HotTubForm';
+import { ToiletForm } from './screens/itemDetails/ToiletForm';
 import { FurnaceForm } from './screens/itemDetails/FurnaceForm';
 import { AirConditionerForm } from './screens/itemDetails/AirConditionerForm';
 import { AutomobileForm } from './screens/itemDetails/AutomobileForm';
@@ -163,6 +164,13 @@ export function ItemDetailsForm(props: {
       return (
         <HotTubForm
           details={details.kind === 'hot_tub' ? details : { kind: 'hot_tub' }}
+          onChange={onChange}
+        />
+      );
+    case 'toilet':
+      return (
+        <ToiletForm
+          details={details.kind === 'toilet' ? details : { kind: 'toilet' }}
           onChange={onChange}
         />
       );

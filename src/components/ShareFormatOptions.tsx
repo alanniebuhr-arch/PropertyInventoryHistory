@@ -3,32 +3,36 @@ import { Pressable, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Text } from '../textScale';
 import { colors, sharedStyles } from '../theme';
-import type { ShareFormat } from '../shareFormat';
+import { DEFAULT_SHARE_FORMATS, type ShareFormat } from '../shareFormat';
 
-const OPTIONS: { format: ShareFormat; label: string }[] = [
-  { format: 'png', label: 'Image (PNG)' },
-  { format: 'pdf', label: 'PDF' },
-];
+const OPTION_LABELS: Record<ShareFormat, string> = {
+  png: 'Image (PNG)',
+  pdf: 'PDF',
+  text: 'Clipboard',
+};
 
-/** Compact PNG / PDF chooser for share option sheets. */
+/** Compact format chooser for share option sheets. */
 export function ShareFormatOptions(props: {
   value: ShareFormat;
   onChange: (format: ShareFormat) => void;
+  /** Defaults to PNG and PDF. Pass `['png','pdf','text']` to include Text. */
+  formats?: ShareFormat[];
 }) {
-  const { value, onChange } = props;
+  const { value, onChange, formats = DEFAULT_SHARE_FORMATS } = props;
 
   return (
     <View style={{ marginTop: 4 }}>
       <Text style={[sharedStyles.cardMeta, { marginBottom: 4 }]}>Format</Text>
-      {OPTIONS.map((opt) => {
-        const selected = value === opt.format;
+      {formats.map((format) => {
+        const selected = value === format;
+        const label = OPTION_LABELS[format];
         return (
           <Pressable
-            key={opt.format}
-            onPress={() => onChange(opt.format)}
+            key={format}
+            onPress={() => onChange(format)}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
-            accessibilityLabel={opt.label}
+            accessibilityLabel={label}
             style={({ pressed }) => [
               {
                 flexDirection: 'row',
@@ -42,7 +46,7 @@ export function ShareFormatOptions(props: {
               pressed && { opacity: 0.7 },
             ]}
           >
-            <Text style={{ flex: 1, fontSize: 16, color: colors.text }}>{opt.label}</Text>
+            <Text style={{ flex: 1, fontSize: 16, color: colors.text }}>{label}</Text>
             {selected ? (
               <MaterialIcons name="check" size={22} color={colors.primary} />
             ) : (

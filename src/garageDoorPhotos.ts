@@ -1,5 +1,6 @@
 import type { AppState, GarageDoorDetails, InventoryItem, ItemPhoto } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { GARAGE_DOOR_PHOTO_SLOTS, type GarageDoorPhotoSlotKey } from './garageDoorSlots';
@@ -68,12 +69,12 @@ export async function addGarageDoorExtraPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         itemId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 
@@ -137,12 +138,12 @@ export async function setGarageDoorSlotPhoto(
 
   const photoId = uid('photo');
   const localUri = await persistPhotoFromUri(sourceUri, photoId);
-  const photo: ItemPhoto = {
+  const photo = withReusePhotoMeta(sourceUri, {
     id: photoId,
     itemId,
     localUri,
     createdAtISO: nowISO(),
-  };
+  });
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asGarageDoorDetails(currentItem.details);

@@ -19,6 +19,7 @@ import { Text, TextInput, useTextScaleControls } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppState, ItemTypeId } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ActivityBucketBanner } from '../components/ActivityBucketBanner';
 import { ItemListRow } from '../components/ListRows';
 import { AssetsExportSheet } from '../components/AssetsExportSheet';
 import {
@@ -36,7 +37,11 @@ import {
   itemListRowLabels,
 } from '../itemCatalog';
 import { isEmptyInventoryItem, itemListSummaryFields } from '../itemListSummaryFields';
-import { isItemOverdue, nextDueLabelForItem } from '../itemMaintenance';
+import {
+  isItemOverdue,
+  itemSearchActivityAtISO,
+  nextDueLabelForItem,
+} from '../itemMaintenance';
 import {
   allItems,
   firstPhotoUriForItem,
@@ -61,6 +66,17 @@ import { shareViewAsPng } from '../shareViewImage';
 import { shareHtmlAsPdf } from '../shareViewPdf';
 import { buildExportPdfHtml, assetsSnapshotToPdfDoc } from '../exportPdfHtml';
 import { ShareFormatModal } from '../components/ShareFormatModal';
+import {
+  activityBucketCounts,
+  foldActivityBucketGroups,
+  type ActivityTimeBucket,
+} from '../activityTimeBuckets';
+import {
+  activityBucketExpandKey,
+  getActivityBucketExpand,
+  isActivityBucketExpanded,
+  setActivityBucketExpand,
+} from '../activityBucketExpandPrefs';
 
 function itemVisibleWithRoomAuth(
   state: AppState,
@@ -145,6 +161,47 @@ export function PropertyAssetsScreen(props: {
   /** Bumps when room unlock session may have changed (resume / unlock). */
   const [roomAuthEpoch, setRoomAuthEpoch] = useState(0);
   const [roomAuthPending, setRoomAuthPending] = useState(false);
+
+  const assetsExpandKey = activityBucketExpandKey(
+    'assets',
+    propertyId ? `property:${propertyId}` : roomId ? `room:${roomId}` : 'all'
+  );
+  const savedBucketExpand = getActivityBucketExpand(assetsExpandKey);
+  const [activityFutureExpanded, setActivityFutureExpanded] = useState(
+    () => savedBucketExpand.activityFuture
+  );
+  const [activityTodayExpanded, setActivityTodayExpanded] = useState(
+    () => savedBucketExpand.activityToday
+  );
+  const [activityHistoryExpanded, setActivityHistoryExpanded] = useState(
+    () => savedBucketExpand.activityHistory
+  );
+  const [activityUndatedExpanded, setActivityUndatedExpanded] = useState(
+    () => savedBucketExpand.activityUndated
+  );
+
+  useEffect(() => {
+    setActivityBucketExpand(assetsExpandKey, {
+      activityFuture: activityFutureExpanded,
+      activityToday: activityTodayExpanded,
+      activityHistory: activityHistoryExpanded,
+      activityUndated: activityUndatedExpanded,
+    });
+  }, [
+    assetsExpandKey,
+    activityFutureExpanded,
+    activityTodayExpanded,
+    activityHistoryExpanded,
+    activityUndatedExpanded,
+  ]);
+
+  useEffect(() => {
+    const prefs = getActivityBucketExpand(assetsExpandKey);
+    setActivityFutureExpanded(prefs.activityFuture);
+    setActivityTodayExpanded(prefs.activityToday);
+    setActivityHistoryExpanded(prefs.activityHistory);
+    setActivityUndatedExpanded(prefs.activityUndated);
+  }, [assetsExpandKey]);
 
   const property = propertyId ? propertyById(state, propertyId) : undefined;
   const room = roomId ? roomById(state, roomId) : undefined;
@@ -384,6 +441,37 @@ export function PropertyAssetsScreen(props: {
       return haystack.includes(query);
     });
   }, [searchQuery, state, typeScopedItems]);
+
+  const assetBucketGroups = useMemo(
+    () =>
+      foldActivityBucketGroups(filteredItems, (item) =>
+        itemSearchActivityAtISO(state, item)
+      ),
+    [filteredItems, state]
+  );
+  const assetBucketCounts = activityBucketCounts(assetBucketGroups);
+  const expandPrefs = {
+    activityFuture: activityFutureExpanded,
+    activityToday: activityTodayExpanded,
+    activityHistory: activityHistoryExpanded,
+    activityUndated: activityUndatedExpanded,
+  };
+
+  function toggleAssetBucket(bucket: ActivityTimeBucket) {
+    if (bucket === 'future') {
+      setActivityFutureExpanded((v) => !v);
+      return;
+    }
+    if (bucket === 'today') {
+      setActivityTodayExpanded((v) => !v);
+      return;
+    }
+    if (bucket === 'undated') {
+      setActivityUndatedExpanded((v) => !v);
+      return;
+    }
+    setActivityHistoryExpanded((v) => !v);
+  }
 
   const subtitle =
     room?.name ?? property?.name ?? (isAllScope ? 'All properties' : undefined);
@@ -1032,37 +1120,76 @@ export function PropertyAssetsScreen(props: {
           <Text style={[sharedStyles.emptyText, { marginTop: 24 }]}>No matching assets.</Text>
         ) : (
           <View style={{ marginTop: 12 }}>
-            {filteredItems.map((item) => {
-              const lastEvent = serviceHistoryEventsForItem(state, item.id)[0];
-              const { label, nameLabel } = itemListRowLabels(item);
-              const itemRoom = roomById(state, item.roomId);
-              const itemProperty = itemRoom
-                ? propertyById(state, itemRoom.propertyId)
-                : undefined;
-              const scopeLabel =
-                itemProperty && itemRoom && itemProperty.name !== itemRoom.name
-                  ? `${itemProperty.name} · ${itemRoom.name}`
-                  : (itemProperty?.name ?? itemRoom?.name);
+            {assetBucketGroups.map((group) => {
+              const expanded = isActivityBucketExpanded(expandPrefs, group.bucket);
+              const isTodayBucket = group.bucket === 'today';
+              const frameColor = isTodayBucket ? colors.danger : colors.sectionTitle;
               return (
-                <ItemListRow
-                  key={item.id}
-                  label={label}
-                  nameLabel={nameLabel}
-                  scopeLabel={scopeLabel}
-                  thumbnailUri={firstPhotoUriForItem(state, item)}
-                  detailFields={
-                    item.itemTypeId === 'automobile' ? undefined : itemListSummaryFields(item)
-                  }
-                  lastServiceDate={lastEvent ? formatDisplayDate(lastEvent.occurredAtISO) : undefined}
-                  lastServiceTitle={lastEvent?.title}
-                  lastServiceNotes={lastEvent?.notes}
-                  lastServiceCost={
-                    lastEvent?.cost != null ? formatCurrency(lastEvent.cost) : undefined
-                  }
-                  nextDueLabel={nextDueLabelForItem(state, item.id)}
-                  overdue={isItemOverdue(state, item.id)}
-                  onPress={() => onOpenItem(item.id)}
-                />
+                <View key={group.bucket}>
+                  <ActivityBucketBanner
+                    label={group.label}
+                    count={assetBucketCounts[group.bucket]}
+                    expanded={expanded}
+                    variant={isTodayBucket ? 'today' : 'default'}
+                    onToggle={() => toggleAssetBucket(group.bucket)}
+                    attachedToGroup
+                  />
+                  {expanded ? (
+                    <View
+                      style={[
+                        sharedStyles.activityBucketGroup,
+                        isTodayBucket && sharedStyles.activityBucketGroupToday,
+                      ]}
+                    >
+                      {group.entries.map((item, index) => {
+                        const betweenRows = index < group.entries.length - 1;
+                        const lastEvent = serviceHistoryEventsForItem(state, item.id)[0];
+                        const { label, nameLabel } = itemListRowLabels(item);
+                        const itemRoom = roomById(state, item.roomId);
+                        const itemProperty = itemRoom
+                          ? propertyById(state, itemRoom.propertyId)
+                          : undefined;
+                        const scopeLabel =
+                          itemProperty && itemRoom && itemProperty.name !== itemRoom.name
+                            ? `${itemProperty.name} · ${itemRoom.name}`
+                            : (itemProperty?.name ?? itemRoom?.name);
+                        return (
+                          <ItemListRow
+                            key={item.id}
+                            label={label}
+                            nameLabel={nameLabel}
+                            scopeLabel={scopeLabel}
+                            thumbnailUri={firstPhotoUriForItem(state, item)}
+                            detailFields={
+                              item.itemTypeId === 'automobile'
+                                ? undefined
+                                : itemListSummaryFields(item)
+                            }
+                            lastServiceDate={
+                              lastEvent
+                                ? formatDisplayDate(lastEvent.occurredAtISO)
+                                : undefined
+                            }
+                            lastServiceTitle={lastEvent?.title}
+                            lastServiceNotes={lastEvent?.notes}
+                            lastServiceCost={
+                              lastEvent?.cost != null
+                                ? formatCurrency(lastEvent.cost)
+                                : undefined
+                            }
+                            nextDueLabel={nextDueLabelForItem(state, item.id)}
+                            overdue={isItemOverdue(state, item.id)}
+                            onPress={() => onOpenItem(item.id)}
+                            cardBackgroundColor={colors.historyCardBg}
+                            dividerColor={frameColor}
+                            dividerWidth={betweenRows ? 2 : 0}
+                            cornerIcon="inventory"
+                          />
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
               );
             })}
           </View>

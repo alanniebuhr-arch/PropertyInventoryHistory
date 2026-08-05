@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -30,6 +30,12 @@ import {
   markRoomUnlocked,
   setupRoomAuthSessionReset,
 } from './src/roomAuth';
+import {
+  addReminderNotificationResponseListener,
+  getInitialReminderNotificationData,
+  syncReminderNotifications,
+  type ReminderNotificationData,
+} from './src/reminderNotifications';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { PropertyDetailScreen } from './src/screens/PropertyDetailScreen';
 import { RoomDetailScreen } from './src/screens/RoomDetailScreen';
@@ -63,7 +69,7 @@ type Route =
   | { name: 'allAssets'; focusSearch?: boolean }
   | { name: 'propertyAssets'; propertyId: string; roomId?: string; itemTypeId?: ItemTypeId; focusSearch?: boolean }
   | { name: 'roomAssets'; roomId: string; itemTypeId?: ItemTypeId; focusSearch?: boolean }
-  | { name: 'propertyActivitySearch'; propertyId?: string }
+  | { name: 'propertyActivitySearch'; propertyId?: string; projectId?: string }
   | { name: 'room'; roomId: string }
   | { name: 'project'; projectId: string }
   | { name: 'vendor'; vendorId: string; startEditing?: boolean }
@@ -100,12 +106,45 @@ type Route =
     }
   | { name: 'transfer'; mode: 'export' | 'import' };
 
+function routeFromReminderNotification(data: ReminderNotificationData): Route | null {
+  switch (data.kind) {
+    case 'event':
+      if (!data.itemId) return null;
+      return { name: 'event', itemId: data.itemId, eventId: data.id };
+    case 'todo':
+      if (!data.propertyId) return null;
+      return {
+        name: 'propertyTodo',
+        propertyId: data.propertyId,
+        todoId: data.id,
+        kind: 'todo',
+      };
+    case 'interaction':
+      return {
+        name: 'vendorInteraction',
+        vendorId: data.vendorId,
+        propertyId: data.propertyId,
+        interactionId: data.id,
+      };
+    case 'punch':
+      if (!data.projectId) return null;
+      return {
+        name: 'projectPunchItem',
+        projectId: data.projectId,
+        punchItemId: data.id,
+      };
+    default:
+      return null;
+  }
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<AppState>(EMPTY_APP_STATE);
   const [stack, setStack] = useState<Route[]>([{ name: 'home' }]);
   const [bootKey, setBootKey] = useState(0);
   const [textScaleStep, setTextScaleStepState] = useState(getAppTextScaleStep);
+  const handledNotificationRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +157,7 @@ export default function App() {
         if (!cancelled) {
           setState(s);
           setTextScaleStepState(textStep);
+          void syncReminderNotifications(s);
         }
       } catch {
         if (!cancelled) setState({ ...EMPTY_APP_STATE });
@@ -133,9 +173,36 @@ export default function App() {
 
   useEffect(() => setupRoomAuthSessionReset(), []);
 
+  const openFromReminderNotification = useCallback((data: ReminderNotificationData) => {
+    const next = routeFromReminderNotification(data);
+    if (!next) return;
+    setStack((s) => {
+      const home = s.find((r) => r.name === 'home') ?? { name: 'home' as const };
+      return [home, next];
+    });
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+
+    function handleData(data: ReminderNotificationData) {
+      const key = `${data.kind}:${data.id}`;
+      if (handledNotificationRef.current === key) return;
+      handledNotificationRef.current = key;
+      openFromReminderNotification(data);
+    }
+
+    const unsubscribe = addReminderNotificationResponseListener(handleData);
+    void getInitialReminderNotificationData().then((data) => {
+      if (data) handleData(data);
+    });
+    return unsubscribe;
+  }, [loading, openFromReminderNotification]);
+
   const persist = useCallback(async (next: AppState) => {
     const saved = await saveAppState(next);
     setState(saved);
+    void syncReminderNotifications(saved);
   }, []);
 
   const setTextScaleStep = useCallback((step: number) => {
@@ -350,6 +417,7 @@ export default function App() {
                 interactionId,
               })
             }
+            onOpenVendor={(vendorId) => push({ name: 'vendor', vendorId })}
             onAddInteraction={() =>
               push({ name: 'vendorInteraction', propertyId: route.propertyId })
             }
@@ -428,6 +496,7 @@ export default function App() {
           <PropertyActivitySearchScreen
             state={state}
             propertyId={route.propertyId}
+            projectId={route.projectId}
             onBack={pop}
             onGoToProperty={(id) => goToProperty(id)}
             onOpenInteraction={(vendorId, interactionId, options) =>
@@ -617,7 +686,11 @@ export default function App() {
             onSearchActivity={() => {
               const propertyId = projectById(state, route.projectId)?.propertyId;
               if (!propertyId) return;
-              push({ name: 'propertyActivitySearch', propertyId });
+              push({
+                name: 'propertyActivitySearch',
+                propertyId,
+                projectId: route.projectId,
+              });
             }}
             onSave={(next) => void persist(next)}
           />
@@ -896,7 +969,11 @@ export default function App() {
             onSearchActivity={() => {
               const propertyId = projectById(state, route.projectId)?.propertyId;
               if (!propertyId) return;
-              push({ name: 'propertyActivitySearch', propertyId });
+              push({
+                name: 'propertyActivitySearch',
+                propertyId,
+                projectId: route.projectId,
+              });
             }}
             onOpenPunchItem={(punchItemId, options) =>
               push({
@@ -1100,6 +1177,7 @@ export default function App() {
               });
             }}
             onOpenProject={(projectId) => push({ name: 'project', projectId })}
+            onOpenVendor={(vendorId) => push({ name: 'vendor', vendorId })}
             onOpenItem={(itemId, startEditingSection) =>
               push({ name: 'item', itemId, startEditingSection })
             }

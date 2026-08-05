@@ -20,6 +20,7 @@ import { Text, TextInput, useTextScaleControls } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppState, InventoryItem, ItemEvent } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ActivityBucketBanner } from '../components/ActivityBucketBanner';
 import { ITEM_LIST_THUMB_SIZE, PropertyServiceListRow } from '../components/ListRows';
 import { ServicesExportSheet } from '../components/ServicesExportSheet';
 import {
@@ -31,7 +32,7 @@ import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
 import { sharedStyles, colors } from '../theme';
 import { formatDisplayDate } from '../utils';
 import { itemDisplayLabel } from '../itemCatalog';
-import { serviceListDateISO, upcomingDueAtISO } from '../eventRecurrence';
+import { isAfterToday, serviceListDateISO, upcomingDueAtISO } from '../eventRecurrence';
 import {
   allItemEvents,
   eventsForProperty,
@@ -57,6 +58,17 @@ import { shareViewAsPng } from '../shareViewImage';
 import { shareHtmlAsPdf } from '../shareViewPdf';
 import { buildExportPdfHtml, servicesSnapshotToPdfDoc } from '../exportPdfHtml';
 import { ShareFormatModal } from '../components/ShareFormatModal';
+import {
+  activityBucketCounts,
+  foldActivityBucketGroups,
+  type ActivityTimeBucket,
+} from '../activityTimeBuckets';
+import {
+  activityBucketExpandKey,
+  getActivityBucketExpand,
+  isActivityBucketExpanded,
+  setActivityBucketExpand,
+} from '../activityBucketExpandPrefs';
 
 type ServiceStatusFilter = 'open' | 'done';
 
@@ -158,6 +170,47 @@ export function PropertyServicesScreen(props: {
   /** Bumps when room unlock session may have changed (resume / unlock). */
   const [roomAuthEpoch, setRoomAuthEpoch] = useState(0);
   const [roomAuthPending, setRoomAuthPending] = useState(false);
+
+  const servicesExpandKey = activityBucketExpandKey(
+    'services',
+    propertyId ? `property:${propertyId}` : roomId ? `room:${roomId}` : 'all'
+  );
+  const savedBucketExpand = getActivityBucketExpand(servicesExpandKey);
+  const [activityFutureExpanded, setActivityFutureExpanded] = useState(
+    () => savedBucketExpand.activityFuture
+  );
+  const [activityTodayExpanded, setActivityTodayExpanded] = useState(
+    () => savedBucketExpand.activityToday
+  );
+  const [activityHistoryExpanded, setActivityHistoryExpanded] = useState(
+    () => savedBucketExpand.activityHistory
+  );
+  const [activityUndatedExpanded, setActivityUndatedExpanded] = useState(
+    () => savedBucketExpand.activityUndated
+  );
+
+  useEffect(() => {
+    setActivityBucketExpand(servicesExpandKey, {
+      activityFuture: activityFutureExpanded,
+      activityToday: activityTodayExpanded,
+      activityHistory: activityHistoryExpanded,
+      activityUndated: activityUndatedExpanded,
+    });
+  }, [
+    servicesExpandKey,
+    activityFutureExpanded,
+    activityTodayExpanded,
+    activityHistoryExpanded,
+    activityUndatedExpanded,
+  ]);
+
+  useEffect(() => {
+    const prefs = getActivityBucketExpand(servicesExpandKey);
+    setActivityFutureExpanded(prefs.activityFuture);
+    setActivityTodayExpanded(prefs.activityToday);
+    setActivityHistoryExpanded(prefs.activityHistory);
+    setActivityUndatedExpanded(prefs.activityUndated);
+  }, [servicesExpandKey]);
 
   const property = propertyId ? propertyById(state, propertyId) : undefined;
   const room = roomId ? roomById(state, roomId) : undefined;
@@ -455,6 +508,35 @@ export function PropertyServicesScreen(props: {
       return haystack.includes(query);
     });
   }, [itemScopedEvents, searchQuery, selectedStatus, state]);
+
+  const serviceBucketGroups = useMemo(
+    () =>
+      foldActivityBucketGroups(filteredEvents, (event) => serviceListDateISO(event)),
+    [filteredEvents]
+  );
+  const serviceBucketCounts = activityBucketCounts(serviceBucketGroups);
+  const expandPrefs = {
+    activityFuture: activityFutureExpanded,
+    activityToday: activityTodayExpanded,
+    activityHistory: activityHistoryExpanded,
+    activityUndated: activityUndatedExpanded,
+  };
+
+  function toggleServiceBucket(bucket: ActivityTimeBucket) {
+    if (bucket === 'future') {
+      setActivityFutureExpanded((v) => !v);
+      return;
+    }
+    if (bucket === 'today') {
+      setActivityTodayExpanded((v) => !v);
+      return;
+    }
+    if (bucket === 'undated') {
+      setActivityUndatedExpanded((v) => !v);
+      return;
+    }
+    setActivityHistoryExpanded((v) => !v);
+  }
 
   const subtitle =
     room?.name ?? property?.name ?? (isAllScope ? 'All properties' : undefined);
@@ -1216,7 +1298,7 @@ export function PropertyServicesScreen(props: {
         ) : filteredEvents.length === 0 ? (
           <Text style={[sharedStyles.emptyText, { marginTop: 24 }]}>No matching services.</Text>
         ) : (
-          <View style={{ marginTop: 12, gap: 10 }}>
+          <View style={{ marginTop: 12 }}>
             {singleItemMode && singleItem ? (
               <Pressable
                 onPress={() => onOpenItem(singleItem.id)}
@@ -1258,40 +1340,76 @@ export function PropertyServicesScreen(props: {
               </Pressable>
             ) : null}
 
-            {filteredEvents.map((event) => {
-              const item = itemById(state, event.itemId);
-              if (!item) return null;
-              const photo = photosForEvent(state, event.id)[0];
-              const eventRoom = roomById(state, item.roomId);
-              const eventProperty = eventRoom
-                ? propertyById(state, eventRoom.propertyId)
-                : undefined;
-              const scopeLabel = isAllScope
-                ? eventProperty &&
-                  eventRoom &&
-                  eventProperty.name !== eventRoom.name
-                  ? `${eventProperty.name} · ${eventRoom.name}`
-                  : (eventProperty?.name ?? eventRoom?.name)
-                : isRoomScope
-                  ? undefined
-                  : eventRoom?.name;
-              const open = isOpenService(event);
+            {serviceBucketGroups.map((group) => {
+              const expanded = isActivityBucketExpanded(expandPrefs, group.bucket);
+              const isTodayBucket = group.bucket === 'today';
+              const frameColor = isTodayBucket ? colors.danger : colors.sectionTitle;
               return (
-                <PropertyServiceListRow
-                  key={event.id}
-                  scopeLabel={scopeLabel}
-                  itemName={itemDisplayLabel(item)}
-                  itemPhotoUri={firstPhotoUriForItem(state, item)}
-                  hideItemPhoto={singleItemMode}
-                  dateLabel={formatDisplayDate(serviceListDateISO(event))}
-                  statusLabel={open ? 'Open' : 'Done'}
-                  title={event.title}
-                  notes={event.notes}
-                  company={event.serviceCompany}
-                  photoUri={photo?.localUri}
-                  onPress={() => onOpenEvent(event.itemId, event.id)}
-                  onPressItem={() => onOpenItem(event.itemId)}
-                />
+                <View key={group.bucket}>
+                  <ActivityBucketBanner
+                    label={group.label}
+                    count={serviceBucketCounts[group.bucket]}
+                    expanded={expanded}
+                    variant={isTodayBucket ? 'today' : 'default'}
+                    onToggle={() => toggleServiceBucket(group.bucket)}
+                    attachedToGroup
+                  />
+                  {expanded ? (
+                    <View
+                      style={[
+                        sharedStyles.activityBucketGroup,
+                        isTodayBucket && sharedStyles.activityBucketGroupToday,
+                      ]}
+                    >
+                      {group.entries.map((event, index) => {
+                        const item = itemById(state, event.itemId);
+                        if (!item) return null;
+                        const betweenRows = index < group.entries.length - 1;
+                        const photo = photosForEvent(state, event.id)[0];
+                        const eventRoom = roomById(state, item.roomId);
+                        const eventProperty = eventRoom
+                          ? propertyById(state, eventRoom.propertyId)
+                          : undefined;
+                        const scopeLabel = isAllScope
+                          ? eventProperty &&
+                            eventRoom &&
+                            eventProperty.name !== eventRoom.name
+                            ? `${eventProperty.name} · ${eventRoom.name}`
+                            : (eventProperty?.name ?? eventRoom?.name)
+                          : isRoomScope
+                            ? undefined
+                            : eventRoom?.name;
+                        const open = isOpenService(event);
+                        const eventDateISO = serviceListDateISO(event);
+                        return (
+                          <PropertyServiceListRow
+                            key={event.id}
+                            scopeLabel={scopeLabel}
+                            itemName={itemDisplayLabel(item)}
+                            itemPhotoUri={firstPhotoUriForItem(state, item)}
+                            hideItemPhoto={singleItemMode}
+                            dateLabel={formatDisplayDate(eventDateISO)}
+                            dateISO={eventDateISO}
+                            stackRelative={isAfterToday(eventDateISO)}
+                            statusLabel={open ? 'Open' : 'Done'}
+                            title={event.title}
+                            notes={event.notes}
+                            company={event.serviceCompany}
+                            photoUri={photo?.localUri}
+                            onPress={() => onOpenEvent(event.itemId, event.id)}
+                            onPressItem={() => onOpenItem(event.itemId)}
+                            cardBackgroundColor={colors.upcomingCardBg}
+                            ownerBackgroundColor={colors.upcomingInteractionOwnerBg}
+                            dividerColor={frameColor}
+                            dividerWidth={betweenRows ? 2 : 0}
+                            ownerCornerIcon="inventory"
+                            cornerIcon="handyman"
+                          />
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
               );
             })}
           </View>

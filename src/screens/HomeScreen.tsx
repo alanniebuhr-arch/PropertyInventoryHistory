@@ -15,11 +15,10 @@ import { sharedStyles, colors } from '../theme';
 import { uid, nowISO } from '../utils';
 import {
   itemById,
-  itemsForProperty,
   photosForEvent,
   photosForPropertyTodo,
   photosForVendorInteraction,
-  roomsForProperty,
+  projectsForProperty,
   todosForProperty,
   vendorById,
 } from '../storage';
@@ -296,14 +295,9 @@ export function HomeScreen(props: {
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <View style={sharedStyles.screenHeader}>
         <View style={[sharedStyles.headerRow, { marginBottom: 0, alignItems: 'flex-start' }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[sharedStyles.title, { flex: 0, fontSize: 22 }]}>
-              Property Asset Manager
-            </Text>
-            <Text style={[sharedStyles.subtitle, { marginBottom: 0 }]}>
-              Manage assets and projects on your properties.
-            </Text>
-          </View>
+          <Text style={[sharedStyles.title, { flex: 1, fontSize: 22 }]}>
+            Property Asset Manager
+          </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <ToolbarNewSearchControls
               title="Property Asset Manager"
@@ -325,35 +319,18 @@ export function HomeScreen(props: {
             </Pressable>
           </View>
         </View>
-      </View>
-      <ScrollView contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: 12,
-            marginTop: 8,
-            marginBottom: 8,
+            gap: 8,
+            marginTop: 2,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
-            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
-              Properties
-            </Text>
-            <Pressable
-              onPress={openAdd}
-              accessibilityRole="button"
-              accessibilityLabel="New Property"
-              hitSlop={6}
-              style={({ pressed }) => ({
-                padding: 4,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <MaterialIcons name="add" size={24} color={colors.primary} />
-            </Pressable>
-          </View>
+          <Text style={[sharedStyles.subtitle, { marginBottom: 0, flex: 1 }]}>
+            Manage assets and projects on your properties.
+          </Text>
           <Pressable
             onPress={openUpcomingHorizonPicker}
             accessibilityRole="button"
@@ -364,8 +341,8 @@ export function HomeScreen(props: {
               alignItems: 'center',
               gap: 2,
               opacity: pressed ? 0.7 : 1,
-              paddingVertical: 4,
-              paddingLeft: 8,
+              paddingVertical: 2,
+              flexShrink: 0,
             })}
           >
             <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
@@ -374,14 +351,40 @@ export function HomeScreen(props: {
             <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
           </Pressable>
         </View>
+      </View>
+      <ScrollView contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+            Properties
+          </Text>
+          <Pressable
+            onPress={openAdd}
+            accessibilityRole="button"
+            accessibilityLabel="New Property"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons name="add" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
         {sorted.length === 0 ? (
           <Text style={sharedStyles.emptyText}>
             No properties yet. Add a rental unit or property to get started.
           </Text>
         ) : (
           sorted.map((p, index) => {
-            const rooms = roomsForProperty(state, p.id);
-            const items = itemsForProperty(state, p.id);
+            const projects = projectsForProperty(state, p.id);
             const todos = todosForProperty(state, p.id);
             const remindersExpanded = expandedReminderPropertyId === p.id;
             const reminderEntries = remindersExpanded
@@ -393,8 +396,7 @@ export function HomeScreen(props: {
                 name={p.name}
                 address={p.address}
                 thumbnailUri={propertyCoverPhotoUri(state, p)}
-                roomCount={rooms.length}
-                itemCount={items.length}
+                projectCount={projects.length}
                 todoCount={todos.length}
                 overdueCount={overdueCountForProperty(state, p.id)}
                 reminderCount={upcomingReminderCountForProperty(

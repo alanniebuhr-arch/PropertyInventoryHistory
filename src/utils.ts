@@ -125,6 +125,7 @@ function formatRelativeUnit(count: number, singular: string, plural: string, pas
 
 function formatRelativeDays(days: number): string {
   if (days === 0) return '(today)';
+  if (days === 1) return '(tomorrow)';
   const past = days < 0;
   const abs = Math.abs(days);
   if (abs > 365) {
@@ -135,36 +136,52 @@ function formatRelativeDays(days: number): string {
   if (abs > 30) {
     return formatRelativeUnit(Math.floor(abs / 30), 'month', 'months', past);
   }
-  return formatRelativeUnit(abs, 'day', 'days', past);
+  if (past) {
+    return formatRelativeUnit(abs, 'day', 'days', true);
+  }
+  return `(${abs} days from now)`;
 }
 
 /**
  * User-facing date: locale date, weekday, and relative span
- * e.g. "09/01/2026 Tuesday (10 days)" or "07/20/2026 Monday (5 days ago)".
+ * e.g. "09/01/2026 Tuesday (10 days from now)" or "07/20/2026 Monday (5 days ago)".
  */
 export function formatDisplayDate(iso: string, now: Date = new Date()): string {
   const { date, rest } = formatDisplayDateParts(iso, now);
   return rest ? `${date} ${rest}` : date;
 }
 
+/** Weekday vs relative paren (weekday omitted when span is months/years). */
+export function formatWeekdayRelativeParts(
+  iso: string,
+  now: Date = new Date()
+): { weekday: string; relative: string } {
+  const days = daysFromTodayForDisplay(iso, now);
+  const relative = days == null ? '' : formatRelativeDays(days);
+  const showWeekday = days == null || Math.abs(days) <= 30;
+  const weekday = showWeekday ? formatWeekday(iso) : '';
+  return { weekday, relative };
+}
+
 /** Calendar date vs weekday/relative parts (for split styling). */
 export function formatDisplayDateParts(
   iso: string,
   now: Date = new Date()
-): { date: string; rest: string } {
+): { date: string; rest: string; weekday: string; relative: string } {
+  const { weekday, relative } = formatWeekdayRelativeParts(iso, now);
+  const rest = weekday && relative ? `${weekday} ${relative}` : weekday || relative;
   return {
     date: formatDate(iso),
-    rest: formatWeekdayWithRelative(iso, now),
+    rest,
+    weekday,
+    relative,
   };
 }
 
 /** Weekday + relative days only (when the numeric date is already shown).
  * Weekday is omitted when the relative span is months or years (> 30 days). */
 export function formatWeekdayWithRelative(iso: string, now: Date = new Date()): string {
-  const days = daysFromTodayForDisplay(iso, now);
-  const relative = days == null ? '' : formatRelativeDays(days);
-  const showWeekday = days == null || Math.abs(days) <= 30;
-  const weekday = showWeekday ? formatWeekday(iso) : '';
+  const { weekday, relative } = formatWeekdayRelativeParts(iso, now);
   if (weekday && relative) return `${weekday} ${relative}`;
   return weekday || relative;
 }

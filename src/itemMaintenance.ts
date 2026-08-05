@@ -1,7 +1,29 @@
-import type { AppState } from './types';
+import type { AppState, InventoryItem } from './types';
 import { formatDisplayDate } from './utils';
 import { eventsForItem, itemsForProperty, itemsForRoom, serviceHistoryEventsForItem } from './storage';
 import { getNextDueForItem, isOverdue, overdueTodoCountForProperty } from './eventRecurrence';
+
+/** Install or purchase date from item details, when that type stores one. */
+export function itemInstallOrPurchaseDateISO(item: InventoryItem): string | undefined {
+  const details = item.details as {
+    installDateAtISO?: string;
+    purchaseDateAtISO?: string;
+  };
+  const install = details.installDateAtISO?.trim();
+  if (install) return install;
+  const purchase = details.purchaseDateAtISO?.trim();
+  if (purchase) return purchase;
+  return undefined;
+}
+
+/** Next service due, else install/purchase — used for search list bucketing. */
+export function itemSearchActivityAtISO(state: AppState, item: InventoryItem): string {
+  return (
+    getNextDueForItem(eventsForItem(state, item.id)) ??
+    itemInstallOrPurchaseDateISO(item) ??
+    ''
+  );
+}
 
 export function overdueCountForItem(state: AppState, itemId: string): number {
   const events = eventsForItem(state, itemId);

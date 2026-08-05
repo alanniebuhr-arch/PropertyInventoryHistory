@@ -1,5 +1,6 @@
 import type { AppState, Property } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { slotDocumentInfo } from './documents';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { addDocumentToState, removeDocumentFromState } from './slotDocumentOps';
@@ -92,12 +93,12 @@ export async function setPropertySlotPhoto(
 
   const photoId = uid('photo');
   const localUri = await persistPhotoFromUri(sourceUri, photoId);
-  const photo = {
+  const photo = withReusePhotoMeta(sourceUri, {
     id: photoId,
     propertyId,
     localUri,
     createdAtISO: nowISO(),
-  };
+  });
 
   const docKey = documentIdKeyForPhotoSlot(slotKey) as keyof Property;
 
@@ -166,6 +167,15 @@ export function propertyExtraPhotos(state: AppState, propertyId: string) {
     .filter((p): p is NonNullable<typeof p> => p != null && !p.todoId);
 }
 
+/** Front slot first, then any other filled slot, then first extra gallery photo. */
+export function firstPhotoUriForProperty(state: AppState, property: Property): string | undefined {
+  for (const slot of PROPERTY_PHOTO_SLOTS) {
+    const uri = propertySlotPhotoUri(state, property, slot.key);
+    if (uri) return uri;
+  }
+  return propertyExtraPhotos(state, property.id)[0]?.localUri;
+}
+
 export function propertyExtraPhotoUri(
   state: AppState,
   propertyId: string,
@@ -197,12 +207,12 @@ export async function addPropertyExtraPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         propertyId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 

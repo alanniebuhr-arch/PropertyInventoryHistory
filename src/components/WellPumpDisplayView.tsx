@@ -52,9 +52,9 @@ export function WellPumpDisplayView(props: {
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows } =
-    props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows, onToggleReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<
     'equipment' | 'well' | 'install' | 'service' | 'notes' | null
   >(null);
@@ -170,6 +170,7 @@ export function WellPumpDisplayView(props: {
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
         showReorderArrows={showReorderArrows}
+        onToggleReorderArrows={onToggleReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >

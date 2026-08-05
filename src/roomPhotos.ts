@@ -1,5 +1,6 @@
 import type { AppState, Room, RoomPhoto, RoomSlotKey, SlotAttachment } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { slotDocumentInfo } from './documents';
 import { addDocumentToState, removeDocumentFromState } from './slotDocumentOps';
 import { uid, nowISO } from './utils';
@@ -118,12 +119,12 @@ export async function setRoomSlotPhoto(
 
   const photoId = uid('photo');
   const localUri = await persistPhotoFromUri(sourceUri, photoId);
-  const photo: RoomPhoto = {
+  const photo = withReusePhotoMeta(sourceUri, {
     id: photoId,
     roomId,
     localUri,
     createdAtISO: nowISO(),
-  };
+  });
 
   const attachment: SlotAttachment = { kind: 'photo', id: photoId };
 
@@ -212,12 +213,12 @@ export async function addRoomPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         roomId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 

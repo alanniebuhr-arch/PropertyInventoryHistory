@@ -53,9 +53,9 @@ export function GeneratorDisplayView(props: {
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows } =
-    props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows, onToggleReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<
     'equipment' | 'exercise' | 'install' | 'service' | 'notes' | null
   >(null);
@@ -171,6 +171,7 @@ export function GeneratorDisplayView(props: {
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
         showReorderArrows={showReorderArrows}
+        onToggleReorderArrows={onToggleReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >

@@ -42,8 +42,9 @@ export function WaterTreatmentDisplayView(props: {
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows, onToggleReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<'treatment' | null>(null);
 
   const extraPhotos = waterTreatmentExtraPhotos(state, itemId, details);
@@ -176,6 +177,7 @@ export function WaterTreatmentDisplayView(props: {
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
         showReorderArrows={showReorderArrows}
+        onToggleReorderArrows={onToggleReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >

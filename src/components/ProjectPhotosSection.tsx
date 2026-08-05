@@ -23,8 +23,19 @@ export function ProjectPhotosSection(props: {
   expanded?: boolean;
   onToggleExpanded?: () => void;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
-  const { state, projectId, onSave, children, childrenGesture, expanded, onToggleExpanded, showReorderArrows } = props;
+  const {
+    state,
+    projectId,
+    onSave,
+    children,
+    childrenGesture,
+    expanded,
+    onToggleExpanded,
+    showReorderArrows,
+    onToggleReorderArrows,
+  } = props;
 
   const extraPhotos = photosForProject(state, projectId);
 
@@ -78,6 +89,7 @@ export function ProjectPhotosSection(props: {
       expanded={expanded}
       onToggleExpanded={onToggleExpanded}
       showReorderArrows={showReorderArrows}
+      onToggleReorderArrows={onToggleReorderArrows}
     >
       {children}
     </PhotoSection>

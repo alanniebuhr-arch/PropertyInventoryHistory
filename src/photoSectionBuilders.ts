@@ -127,7 +127,7 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
     };
   });
 
-  extraPhotos.forEach((photo, index) => {
+  extraPhotos.forEach((photo) => {
     const caption = photo.caption?.trim();
     tiles.push({
       kind: 'extra',
@@ -140,13 +140,13 @@ export function buildSlotAndExtraPhotoTiles(options: SlotAndExtraOptions): Photo
         void onDeleteExtra(photo.id);
       },
       onMoveLeft:
-        onReorderExtra && index > 0
+        onReorderExtra && extraPhotos.length > 1
           ? () => {
               void onReorderExtra(photo.id, 'left');
             }
           : undefined,
       onMoveRight:
-        onReorderExtra && index < extraPhotos.length - 1
+        onReorderExtra && extraPhotos.length > 1
           ? () => {
               void onReorderExtra(photo.id, 'right');
             }
@@ -176,7 +176,7 @@ export function buildExtraOnlyPhotoTiles(options: {
 }): PhotoTile[] {
   const { photos, onDeletePhoto, onReorderPhoto, onLabelPhoto, onToggleFavorite } = options;
 
-  const tiles: PhotoTile[] = photos.map((photo, index) => {
+  const tiles: PhotoTile[] = photos.map((photo) => {
     const caption = photo.caption?.trim();
     return {
       kind: 'extra' as const,
@@ -191,13 +191,13 @@ export function buildExtraOnlyPhotoTiles(options: {
           }
         : undefined,
       onMoveLeft:
-        onReorderPhoto && index > 0
+        onReorderPhoto && photos.length > 1
           ? () => {
               void onReorderPhoto(photo.id, 'left');
             }
           : undefined,
       onMoveRight:
-        onReorderPhoto && index < photos.length - 1
+        onReorderPhoto && photos.length > 1
           ? () => {
               void onReorderPhoto(photo.id, 'right');
             }
@@ -278,7 +278,7 @@ export function buildEventPhotoTiles(options: {
     });
   }
 
-  otherPhotos.forEach((photo, index) => {
+  otherPhotos.forEach((photo) => {
     const caption = photo.caption?.trim();
     tiles.push({
       kind: 'extra',
@@ -293,13 +293,13 @@ export function buildEventPhotoTiles(options: {
           }
         : undefined,
       onMoveLeft:
-        onReorderPhoto && index > 0
+        onReorderPhoto && otherPhotos.length > 1
           ? () => {
               void onReorderPhoto(photo.id, 'left');
             }
           : undefined,
       onMoveRight:
-        onReorderPhoto && index < otherPhotos.length - 1
+        onReorderPhoto && otherPhotos.length > 1
           ? () => {
               void onReorderPhoto(photo.id, 'right');
             }

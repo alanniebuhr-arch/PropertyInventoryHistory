@@ -21,6 +21,7 @@ import type { AppState, Project, ProjectPunchItem, ProjectVendor } from '../type
 import { PropertyTodoListRow, PropertyInteractionListRow, VendorGalleryTile, VendorListRow } from '../components/ListRows';
 import { UpcomingReminderCard } from '../components/UpcomingServiceCard';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import { ProjectPhotosSection } from '../components/ProjectPhotosSection';
 import { ProjectExportSheet } from '../components/ProjectExportSheet';
 import { ProjectShareOptionsModal } from '../components/ProjectShareOptionsModal';
@@ -49,7 +50,7 @@ import {
   slideshowPhotosForProject,
   type ProjectCatalogPhoto,
 } from '../projectFavoritePhotos';
-import { PhotoViewerModal, SLIDESHOW_DOUBLE_BACK_MS, type ViewerPhoto } from '../components/PhotoViewerModal';
+import { PhotoViewerModal, type ViewerPhoto } from '../components/PhotoViewerModal';
 import { SlideshowEditorModal } from '../components/SlideshowEditorModal';
 import { ProjectAllPhotosModal } from '../components/ProjectAllPhotosModal';
 import {
@@ -69,7 +70,7 @@ import {
   projectStatusLabel,
 } from '../projectStatus';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
-import { upcomingInteractionsForProject } from '../eventRecurrence';
+import { isAfterToday, isToday, upcomingInteractionsForProject } from '../eventRecurrence';
 import {
   getProjectVendorViewMode,
   loadProjectVendorViewMode,
@@ -107,7 +108,10 @@ import {
   getProjectSectionExpand,
   loadProjectSectionExpand,
   setProjectSectionExpand,
+  getProjectActivityBucketExpand,
+  setProjectActivityBucketExpand,
 } from '../projectSectionExpandPrefs';
+import { ActivityBucketBanner } from '../components/ActivityBucketBanner';
 
 function vendorNotesPreview(notes?: string): string | undefined {
   const trimmed = notes?.trim();
@@ -170,6 +174,15 @@ export function ProjectDetailScreen(props: {
   const [recentInteractionsExpanded, setRecentInteractionsExpanded] = useState(
     () => getProjectSectionExpand().recentInteractions
   );
+  const [activityFutureExpanded, setActivityFutureExpanded] = useState(
+    () => getProjectActivityBucketExpand(projectId).activityFuture
+  );
+  const [activityTodayExpanded, setActivityTodayExpanded] = useState(
+    () => getProjectActivityBucketExpand(projectId).activityToday
+  );
+  const [activityHistoryExpanded, setActivityHistoryExpanded] = useState(
+    () => getProjectActivityBucketExpand(projectId).activityHistory
+  );
   const [photosExpanded, setPhotosExpanded] = useState(() => getProjectSectionExpand().photos);
   const [statusExpanded, setStatusExpanded] = useState(() => getProjectSectionExpand().status);
   const [remindersExpanded, setRemindersExpanded] = useState(
@@ -212,7 +225,6 @@ export function ProjectDetailScreen(props: {
   );
   /** When Play was started from Search photos, ← Back returns there. */
   const slideshowReturnToSearchPhotosRef = useRef(false);
-  const slideshowBackPressAtRef = useRef(0);
   const exportRef = useRef<View>(null);
 
   const project = projectById(state, projectId);
@@ -222,6 +234,74 @@ export function ProjectDetailScreen(props: {
   const projectInteractions = interactionsForProject(state, projectId);
   const recentInteractions = projectInteractions.slice(0, 5);
   const upcomingInteractions = upcomingInteractionsForProject(state, projectId);
+
+  type InteractionBucket = 'future' | 'today' | 'history';
+  type InteractionBucketGroup = {
+    bucket: InteractionBucket;
+    label: string;
+    interactions: (typeof projectInteractions)[number][];
+  };
+
+  function interactionBucket(at: string): InteractionBucket {
+    if (isAfterToday(at)) return 'future';
+    if (isToday(at)) return 'today';
+    return 'history';
+  }
+
+  const INTERACTION_BUCKET_LABEL: Record<InteractionBucket, string> = {
+    future: 'Future Activity',
+    today: 'Today',
+    history: 'History',
+  };
+
+  const interactionBucketCounts: Record<InteractionBucket, number> = {
+    future: 0,
+    today: 0,
+    history: 0,
+  };
+  for (const interaction of recentInteractions) {
+    interactionBucketCounts[interactionBucket(interaction.occurredAtISO)] += 1;
+  }
+
+  const recentInteractionGroups: InteractionBucketGroup[] = [];
+  for (const interaction of recentInteractions) {
+    const bucket = interactionBucket(interaction.occurredAtISO);
+    const last = recentInteractionGroups[recentInteractionGroups.length - 1];
+    if (!last || last.bucket !== bucket) {
+      recentInteractionGroups.push({
+        bucket,
+        label: INTERACTION_BUCKET_LABEL[bucket],
+        interactions: [interaction],
+      });
+    } else {
+      last.interactions.push(interaction);
+    }
+  }
+
+  function isInteractionBucketExpanded(bucket: InteractionBucket): boolean {
+    if (bucket === 'future') return activityFutureExpanded;
+    if (bucket === 'today') return activityTodayExpanded;
+    return activityHistoryExpanded;
+  }
+
+  function toggleInteractionBucket(bucket: InteractionBucket) {
+    if (bucket === 'future') {
+      const next = !activityFutureExpanded;
+      setActivityFutureExpanded(next);
+      setProjectActivityBucketExpand(projectId, { activityFuture: next });
+      return;
+    }
+    if (bucket === 'today') {
+      const next = !activityTodayExpanded;
+      setActivityTodayExpanded(next);
+      setProjectActivityBucketExpand(projectId, { activityToday: next });
+      return;
+    }
+    const next = !activityHistoryExpanded;
+    setActivityHistoryExpanded(next);
+    setProjectActivityBucketExpand(projectId, { activityHistory: next });
+  }
+
   const punchItems = punchItemsForProject(state, projectId);
   const hasRejectedVendor = vendors.some((v) => v.status === 'rejected');
   const visibleVendors = hideRejected
@@ -317,6 +397,13 @@ export function ProjectDetailScreen(props: {
     project?.vendorQuestionsNote,
     project?.totalCost,
   ]);
+
+  useEffect(() => {
+    const buckets = getProjectActivityBucketExpand(projectId);
+    setActivityFutureExpanded(buckets.activityFuture);
+    setActivityTodayExpanded(buckets.activityToday);
+    setActivityHistoryExpanded(buckets.activityHistory);
+  }, [projectId]);
 
   const projectGalleryHasFavorites = useMemo(
     () => hasFavoritePhotos(photosForProject(state, projectId)),
@@ -566,7 +653,6 @@ export function ProjectDetailScreen(props: {
   }
 
   function closeSlideshow() {
-    slideshowBackPressAtRef.current = 0;
     setSlideshowIndex(null);
     setSlideshowPlayPhotos(null);
     if (slideshowReturnToSearchPhotosRef.current) {
@@ -575,28 +661,13 @@ export function ProjectDetailScreen(props: {
     }
   }
 
-  /** Favorite slideshow: ← Back advances; double-tap closes. Search photos Play: ← Back returns to Search. */
+  /** Slideshow: ← Back exits. Swipe or Previous/Next change photos. */
   function handleHeaderBack() {
-    if (slideshowIndex == null) {
-      onBack();
-      return;
-    }
-    if (slideshowReturnToSearchPhotosRef.current) {
+    if (slideshowIndex != null) {
       closeSlideshow();
       return;
     }
-    const length = slideshowPhotos.length;
-    if (length <= 1) {
-      closeSlideshow();
-      return;
-    }
-    const now = Date.now();
-    if (now - slideshowBackPressAtRef.current < SLIDESHOW_DOUBLE_BACK_MS) {
-      closeSlideshow();
-      return;
-    }
-    slideshowBackPressAtRef.current = now;
-    setSlideshowIndex((slideshowIndex + 1) % length);
+    onBack();
   }
 
   function playFavoriteSlideshow(playState?: AppState) {
@@ -624,7 +695,6 @@ export function ProjectDetailScreen(props: {
     );
     setSlideshowEditorOpen(false);
     setAllPhotosOpen(false);
-    slideshowBackPressAtRef.current = 0;
     setSlideshowIndex(0);
   }
 
@@ -645,7 +715,6 @@ export function ProjectDetailScreen(props: {
       }))
     );
     setAllPhotosOpen(false);
-    slideshowBackPressAtRef.current = 0;
     setSlideshowIndex(safeIndex);
   }
 
@@ -1051,6 +1120,7 @@ export function ProjectDetailScreen(props: {
   );
 
   return (
+    <ReuseExistingPhotosProvider state={state} propertyId={propertyId}>
     <KeyboardAvoidingView
       style={[sharedStyles.screen, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1170,8 +1240,11 @@ export function ProjectDetailScreen(props: {
           photos={slideshowPhotos}
           index={slideshowIndex}
           onIndexChange={(index) => {
+            if (index == null) {
+              closeSlideshow();
+              return;
+            }
             setSlideshowIndex(index);
-            if (index == null) setSlideshowPlayPhotos(null);
           }}
           browseOnly
         />
@@ -1215,6 +1288,7 @@ export function ProjectDetailScreen(props: {
           projectId={projectId}
           onSave={onSave}
           showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           childrenGesture={projectSwipeEnabled ? projectSwipeGestureForTitle : undefined}
           expanded={photosExpanded}
           onToggleExpanded={() => {
@@ -1670,7 +1744,7 @@ export function ProjectDetailScreen(props: {
             }}
           >
             <CollapsibleSectionTitle
-              title="Recent interactions"
+              title="What's happening"
               expanded={recentInteractionsExpanded}
               count={projectInteractions.length}
               onExpand={() => {
@@ -1689,8 +1763,8 @@ export function ProjectDetailScreen(props: {
                 accessibilityRole="button"
                 accessibilityLabel={
                   recentInteractionsExpanded
-                    ? 'Hide recent interactions'
-                    : 'Show recent interactions'
+                    ? "Hide what's happening"
+                    : "Show what's happening"
                 }
                 accessibilityState={{ expanded: recentInteractionsExpanded }}
                 hitSlop={6}
@@ -1713,47 +1787,90 @@ export function ProjectDetailScreen(props: {
           ) : recentInteractionsExpanded ? (
             <>
               <View
-                style={{
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                  borderTopColor: colors.text,
-                }}
+                style={[
+                  sharedStyles.activityBucketList,
+                  {
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: colors.text,
+                  },
+                ]}
               >
-                {recentInteractions.map((interaction) => {
-                  const vendor = interaction.vendorId
-                    ? vendorById(state, interaction.vendorId)
-                    : undefined;
-                  const photo = photosForVendorInteraction(state, interaction.id)[0];
+                {recentInteractionGroups.map((group) => {
+                  const expanded = isInteractionBucketExpanded(group.bucket);
+                  const isTodayBucket = group.bucket === 'today';
                   return (
-                    <PropertyInteractionListRow
-                      key={interaction.id}
-                      contactName={interaction.contactName}
-                      companyName={vendor?.name ?? 'No vendor'}
-                      companyPhotoUri={vendor ? firstPhotoUriForVendor(state, vendor) : undefined}
-                      hideCompanyPhoto={!vendor}
-                      vendorStatusLabel={
-                        vendor ? vendorStatusLabel(vendor.status) : undefined
-                      }
-                      vendorStatusColor={
-                        vendor ? vendorStatusColor(vendor.status) : undefined
-                      }
-                      dateISO={interaction.occurredAtISO}
-                      methodLabel={vendorContactMethodLabel(interaction.contactMethod)}
-                      notes={interaction.notes}
-                      photoUri={photo?.localUri}
-                      important={interaction.important === true}
-                      onPress={() => onOpenInteraction(interaction.vendorId, interaction.id)}
-                      onPressVendor={vendor ? () => onOpenVendor(vendor.id) : undefined}
-                      cardBackgroundColor={colors.helpBg}
-                      dividerColor={colors.text}
-                    />
+                    <View key={group.bucket}>
+                      <ActivityBucketBanner
+                        label={group.label}
+                        count={interactionBucketCounts[group.bucket]}
+                        expanded={expanded}
+                        variant={isTodayBucket ? 'today' : 'default'}
+                        onToggle={() => toggleInteractionBucket(group.bucket)}
+                        attachedToGroup
+                      />
+                      {expanded ? (
+                        <View
+                          style={[
+                            sharedStyles.activityBucketGroup,
+                            isTodayBucket && sharedStyles.activityBucketGroupToday,
+                          ]}
+                        >
+                          {group.interactions.map((interaction, index) => {
+                            const frameColor = isTodayBucket
+                              ? colors.danger
+                              : colors.sectionTitle;
+                            const betweenRows = index < group.interactions.length - 1;
+                            const vendor = interaction.vendorId
+                              ? vendorById(state, interaction.vendorId)
+                              : undefined;
+                            const photo = photosForVendorInteraction(state, interaction.id)[0];
+                            return (
+                              <PropertyInteractionListRow
+                                key={interaction.id}
+                                contactName={interaction.contactName}
+                                companyName={vendor?.name ?? 'No vendor'}
+                                companyPhotoUri={
+                                  vendor ? firstPhotoUriForVendor(state, vendor) : undefined
+                                }
+                                hideCompanyPhoto={!vendor}
+                                vendorStatusLabel={
+                                  vendor ? vendorStatusLabel(vendor.status) : undefined
+                                }
+                                vendorStatusColor={
+                                  vendor ? vendorStatusColor(vendor.status) : undefined
+                                }
+                                dateISO={interaction.occurredAtISO}
+                                methodLabel={vendorContactMethodLabel(interaction.contactMethod)}
+                                notes={interaction.notes}
+                                photoUri={photo?.localUri}
+                                important={interaction.important === true}
+                                onPress={() =>
+                                  onOpenInteraction(interaction.vendorId, interaction.id)
+                                }
+                                onPressVendor={
+                                  vendor ? () => onOpenVendor(vendor.id) : undefined
+                                }
+                                cardBackgroundColor={colors.bg}
+                                ownerBackgroundColor={colors.interactionOwnerBg}
+                                dividerColor={frameColor}
+                                dividerWidth={betweenRows ? 2 : 0}
+                                ownerCornerIcon="storefront"
+                                cornerIcon="forum"
+                                stackRelative={isAfterToday(interaction.occurredAtISO)}
+                              />
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                    </View>
                   );
                 })}
               </View>
               {projectInteractions.length > 5 ? (
                 <Pressable
-                  onPress={onOpenInteractions}
+                  onPress={() => onSearchActivity?.()}
                   accessibilityRole="button"
-                  accessibilityLabel="Show all project interactions"
+                  accessibilityLabel={`Show all project activity, ${projectInteractions.length} items`}
                   style={({ pressed }) => ({
                     alignSelf: 'flex-start',
                     marginTop: 4,
@@ -1761,7 +1878,9 @@ export function ProjectDetailScreen(props: {
                     opacity: pressed ? 0.7 : 1,
                   })}
                 >
-                  <Text style={sharedStyles.textLink}>Show all</Text>
+                  <Text style={sharedStyles.textLink}>
+                    Show all ({projectInteractions.length})
+                  </Text>
                 </Pressable>
               ) : null}
             </>
@@ -2062,5 +2181,6 @@ export function ProjectDetailScreen(props: {
         </View>
       ) : null}
     </KeyboardAvoidingView>
+    </ReuseExistingPhotosProvider>
   );
 }

@@ -4,16 +4,16 @@ export type RoomSectionExpandPrefs = {
   assets: boolean;
 };
 
-/** Session default: all collapsed until the user expands. */
+/** Session default: photos expanded; other sections collapsed until the user expands. */
 const DEFAULT_ROOM_SECTION_EXPAND: RoomSectionExpandPrefs = {
-  photos: false,
+  photos: true,
   reminders: false,
   assets: false,
 };
 
 let cachedExpand: RoomSectionExpandPrefs = { ...DEFAULT_ROOM_SECTION_EXPAND };
 
-/** Sync read of room section expand prefs (session memory, default collapsed). Shared across rooms. */
+/** Sync read of room section expand prefs (session memory; photos default expanded). Shared across rooms. */
 export function getRoomSectionExpand(): RoomSectionExpandPrefs {
   return { ...cachedExpand };
 }

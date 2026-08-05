@@ -70,6 +70,8 @@ import { SOLAR_PHOTO_SLOTS } from './solarSlots';
 import { solarExtraPhotos, solarSlotPhotoUri } from './solarPhotos';
 import { HOT_TUB_PHOTO_SLOTS } from './hotTubSlots';
 import { hotTubExtraPhotos, hotTubSlotPhotoUri } from './hotTubPhotos';
+import { TOILET_PHOTO_SLOTS, toiletFlushTypeLabel } from './toiletSlots';
+import { toiletExtraPhotos, toiletSlotPhotoUri } from './toiletPhotos';
 import {
   WATER_TREATMENT_PHOTO_SLOTS,
 } from './waterTreatmentSlots';
@@ -344,6 +346,14 @@ function collectItemPhotos(state: AppState, item: InventoryItem): ItemExportPhot
       HOT_TUB_PHOTO_SLOTS,
       (key) => hotTubSlotPhotoUri(state, details, key as (typeof HOT_TUB_PHOTO_SLOTS)[number]['key']),
       hotTubExtraPhotos(state, itemId, details)
+    );
+  }
+  if (itemTypeId === 'toilet' && details.kind === 'toilet') {
+    return collectSlotAndExtraPhotos(
+      state,
+      TOILET_PHOTO_SLOTS,
+      (key) => toiletSlotPhotoUri(state, details, key as (typeof TOILET_PHOTO_SLOTS)[number]['key']),
+      toiletExtraPhotos(state, itemId, details)
     );
   }
   if (itemTypeId === 'water_treatment' && details.kind === 'water_treatment') {
@@ -858,6 +868,25 @@ function buildDetailSections(item: InventoryItem): ItemExportSection[] {
       pushSection(sections, section('Service contact', [
         row('Service company', details.serviceCompany),
         row('Service phone', details.servicePhone),
+      ]));
+      pushSection(sections, section('Notes', [row('Notes', details.notes)]));
+      break;
+    }
+    case 'toilet': {
+      if (details.kind !== 'toilet') break;
+      pushSection(sections, section('Equipment', [
+        row('Make', details.make),
+        row('Model', details.modelNumber),
+        row('Serial number', details.serialNumber),
+        row('Flush type', toiletFlushTypeLabel(details.flushType, details.flushTypeOther)),
+        row('Gallons per flush', details.gallonsPerFlush),
+      ]));
+      pushSection(sections, section('Valves', [
+        row('Flush valve kit', details.flushValveKit),
+        row('Fill valve kit', details.fillValveKit),
+      ]));
+      pushSection(sections, section('Install', [
+        row('Install date', formatStoredDate(details.installDateAtISO)),
       ]));
       pushSection(sections, section('Notes', [row('Notes', details.notes)]));
       break;

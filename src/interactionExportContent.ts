@@ -82,3 +82,31 @@ export function buildInteractionExportSnapshot(params: {
     exportedAtLabel: `Exported ${formatDate(nowISO())}`,
   };
 }
+
+/** Plain-text summary for system Share (no photo binaries). */
+export function interactionSnapshotToPlainText(snapshot: InteractionExportSnapshot): string {
+  const lines: string[] = [snapshot.title];
+  if (snapshot.subtitle.trim()) lines.push(snapshot.subtitle.trim());
+  for (const meta of snapshot.metaLines) {
+    if (meta.trim()) lines.push(meta.trim());
+  }
+  if (snapshot.rows.length > 0) {
+    lines.push('');
+    for (const entry of snapshot.rows) {
+      lines.push(`${entry.label}: ${entry.value}`);
+    }
+  }
+  if (snapshot.photos.length > 0) {
+    lines.push('');
+    lines.push(
+      snapshot.photos.length === 1
+        ? '1 photo attached in app'
+        : `${snapshot.photos.length} photos attached in app`
+    );
+  }
+  if (snapshot.exportedAtLabel.trim()) {
+    lines.push('');
+    lines.push(snapshot.exportedAtLabel.trim());
+  }
+  return lines.join('\n');
+}

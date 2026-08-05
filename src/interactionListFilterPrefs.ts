@@ -13,6 +13,10 @@ export type InteractionListFilterPrefs = {
   selectedImportantOnly: boolean;
   searchQuery: string;
   forceShowSearch: boolean;
+  activityFuture: boolean;
+  activityToday: boolean;
+  activityHistory: boolean;
+  activityUndated: boolean;
 };
 
 const DEFAULT_FILTERS: InteractionListFilterPrefs = {
@@ -23,6 +27,10 @@ const DEFAULT_FILTERS: InteractionListFilterPrefs = {
   selectedImportantOnly: false,
   searchQuery: '',
   forceShowSearch: false,
+  activityFuture: false,
+  activityToday: true,
+  activityHistory: true,
+  activityUndated: true,
 };
 
 /** Session-only filters keyed by Interactions list scope. */
@@ -47,7 +55,7 @@ export function getInteractionListFilters(
   scopeKey: InteractionListFilterScopeKey
 ): InteractionListFilterPrefs {
   const saved = filtersByScope.get(scopeKey);
-  return saved ? { ...saved } : { ...DEFAULT_FILTERS };
+  return saved ? { ...DEFAULT_FILTERS, ...saved } : { ...DEFAULT_FILTERS };
 }
 
 export function setInteractionListFilters(
@@ -55,6 +63,7 @@ export function setInteractionListFilters(
   next: Partial<InteractionListFilterPrefs>
 ): InteractionListFilterPrefs {
   const merged: InteractionListFilterPrefs = {
+    ...DEFAULT_FILTERS,
     ...getInteractionListFilters(scopeKey),
     ...next,
   };

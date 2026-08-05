@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, TouchableOpacity, View } from 'react-native';
 import { Text } from '../textScale';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
@@ -9,15 +9,23 @@ import { PhotoLabelModal } from './PhotoLabelModal';
 import { PhotoViewerModal, type ViewerPhoto } from './PhotoViewerModal';
 import { sharedStyles, colors } from '../theme';
 import { ADD_PHOTO_TILE_LABEL, promptPickOrTakeMulti } from '../photoPicker';
+import type { ReuseExistingPhotoPick } from '../reuseExistingPhotos';
+import { stashReusePhotoMeta } from '../reuseExistingPhotos';
 import { showLabeledPhotoThumbActions } from '../photoLabeling';
 import { savePhotoToCameraRoll } from '../savePhotoToCameraRoll';
 import { sharePhoto } from '../sharePhoto';
 import { DocumentListSection, type DocumentListRow } from './DocumentListSection';
 import { CollapsibleSectionTitle } from './CollapsibleSectionTitle';
 import { collapsedSectionLabel } from '../utils';
+import {
+  getPhotoHeroLayout,
+  setPhotoHeroLayout,
+  type PhotoHeroLayout,
+} from '../photoHeroLayoutPrefs';
 
 const DEFAULT_THUMB_SIZE = 72;
 const DEFAULT_SLOT_LABEL_WIDTH = 80;
+const THUMB_STRIP_GAP = 10;
 
 export type SlotDocumentTileInfo = {
   id: string;
@@ -106,8 +114,10 @@ export function PhotoSection(props: {
   /** When set with onToggleExpanded, show expand/collapse on the Photos heading. */
   expanded?: boolean;
   onToggleExpanded?: () => void;
-  /** When true, show ← → above movable (extra) thumbs. */
+  /** When true, show ← → above movable (extra) thumbs and on the active hero. */
   showReorderArrows?: boolean;
+  /** Toggles showReorderArrows; enables the strip Reorder control when move handlers exist. */
+  onToggleReorderArrows?: () => void;
 }) {
   const {
     tiles,
@@ -129,10 +139,12 @@ export function PhotoSection(props: {
     expanded = true,
     onToggleExpanded,
     showReorderArrows = false,
+    onToggleReorderArrows,
   } = props;
 
   const addPlaceholderSize = Math.round(thumbSize / 3);
   const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
+  const [heroLayout, setHeroLayout] = useState<PhotoHeroLayout>(() => getPhotoHeroLayout());
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [labelingPhotoId, setLabelingPhotoId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
@@ -142,6 +154,10 @@ export function PhotoSection(props: {
   /** Index to restore after labeling opened from the fullscreen viewer (nested Modals). */
   const [viewerReturnIndex, setViewerReturnIndex] = useState<number | null>(null);
   const [addingPhotos, setAddingPhotos] = useState(false);
+  const thumbStripRef = useRef<ScrollView>(null);
+  const thumbStripScrollX = useRef(0);
+  const [thumbStripViewportWidth, setThumbStripViewportWidth] = useState(0);
+  const isInitialThumbScroll = useRef(true);
 
   const labelHandlerForId = useCallback(
     (photoId: string): LabelHandler | undefined => {
@@ -213,6 +229,34 @@ export function PhotoSection(props: {
     [onAddPhotos, queueLabels]
   );
 
+  const handleReuseExistingPhotos = useCallback(
+    (picks: ReuseExistingPhotoPick[]) => {
+      if (!onAddPhotos || picks.length === 0) return;
+      stashReusePhotoMeta(picks);
+      setAddingPhotos(true);
+      void (async () => {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+        try {
+          const result = await onAddPhotos(picks.map((pick) => pick.uri));
+          const ids = Array.isArray(result) ? result : [];
+          if (ids.length > 0) {
+            setHeroPhotoId(ids[0] ?? null);
+            const needLabel = ids.filter((_, index) => {
+              const pick = picks[index];
+              return !pick?.caption?.trim() && !pick?.notes?.trim();
+            });
+            if (needLabel.length > 0) queueLabels(needLabel);
+          }
+        } finally {
+          setAddingPhotos(false);
+        }
+      })();
+    },
+    [onAddPhotos, queueLabels]
+  );
+
   const handleAddDocuments = useCallback(
     (picked: { uri: string; fileName: string; mimeType: string }) => {
       if (!onAddDocuments) return;
@@ -225,8 +269,16 @@ export function PhotoSection(props: {
     if (!onAddPhotos || addingPhotos) return;
     promptPickOrTakeMulti(handleAddPhotos, onAddDocuments ? handleAddDocuments : undefined, {
       onBusyChange: setAddingPhotos,
+      onReuseExisting: handleReuseExistingPhotos,
     });
-  }, [addingPhotos, handleAddDocuments, handleAddPhotos, onAddDocuments, onAddPhotos]);
+  }, [
+    addingPhotos,
+    handleAddDocuments,
+    handleAddPhotos,
+    handleReuseExistingPhotos,
+    onAddDocuments,
+    onAddPhotos,
+  ]);
 
   const stripTiles = useMemo((): PhotoTile[] => {
     const withoutAdd = tiles.filter(
@@ -328,6 +380,37 @@ export function PhotoSection(props: {
   }, [heroPhotoId, viewerPhotos]);
 
   useEffect(() => {
+    if (!effectiveHeroId || thumbStripViewportWidth <= 0) return;
+    const index = stripTiles.findIndex((tile) => {
+      if (tile.kind === 'extra') return tile.id === effectiveHeroId;
+      if (tile.kind === 'reserved') return tile.key === effectiveHeroId && Boolean(tile.uri);
+      return false;
+    });
+    if (index < 0) return;
+
+    const itemStart = index * (slotLabelWidth + THUMB_STRIP_GAP);
+    const itemEnd = itemStart + slotLabelWidth;
+    const scrollX = thumbStripScrollX.current;
+    const viewEnd = scrollX + thumbStripViewportWidth;
+    const pad = Math.min(12, Math.max(0, (thumbStripViewportWidth - slotLabelWidth) / 2));
+
+    let targetX = scrollX;
+    if (itemStart < scrollX + pad) {
+      targetX = Math.max(0, itemStart - pad);
+    } else if (itemEnd > viewEnd - pad) {
+      targetX = Math.max(0, itemEnd - thumbStripViewportWidth + pad);
+    } else if (!isInitialThumbScroll.current) {
+      return;
+    }
+
+    const animated = !isInitialThumbScroll.current;
+    isInitialThumbScroll.current = false;
+    if (Math.abs(targetX - scrollX) < 1 && animated) return;
+    thumbStripRef.current?.scrollTo({ x: targetX, animated });
+    thumbStripScrollX.current = targetX;
+  }, [effectiveHeroId, slotLabelWidth, stripTiles, thumbStripViewportWidth]);
+
+  useEffect(() => {
     if (heroPhotoId && !viewerPhotos.some((photo) => photo.id === heroPhotoId)) {
       setHeroPhotoId(null);
     }
@@ -355,15 +438,54 @@ export function PhotoSection(props: {
   const activeHeroFavorite = viewerPhotos[heroIndex]?.favorite === true;
   const activeHeroCanFavorite = viewerPhotos[heroIndex]?.onToggleFavorite != null;
 
+  const canReorderStrip = useMemo(
+    () =>
+      stripTiles.some(
+        (tile) =>
+          tile.kind === 'extra' && Boolean(tile.onMoveLeft || tile.onMoveRight)
+      ),
+    [stripTiles]
+  );
+  const showStripReorderControl = Boolean(onToggleReorderArrows) && canReorderStrip;
+
+  const getHeroMoveHandlers = useCallback(
+    (photoId: string) => {
+      for (const tile of stripTiles) {
+        if (tile.kind === 'extra' && tile.id === photoId) {
+          return {
+            onMoveLeft: tile.onMoveLeft,
+            onMoveRight: tile.onMoveRight,
+          };
+        }
+      }
+      return {};
+    },
+    [stripTiles]
+  );
+
   const labelingHandler = labelingPhotoId ? labelHandlerForId(labelingPhotoId) : undefined;
 
   useEffect(() => {
     onActiveHeroLabelChange?.(activeHeroLabel);
   }, [activeHeroLabel, onActiveHeroLabelChange]);
 
-  function openHeroViewer() {
+  function openHeroViewer(photoId?: string) {
     if (viewerPhotos.length === 0) return;
+    if (photoId) {
+      const index = viewerPhotos.findIndex((photo) => photo.id === photoId);
+      if (index >= 0) {
+        setHeroPhotoId(photoId);
+        setViewerIndex(index);
+        return;
+      }
+    }
     setViewerIndex(heroIndex);
+  }
+
+  function toggleHeroLayout() {
+    const next: PhotoHeroLayout = heroLayout === '1' ? '4' : '1';
+    setPhotoHeroLayout(next);
+    setHeroLayout(next);
   }
 
   function openRenameEditor(photoId: string, currentLabel?: string, currentNotes?: string) {
@@ -569,7 +691,15 @@ export function PhotoSection(props: {
     )
   ) : null;
 
-  const heroHasCaption = Boolean(activeHeroLabel || activeHeroNotes || activeHeroCanFavorite);
+  const showHeroLayoutToggle = viewerPhotos.length >= 2;
+  const showHeroFavorite = activeHeroCanFavorite && heroLayout !== '4';
+  const showSharedHeroCaption = heroLayout === '1';
+  const heroHasCaption = Boolean(
+    (showSharedHeroCaption && (activeHeroLabel || activeHeroNotes || showHeroFavorite)) ||
+      showHeroLayoutToggle
+  );
+  const sideControlPad =
+    showHeroLayoutToggle || showHeroFavorite ? 32 : 0;
   const heroCaption = heroHasCaption ? (
     <View
       style={{
@@ -578,42 +708,60 @@ export function PhotoSection(props: {
         paddingHorizontal: 8,
         width: '100%',
         position: 'relative',
+        minHeight: showHeroLayoutToggle || showHeroFavorite ? 22 : undefined,
       }}
     >
-      <View
-        style={{
-          alignItems: 'center',
-          maxWidth: '100%',
-          paddingHorizontal: activeHeroCanFavorite ? 28 : 0,
-        }}
-      >
-        {activeHeroLabel ? (
-          <Text
-            style={{
-              fontSize: 15,
-              fontWeight: '700',
-              color: colors.text,
-              textAlign: 'center',
-            }}
-          >
-            {activeHeroLabel}
-          </Text>
-        ) : null}
-        {activeHeroNotes ? (
-          <Text
-            style={[
-              sharedStyles.cardMeta,
-              {
-                marginTop: activeHeroLabel ? 4 : 0,
+      {showHeroLayoutToggle ? (
+        <Pressable
+          onPress={toggleHeroLayout}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={heroLayout === '4' ? 'Show one photo' : 'Show four photos'}
+          style={{ position: 'absolute', left: 8, top: 1, zIndex: 1 }}
+        >
+          <MaterialIcons
+            name={heroLayout === '4' ? 'crop-square' : 'grid-view'}
+            size={22}
+            color={colors.text}
+          />
+        </Pressable>
+      ) : null}
+      {showSharedHeroCaption ? (
+        <View
+          style={{
+            alignItems: 'center',
+            maxWidth: '100%',
+            paddingHorizontal: sideControlPad,
+          }}
+        >
+          {activeHeroLabel ? (
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: '700',
+                color: colors.text,
                 textAlign: 'center',
-              },
-            ]}
-          >
-            {activeHeroNotes}
-          </Text>
-        ) : null}
-      </View>
-      {activeHeroCanFavorite ? (
+              }}
+            >
+              {activeHeroLabel}
+            </Text>
+          ) : null}
+          {activeHeroNotes ? (
+            <Text
+              style={[
+                sharedStyles.cardMeta,
+                {
+                  marginTop: activeHeroLabel ? 4 : 0,
+                  textAlign: 'center',
+                },
+              ]}
+            >
+              {activeHeroNotes}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      {showHeroFavorite ? (
         <Pressable
           onPress={() => viewerPhotos[heroIndex]?.onToggleFavorite?.(!activeHeroFavorite)}
           hitSlop={10}
@@ -646,12 +794,17 @@ export function PhotoSection(props: {
           id: photo.id,
           uri: photo.uri,
           label: photo.label,
+          favorite: photo.favorite === true,
         }))}
         activeId={effectiveHeroId}
         onActiveIdChange={setHeroPhotoId}
         onOpenViewer={openHeroViewer}
+        layout={heroLayout}
         dotsPosition={heroDotsPosition}
         resizeMode={heroResizeMode}
+        showReorderArrows={showReorderArrows}
+        reorderBarPlacement={heroCaptionPlacement === 'above' ? 'above' : 'below'}
+        getMoveHandlers={getHeroMoveHandlers}
       />
 
       {heroCaptionPlacement === 'below' ? heroCaption : null}
@@ -717,11 +870,17 @@ export function PhotoSection(props: {
         <>
           {hint ? <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>{hint}</Text> : null}
           <ScrollView
+            ref={thumbStripRef}
             horizontal
             nestedScrollEnabled
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingVertical: 4, gap: 10 }}
+            contentContainerStyle={{ paddingVertical: 4, gap: THUMB_STRIP_GAP }}
             style={{ marginBottom: 12 }}
+            onLayout={(e) => setThumbStripViewportWidth(e.nativeEvent.layout.width)}
+            onScroll={(e) => {
+              thumbStripScrollX.current = e.nativeEvent.contentOffset.x;
+            }}
+            scrollEventThrottle={16}
           >
             {stripTiles.map((tile, index) => {
               const label = tileLabel(tile);
@@ -778,6 +937,43 @@ export function PhotoSection(props: {
                 </View>
               );
             })}
+            {showStripReorderControl ? (
+              <View
+                style={{
+                  width: slotLabelWidth,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  alignSelf: 'center',
+                }}
+              >
+                <Pressable
+                  onPress={onToggleReorderArrows}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    showReorderArrows ? 'Turn off photo reorder' : 'Turn on photo reorder'
+                  }
+                  accessibilityState={{ selected: showReorderArrows }}
+                  style={({ pressed }) => ({
+                    paddingVertical: 8,
+                    paddingHorizontal: 4,
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  <Text
+                    style={[
+                      sharedStyles.textLink,
+                      {
+                        fontSize: 12,
+                        textAlign: 'center',
+                        fontWeight: showReorderArrows ? '700' : '500',
+                      },
+                    ]}
+                  >
+                    {showReorderArrows ? 'Done' : 'Reorder'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </ScrollView>
 
           {hasHiddenSlots && onRestoreHiddenSlots ? (

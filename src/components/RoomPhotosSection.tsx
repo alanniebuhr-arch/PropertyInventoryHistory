@@ -31,6 +31,7 @@ export function RoomPhotosSection(props: {
   expanded?: boolean;
   onToggleExpanded?: () => void;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
   const {
     state,
@@ -43,6 +44,7 @@ export function RoomPhotosSection(props: {
     expanded,
     onToggleExpanded,
     showReorderArrows,
+    onToggleReorderArrows,
   } = props;
 
   const extraPhotos = photosForRoom(state, roomId);
@@ -148,6 +150,7 @@ export function RoomPhotosSection(props: {
       expanded={expanded}
       onToggleExpanded={onToggleExpanded}
       showReorderArrows={showReorderArrows}
+      onToggleReorderArrows={onToggleReorderArrows}
     >
       {children}
     </PhotoSection>

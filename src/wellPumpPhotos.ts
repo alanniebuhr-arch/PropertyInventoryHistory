@@ -1,5 +1,6 @@
 import type { AppState, InventoryItem, ItemPhoto, WellPumpDetails } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { WELL_PUMP_PHOTO_SLOTS, type WellPumpPhotoSlotKey } from './wellPumpSlots';
@@ -68,12 +69,12 @@ export async function addWellPumpExtraPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         itemId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 
@@ -132,12 +133,12 @@ export async function setWellPumpSlotPhoto(
 
   const photoId = uid('photo');
   const localUri = await persistPhotoFromUri(sourceUri, photoId);
-  const photo: ItemPhoto = {
+  const photo = withReusePhotoMeta(sourceUri, {
     id: photoId,
     itemId,
     localUri,
     createdAtISO: nowISO(),
-  };
+  });
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asWellPumpDetails(currentItem.details);

@@ -10,6 +10,7 @@ import { ItemGalleryTile, ItemListRow } from '../components/ListRows';
 import { UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { RoomPhotosSection } from '../components/RoomPhotosSection';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import { RoomNavigationDots } from '../components/RoomNavigationDots';
 import { RenameModal } from '../components/RenameModal';
 import {
@@ -605,6 +606,7 @@ export function RoomDetailScreen(props: {
   );
 
   return (
+    <ReuseExistingPhotosProvider state={state} propertyId={propertyId}>
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScreenBackHeader onPress={onBack}>
         <View
@@ -748,6 +750,7 @@ export function RoomDetailScreen(props: {
           room={rm}
           onSave={onSave}
           showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           childrenGesture={roomSwipeEnabled ? roomSwipeGestureForTitle : undefined}
           expanded={photosExpanded}
           onToggleExpanded={() => {
@@ -929,5 +932,6 @@ export function RoomDetailScreen(props: {
         placeholder="Room name"
       />
     </View>
+    </ReuseExistingPhotosProvider>
   );
 }

@@ -1,5 +1,6 @@
 import type { AppState, Project, ProjectPhoto } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { uid, nowISO } from './utils';
 
 export function photosForProject(state: AppState, projectId: string): ProjectPhoto[] {
@@ -27,12 +28,12 @@ export async function addProjectPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         projectId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 

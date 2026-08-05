@@ -20,11 +20,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, VendorContactMethod, VendorInteraction, VendorPhoto } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import { InteractionPhotoSection } from '../components/InteractionPhotoSection';
 import { InteractionExportSheet } from '../components/InteractionExportSheet';
-import { DetailDisplayRow } from '../components/DetailDisplayRow';
+import { DetailDisplayRow, DETAIL_LABEL_COLUMN_WIDTH } from '../components/DetailDisplayRow';
 import { DateInputField } from '../components/DateInputField';
 import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
+import { InteractionDateText } from '../components/ListRows';
 import { sharedStyles, colors } from '../theme';
 import {
   dateInputPlaceholder,
@@ -45,20 +47,26 @@ import {
   vendorInteractionById,
   vendorsForProject,
 } from '../storage';
+import { isAfterToday } from '../eventRecurrence';
 import {
   VENDOR_CONTACT_METHOD_OPTIONS,
   vendorContactMethodLabel,
 } from '../vendorContactMethod';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { reorderItemsById, type PhotoReorderDirection } from '../photoReorder';
 import { setVendorPhotoCaptionAndNotes } from '../photoMeta';
+import { firstPhotoUriForProject } from '../projectPhotos';
+import { firstPhotoUriForVendor } from '../vendorPhotos';
 import {
   buildInteractionExportSnapshot,
+  interactionSnapshotToPlainText,
   type InteractionExportSnapshot,
 } from '../interactionExportContent';
 import { DEFAULT_SHARE_FORMAT, type ShareFormat } from '../shareFormat';
 import { shareViewAsPng } from '../shareViewImage';
 import { shareHtmlAsPdf } from '../shareViewPdf';
+import { copyPlainTextToClipboard } from '../sharePlainText';
 import { buildExportPdfHtml, interactionSnapshotToPdfDoc } from '../exportPdfHtml';
 import { ShareFormatModal } from '../components/ShareFormatModal';
 import {
@@ -106,6 +114,7 @@ export function AddEditVendorInteractionScreen(props: {
   onSearchServiceHistory?: () => void;
   onSearchActivity?: () => void;
   onOpenProject?: (projectId: string) => void;
+  onOpenVendor?: (vendorId: string) => void;
   onOpenItem?: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
 }) {
   const {
@@ -127,6 +136,7 @@ export function AddEditVendorInteractionScreen(props: {
     onSearchServiceHistory,
     onSearchActivity,
     onOpenProject,
+    onOpenVendor,
     onOpenItem,
   } = props;
   const insets = useSafeAreaInsets();
@@ -359,6 +369,10 @@ export function AddEditVendorInteractionScreen(props: {
       }
       setShareOptionsOpen(false);
       setMenuOpen(false);
+      if (format === 'text') {
+        await copyPlainTextToClipboard(interactionSnapshotToPlainText(snapshot));
+        return;
+      }
       if (format === 'pdf') {
         setSharingPng(true);
         try {
@@ -393,6 +407,7 @@ export function AddEditVendorInteractionScreen(props: {
       contactMethod,
       contactName,
       dateStr,
+      draftProjectId,
       draftVendorId,
       important,
       interactionPhotos,
@@ -544,13 +559,13 @@ export function AddEditVendorInteractionScreen(props: {
       sourceUris.map(async (sourceUri) => {
         const photoId = uid('photo');
         const localUri = await persistPhotoFromUri(sourceUri, photoId);
-        return {
+        return withReusePhotoMeta(sourceUri, {
           id: photoId,
           ...(draftVendorId ? { vendorId: draftVendorId } : {}),
           interactionId: existing?.id,
           localUri,
           createdAtISO: nowISO(),
-        };
+        });
       })
     );
     const nextPhotos = [...interactionPhotos, ...newPhotos];
@@ -768,17 +783,49 @@ export function AddEditVendorInteractionScreen(props: {
 
   const occurredAtISO = parseDateInputToISO(dateStr);
   const title = !existing ? 'New interaction' : isEditing ? 'Edit interaction' : 'Interaction';
-  const projectLabel =
-    draftProjectId == null
-      ? 'None'
-      : (projects.find((p) => p.id === draftProjectId)?.name ?? 'None');
+  const project =
+    draftProjectId != null ? projects.find((p) => p.id === draftProjectId) : undefined;
+  const projectLabel = draftProjectId == null ? 'None' : (project?.name ?? 'None');
   const vendorLabel = draftVendor?.name?.trim() || 'None';
   const viewHighlightQuery =
     !isEditing && searchQuery?.trim() ? searchQuery.trim() : undefined;
   const highlightFor = (field: InteractionSearchMatchField) =>
     viewHighlightQuery && searchMatchField === field ? viewHighlightQuery : undefined;
 
+  const projectContextUri =
+    !isEditing && project ? firstPhotoUriForProject(state, project) : undefined;
+  const vendorContextUri =
+    !isEditing && draftVendor ? firstPhotoUriForVendor(state, draftVendor) : undefined;
+  type ContextPhoto = {
+    id: string;
+    uri: string;
+    label: string;
+    onOpen?: () => void;
+    accessibilityHint?: string;
+  };
+  const contextPhotos: ContextPhoto[] = [];
+  if (projectContextUri && project) {
+    contextPhotos.push({
+      id: 'context-project',
+      uri: projectContextUri,
+      label: project.name?.trim() || 'Project',
+      onOpen: onOpenProject ? () => onOpenProject(project.id) : undefined,
+      accessibilityHint: 'Opens this project',
+    });
+  }
+  if (vendorContextUri && draftVendor) {
+    contextPhotos.push({
+      id: 'context-vendor',
+      uri: vendorContextUri,
+      label: draftVendor.name?.trim() || 'Vendor',
+      onOpen: onOpenVendor ? () => onOpenVendor(draftVendor.id) : undefined,
+      accessibilityHint: 'Opens this vendor',
+    });
+  }
+  const showContextPhotos = !isEditing && contextPhotos.length > 0;
+
   return (
+    <ReuseExistingPhotosProvider state={state} propertyId={resolvedPropertyId ?? ''}>
     <KeyboardAvoidingView
       style={[sharedStyles.screen, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -894,7 +941,58 @@ export function AddEditVendorInteractionScreen(props: {
         scrollEventThrottle={16}
       >
         <Text style={sharedStyles.title}>{title}</Text>
-        <Text style={sharedStyles.subtitle}>{partyLabel}</Text>
+        {isEditing ? <Text style={sharedStyles.subtitle}>{partyLabel}</Text> : null}
+
+        {showContextPhotos ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: 10,
+              marginTop: 8,
+              marginBottom: 4,
+            }}
+          >
+            {contextPhotos.map((photo) => (
+              <Pressable
+                key={photo.id}
+                onPress={photo.onOpen}
+                disabled={!photo.onOpen}
+                accessibilityRole={photo.onOpen ? 'button' : 'image'}
+                accessibilityLabel={photo.label}
+                accessibilityHint={photo.onOpen ? photo.accessibilityHint : undefined}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  opacity: photo.onOpen && pressed ? 0.85 : 1,
+                })}
+              >
+                <Image
+                  source={{ uri: photo.uri }}
+                  style={{
+                    width: '100%',
+                    aspectRatio: 4 / 3,
+                    borderRadius: 10,
+                    backgroundColor: colors.photoPlaceholder,
+                  }}
+                  resizeMode="cover"
+                />
+                <Text
+                  style={[
+                    sharedStyles.cardMeta,
+                    {
+                      marginTop: 4,
+                      textAlign: 'center',
+                      fontWeight: '600',
+                      ...(photo.onOpen ? { color: colors.primary } : null),
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {photo.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
 
         {isEditing ? (
           <>
@@ -1024,11 +1122,43 @@ export function AddEditVendorInteractionScreen(props: {
                 />
               </>
             ) : null}
-            <DetailDisplayRow
-              label="Date"
-              value={occurredAtISO ? formatDisplayDate(occurredAtISO) : dateStr}
-              highlightQuery={highlightFor('date')}
-            />
+            {occurredAtISO && isAfterToday(occurredAtISO) ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  marginBottom: 10,
+                  gap: 12,
+                }}
+              >
+                <Text
+                  style={[
+                    sharedStyles.fieldLabel,
+                    {
+                      marginTop: 0,
+                      marginBottom: 0,
+                      width: DETAIL_LABEL_COLUMN_WIDTH,
+                      flexShrink: 0,
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  Date
+                </Text>
+                <InteractionDateText
+                  iso={occurredAtISO}
+                  style={[sharedStyles.cardMeta, { fontSize: 15, marginTop: 0, lineHeight: 22 }]}
+                  restStyle={{ fontWeight: '400', color: colors.textMuted }}
+                  stackRelative
+                />
+              </View>
+            ) : (
+              <DetailDisplayRow
+                label="Date"
+                value={occurredAtISO ? formatDisplayDate(occurredAtISO) : dateStr}
+                highlightQuery={highlightFor('date')}
+              />
+            )}
             {important ? <DetailDisplayRow label="Important" value="Yes" /> : null}
             <DetailDisplayRow
               label="How contacted"
@@ -1196,6 +1326,7 @@ export function AddEditVendorInteractionScreen(props: {
         onChangeShareFormat={setShareFormat}
         onShare={() => void runInteractionShare(shareFormat)}
         onClose={() => setShareOptionsOpen(false)}
+        formats={['png', 'pdf', 'text']}
       />
 
       {exportSnapshot ? (
@@ -1235,5 +1366,6 @@ export function AddEditVendorInteractionScreen(props: {
         </View>
       ) : null}
     </KeyboardAvoidingView>
+    </ReuseExistingPhotosProvider>
   );
 }

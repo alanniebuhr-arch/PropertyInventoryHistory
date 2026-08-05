@@ -20,6 +20,7 @@ import { generatorFuelTypeLabel } from './generatorSlots';
 import { sumpPumpRoleLabel } from './sumpPumpSlots';
 import { roofMaterialLabel } from './roofSlots';
 import { poolTypeLabel } from './poolSlots';
+import { toiletFlushTypeLabel } from './toiletSlots';
 
 export type ItemListSummaryField = { label: string; value: string };
 
@@ -273,6 +274,19 @@ export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField
       pushField(fields, 'Make', details.make);
       pushField(fields, 'Model', details.modelNumber);
       pushField(fields, 'Capacity (persons)', details.capacityPersons);
+      pushField(fields, 'Notes', details.notes);
+      break;
+    }
+    case 'toilet': {
+      if (details.kind !== 'toilet') break;
+      pushField(fields, 'Make', details.make);
+      pushField(
+        fields,
+        'Flush type',
+        toiletFlushTypeLabel(details.flushType, details.flushTypeOther)
+      );
+      pushField(fields, 'Flush valve kit', details.flushValveKit);
+      pushField(fields, 'Fill valve kit', details.fillValveKit);
       pushField(fields, 'Notes', details.notes);
       break;
     }

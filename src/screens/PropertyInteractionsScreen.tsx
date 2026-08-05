@@ -18,12 +18,12 @@ import { Text, TextInput, useTextScaleControls } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppState, ProjectVendor, VendorContactMethod } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ActivityBucketBanner } from '../components/ActivityBucketBanner';
 import { ITEM_LIST_THUMB_SIZE, PropertyInteractionListRow } from '../components/ListRows';
 import { InteractionsExportSheet } from '../components/InteractionsExportSheet';
 import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
 import { sharedStyles, colors } from '../theme';
 import { formatDisplayDate } from '../utils';
-import { isAfterToday } from '../eventRecurrence';
 import {
   findInteractionSearchMatch,
   type InteractionSearchMatchField,
@@ -67,6 +67,12 @@ import {
   interactionListFilterScopeKey,
   setInteractionListFilters,
 } from '../interactionListFilterPrefs';
+import {
+  activityBucketCounts,
+  foldActivityBucketGroups,
+  type ActivityTimeBucket,
+} from '../activityTimeBuckets';
+import { isActivityBucketExpanded } from '../activityBucketExpandPrefs';
 
 function vendorNameKey(name: string): string {
   return name.trim().toLowerCase();
@@ -178,6 +184,18 @@ export function PropertyInteractionsScreen(props: {
   const [exportSnapshot, setExportSnapshot] = useState<InteractionsExportSnapshot | null>(null);
   const [shareOptionsOpen, setShareOptionsOpen] = useState(false);
   const [shareFormat, setShareFormat] = useState<ShareFormat>(DEFAULT_SHARE_FORMAT);
+  const [activityFutureExpanded, setActivityFutureExpanded] = useState(
+    () => savedFilters.activityFuture
+  );
+  const [activityTodayExpanded, setActivityTodayExpanded] = useState(
+    () => savedFilters.activityToday
+  );
+  const [activityHistoryExpanded, setActivityHistoryExpanded] = useState(
+    () => savedFilters.activityHistory
+  );
+  const [activityUndatedExpanded, setActivityUndatedExpanded] = useState(
+    () => savedFilters.activityUndated
+  );
 
   useEffect(() => {
     setInteractionListFilters(scopeKey, {
@@ -188,6 +206,10 @@ export function PropertyInteractionsScreen(props: {
       selectedImportantOnly,
       searchQuery,
       forceShowSearch,
+      activityFuture: activityFutureExpanded,
+      activityToday: activityTodayExpanded,
+      activityHistory: activityHistoryExpanded,
+      activityUndated: activityUndatedExpanded,
     });
   }, [
     scopeKey,
@@ -198,6 +220,10 @@ export function PropertyInteractionsScreen(props: {
     selectedImportantOnly,
     searchQuery,
     forceShowSearch,
+    activityFutureExpanded,
+    activityTodayExpanded,
+    activityHistoryExpanded,
+    activityUndatedExpanded,
   ]);
 
   const property = propertyId ? propertyById(state, propertyId) : undefined;
@@ -529,6 +555,38 @@ export function PropertyInteractionsScreen(props: {
     selectedVendorNameKey,
     state,
   ]);
+
+  const interactionBucketGroups = useMemo(
+    () =>
+      foldActivityBucketGroups(
+        filteredInteractions,
+        (interaction) => interaction.occurredAtISO
+      ),
+    [filteredInteractions]
+  );
+  const interactionBucketCounts = activityBucketCounts(interactionBucketGroups);
+  const expandPrefs = {
+    activityFuture: activityFutureExpanded,
+    activityToday: activityTodayExpanded,
+    activityHistory: activityHistoryExpanded,
+    activityUndated: activityUndatedExpanded,
+  };
+
+  function toggleInteractionBucket(bucket: ActivityTimeBucket) {
+    if (bucket === 'future') {
+      setActivityFutureExpanded((v) => !v);
+      return;
+    }
+    if (bucket === 'today') {
+      setActivityTodayExpanded((v) => !v);
+      return;
+    }
+    if (bucket === 'undated') {
+      setActivityUndatedExpanded((v) => !v);
+      return;
+    }
+    setActivityHistoryExpanded((v) => !v);
+  }
 
   const selectedPropertyLabel =
     selectedPropertyId == null
@@ -1450,7 +1508,7 @@ export function PropertyInteractionsScreen(props: {
         ) : filteredInteractions.length === 0 ? (
           <Text style={[sharedStyles.emptyText, { marginTop: 24 }]}>No matching interactions.</Text>
         ) : (
-          <View style={{ marginTop: 12, gap: 10 }}>
+          <View style={{ marginTop: 12 }}>
             {singleVendorMode && singleVendor ? (
               <Pressable
                 onPress={() => onOpenVendor(singleVendor.id)}
@@ -1492,93 +1550,134 @@ export function PropertyInteractionsScreen(props: {
               </Pressable>
             ) : null}
 
-            {filteredInteractions.map((interaction) => {
-              const vendor = interaction.vendorId
-                ? vendorById(state, interaction.vendorId)
-                : undefined;
-              const photo = photosForVendorInteraction(state, interaction.id)[0];
-              const interactionProjectId = projectIdForInteraction(state, interaction);
-              const vendorProject = interactionProjectId
-                ? projectById(state, interactionProjectId)
-                : undefined;
-              const vendorProperty = vendorProject
-                ? propertyById(state, vendorProject.propertyId)
-                : interaction.propertyId
-                  ? propertyById(state, interaction.propertyId)
-                  : undefined;
-              const scopeLabel = showingAcrossProperties
-                ? vendorProperty &&
-                  vendorProject &&
-                  vendorProperty.name !== vendorProject.name
-                  ? `${vendorProperty.name} · ${vendorProject.name}`
-                  : (vendorProperty?.name ?? vendorProject?.name)
-                : selectedPropertyId || propertyId
-                  ? vendorProject?.name
-                  : undefined;
-              const methodLabel = vendorContactMethodLabel(interaction.contactMethod);
-              const dateLabel = formatDisplayDate(interaction.occurredAtISO);
-              const propertyForMatchId = propertyIdForInteraction(state, interaction);
-              const propertyForMatch = propertyForMatchId
-                ? propertyById(state, propertyForMatchId)
-                : undefined;
-              const searchMatch =
-                searchQuery.trim().length > 0
-                  ? findInteractionSearchMatch({
-                      query: searchQuery,
-                      notes: interaction.notes,
-                      contactName: interaction.contactName,
-                      vendorName: vendor?.name,
-                      methodLabel,
-                      dateLabel,
-                      projectName: vendorProject?.name,
-                      propertyName: propertyForMatch?.name,
-                    })
-                  : undefined;
+            {interactionBucketGroups.map((group) => {
+              const expanded = isActivityBucketExpanded(expandPrefs, group.bucket);
+              const isTodayBucket = group.bucket === 'today';
+              const frameColor = isTodayBucket ? colors.danger : colors.sectionTitle;
               return (
-                <PropertyInteractionListRow
-                  key={interaction.id}
-                  projectName={scopeLabel}
-                  contactName={interaction.contactName}
-                  companyName={vendor?.name ?? 'No vendor'}
-                  companyPhotoUri={vendor ? firstPhotoUriForVendor(state, vendor) : undefined}
-                  hideCompanyPhoto={singleVendorMode || !vendor}
-                  vendorStatusLabel={
-                    vendor ? vendorStatusLabel(vendor.status) : undefined
-                  }
-                  vendorStatusColor={
-                    vendor ? vendorStatusColor(vendor.status) : undefined
-                  }
-                  dateISO={interaction.occurredAtISO}
-                  methodLabel={methodLabel}
-                  notes={interaction.notes}
-                  searchSnippet={searchMatch?.searchSnippet}
-                  highlightQuery={
-                    searchQuery.trim() || searchMatch ? searchQuery.trim() : undefined
-                  }
-                  matchHint={searchMatch?.matchHint}
-                  photoUri={photo?.localUri}
-                  important={interaction.important === true}
-                  cardBackgroundColor={
-                    isAfterToday(interaction.occurredAtISO)
-                      ? colors.upcomingCardBg
-                      : undefined
-                  }
-                  onPress={() =>
-                    onOpenInteraction(
-                      interaction.vendorId,
-                      interaction.id,
-                      searchMatch
-                        ? {
-                            searchQuery: searchQuery.trim(),
-                            searchMatchField: searchMatch.field,
-                          }
-                        : undefined
-                    )
-                  }
-                  onPressVendor={
-                    vendor ? () => onOpenVendor(vendor.id) : undefined
-                  }
-                />
+                <View key={group.bucket}>
+                  <ActivityBucketBanner
+                    label={group.label}
+                    count={interactionBucketCounts[group.bucket]}
+                    expanded={expanded}
+                    variant={isTodayBucket ? 'today' : 'default'}
+                    onToggle={() => toggleInteractionBucket(group.bucket)}
+                    attachedToGroup
+                  />
+                  {expanded ? (
+                    <View
+                      style={[
+                        sharedStyles.activityBucketGroup,
+                        isTodayBucket && sharedStyles.activityBucketGroupToday,
+                      ]}
+                    >
+                      {group.entries.map((interaction, index) => {
+                        const betweenRows = index < group.entries.length - 1;
+                        const vendor = interaction.vendorId
+                          ? vendorById(state, interaction.vendorId)
+                          : undefined;
+                        const photo = photosForVendorInteraction(state, interaction.id)[0];
+                        const interactionProjectId = projectIdForInteraction(
+                          state,
+                          interaction
+                        );
+                        const vendorProject = interactionProjectId
+                          ? projectById(state, interactionProjectId)
+                          : undefined;
+                        const vendorProperty = vendorProject
+                          ? propertyById(state, vendorProject.propertyId)
+                          : interaction.propertyId
+                            ? propertyById(state, interaction.propertyId)
+                            : undefined;
+                        const scopeLabel = showingAcrossProperties
+                          ? vendorProperty &&
+                            vendorProject &&
+                            vendorProperty.name !== vendorProject.name
+                            ? `${vendorProperty.name} · ${vendorProject.name}`
+                            : (vendorProperty?.name ?? vendorProject?.name)
+                          : selectedPropertyId || propertyId
+                            ? vendorProject?.name
+                            : undefined;
+                        const methodLabel = vendorContactMethodLabel(
+                          interaction.contactMethod
+                        );
+                        const dateLabel = formatDisplayDate(interaction.occurredAtISO);
+                        const propertyForMatchId = propertyIdForInteraction(
+                          state,
+                          interaction
+                        );
+                        const propertyForMatch = propertyForMatchId
+                          ? propertyById(state, propertyForMatchId)
+                          : undefined;
+                        const searchMatch =
+                          searchQuery.trim().length > 0
+                            ? findInteractionSearchMatch({
+                                query: searchQuery,
+                                notes: interaction.notes,
+                                contactName: interaction.contactName,
+                                vendorName: vendor?.name,
+                                methodLabel,
+                                dateLabel,
+                                projectName: vendorProject?.name,
+                                propertyName: propertyForMatch?.name,
+                              })
+                            : undefined;
+                        return (
+                          <PropertyInteractionListRow
+                            key={interaction.id}
+                            projectName={scopeLabel}
+                            contactName={interaction.contactName}
+                            companyName={vendor?.name ?? 'No vendor'}
+                            companyPhotoUri={
+                              vendor ? firstPhotoUriForVendor(state, vendor) : undefined
+                            }
+                            hideCompanyPhoto={singleVendorMode || !vendor}
+                            vendorStatusLabel={
+                              vendor ? vendorStatusLabel(vendor.status) : undefined
+                            }
+                            vendorStatusColor={
+                              vendor ? vendorStatusColor(vendor.status) : undefined
+                            }
+                            dateISO={interaction.occurredAtISO}
+                            methodLabel={methodLabel}
+                            notes={interaction.notes}
+                            searchSnippet={searchMatch?.searchSnippet}
+                            highlightQuery={
+                              searchQuery.trim() || searchMatch
+                                ? searchQuery.trim()
+                                : undefined
+                            }
+                            matchHint={searchMatch?.matchHint}
+                            photoUri={photo?.localUri}
+                            important={interaction.important === true}
+                            stackRelative
+                            cardBackgroundColor={colors.bg}
+                            ownerBackgroundColor={colors.interactionOwnerBg}
+                            dividerColor={frameColor}
+                            dividerWidth={betweenRows ? 2 : 0}
+                            ownerCornerIcon="storefront"
+                            cornerIcon="forum"
+                            onPress={() =>
+                              onOpenInteraction(
+                                interaction.vendorId,
+                                interaction.id,
+                                searchMatch
+                                  ? {
+                                      searchQuery: searchQuery.trim(),
+                                      searchMatchField: searchMatch.field,
+                                    }
+                                  : undefined
+                              )
+                            }
+                            onPressVendor={
+                              vendor ? () => onOpenVendor(vendor.id) : undefined
+                            }
+                          />
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
               );
             })}
           </View>

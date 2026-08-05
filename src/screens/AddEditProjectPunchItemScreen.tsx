@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, ProjectPhoto, ProjectPunchItem } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import { InteractionPhotoSection } from '../components/InteractionPhotoSection';
 import { DetailDisplayRow } from '../components/DetailDisplayRow';
 import { DateInputField } from '../components/DateInputField';
@@ -38,6 +39,7 @@ import {
   propertyById,
 } from '../storage';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { reorderItemsById, type PhotoReorderDirection } from '../photoReorder';
 
 const headerIconBtn = {
@@ -246,13 +248,13 @@ export function AddEditProjectPunchItemScreen(props: {
       sourceUris.map(async (sourceUri) => {
         const photoId = uid('photo');
         const localUri = await persistPhotoFromUri(sourceUri, photoId);
-        return {
+        return withReusePhotoMeta(sourceUri, {
           id: photoId,
           projectId,
           punchItemId: item.id,
           localUri,
           createdAtISO: nowISO(),
-        };
+        });
       })
     );
     const nextPhotos = [...itemPhotos, ...newPhotos];
@@ -406,8 +408,10 @@ export function AddEditProjectPunchItemScreen(props: {
 
   const headerLabel = isEditing && isDirty ? '← Cancel' : '← Back';
   const subtitle = [project.name, property?.name].filter(Boolean).join(' · ');
+  const reusePropertyId = property?.id ?? project.propertyId;
 
   return (
+    <ReuseExistingPhotosProvider state={state} propertyId={reusePropertyId}>
     <KeyboardAvoidingView
       style={[sharedStyles.screen, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -560,5 +564,6 @@ export function AddEditProjectPunchItemScreen(props: {
       </ScrollView>
       {isEditing ? keyboardDone.accessory : null}
     </KeyboardAvoidingView>
+    </ReuseExistingPhotosProvider>
   );
 }

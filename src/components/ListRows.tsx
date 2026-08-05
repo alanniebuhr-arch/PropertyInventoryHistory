@@ -15,10 +15,48 @@ export function InteractionDateText(props: {
   dateStyle?: StyleProp<TextStyle>;
   /** Applied to weekday + (# days) when parent accent must not leak. */
   restStyle?: StyleProp<TextStyle>;
+  /** When true, put relative `(# days…)` on its own bold line under date + weekday. */
+  stackRelative?: boolean;
+  /** Applied to the stacked relative line (defaults to bold). */
+  relativeStyle?: StyleProp<TextStyle>;
   numberOfLines?: number;
 }) {
-  const { iso, style, dateStyle, restStyle, numberOfLines } = props;
-  const { date, rest } = formatDisplayDateParts(iso);
+  const { iso, style, dateStyle, restStyle, stackRelative, relativeStyle, numberOfLines } =
+    props;
+  const { date, rest, weekday, relative } = formatDisplayDateParts(iso);
+
+  if (stackRelative && relative) {
+    // Drop flex from line styles — flex on nested Text inside a column View
+    // collapses the relative line so it never appears.
+    const flat = StyleSheet.flatten(style) ?? {};
+    const { flex: _flex, alignSelf: _alignSelf, ...lineStyle } = flat as TextStyle & {
+      flex?: number;
+      alignSelf?: TextStyle['alignSelf'];
+    };
+    return (
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={lineStyle} numberOfLines={numberOfLines}>
+          <Text style={[{ fontWeight: '700', color: colors.interactionDate }, dateStyle]}>
+            {date}
+          </Text>
+          {weekday ? (
+            restStyle ? (
+              <Text style={restStyle}>
+                {' '}
+                {weekday}
+              </Text>
+            ) : (
+              <> {weekday}</>
+            )
+          ) : null}
+        </Text>
+        <Text style={[lineStyle, { fontWeight: '700', marginTop: 2 }, relativeStyle]} numberOfLines={1}>
+          {relative}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <Text style={style} numberOfLines={numberOfLines}>
       <Text style={[{ fontWeight: '700', color: colors.interactionDate }, dateStyle]}>{date}</Text>
@@ -43,8 +81,7 @@ export function PropertyListRow(props: {
   name: string;
   address?: string;
   thumbnailUri?: string;
-  roomCount: number;
-  itemCount: number;
+  projectCount: number;
   todoCount: number;
   overdueCount: number;
   reminderCount: number;
@@ -61,8 +98,7 @@ export function PropertyListRow(props: {
     name,
     address,
     thumbnailUri,
-    roomCount,
-    itemCount,
+    projectCount,
     todoCount,
     overdueCount,
     reminderCount,
@@ -113,8 +149,7 @@ export function PropertyListRow(props: {
         <Text style={[sharedStyles.cardTitle, { fontSize: 20 }]}>{name}</Text>
         {address ? <Text style={sharedStyles.cardMeta}>{address}</Text> : null}
         <Text style={sharedStyles.cardMeta}>
-          {roomCount} room{roomCount === 1 ? '' : 's'} · {itemCount} asset
-          {itemCount === 1 ? '' : 's'}
+          {projectCount} project{projectCount === 1 ? '' : 's'}
           {todoCount > 0
             ? ` · ${todoCount} to-do${todoCount === 1 ? '' : 's'}`
             : ''}
@@ -274,6 +309,8 @@ export function ItemListRow(props: {
   cardBackgroundColor?: string;
   /** When set, draw a list divider under the row (Property section style). */
   dividerColor?: string;
+  /** Bottom divider thickness when `dividerColor` is set (default hairline). */
+  dividerWidth?: number;
   /** Optional type glyph in the top-right of the card (e.g. inventory for assets). */
   cornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
 }) {
@@ -292,6 +329,7 @@ export function ItemListRow(props: {
     onPress,
     cardBackgroundColor,
     dividerColor,
+    dividerWidth,
     cornerIcon,
   } = props;
   const scopeText = scopeLabel?.trim();
@@ -315,7 +353,7 @@ export function ItemListRow(props: {
                 marginBottom: 0,
                 borderRadius: 0,
                 borderWidth: 0,
-                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomWidth: dividerWidth ?? StyleSheet.hairlineWidth,
                 borderBottomColor: dividerColor,
               }
             : null),
@@ -534,8 +572,11 @@ export function EventListRow(props: {
   photoCount?: number;
   /** When omitted, the row is read-only (not pressable). */
   onPress?: () => void;
+  cardBackgroundColor?: string;
 }) {
-  const { title, dateLabel, costLabel, notes, thumbnailUri, onPress } = props;
+  const { title, dateLabel, costLabel, notes, thumbnailUri, onPress, cardBackgroundColor } =
+    props;
+  const rowBg = cardBackgroundColor ?? colors.historyCardBg;
   const notesText = notes?.trim();
   const costText = costLabel?.trim();
   const body = (
@@ -577,7 +618,7 @@ export function EventListRow(props: {
   );
 
   if (!onPress) {
-    return <View style={[sharedStyles.card, { backgroundColor: colors.historyCardBg }]}>{body}</View>;
+    return <View style={[sharedStyles.card, { backgroundColor: rowBg }]}>{body}</View>;
   }
 
   return (
@@ -585,7 +626,7 @@ export function EventListRow(props: {
       onPress={onPress}
       style={({ pressed }) => [
         sharedStyles.card,
-        { backgroundColor: colors.historyCardBg },
+        { backgroundColor: rowBg },
         pressed && sharedStyles.cardPressed,
       ]}
       accessibilityRole="button"
@@ -701,6 +742,8 @@ export function PropertyTodoListRow(props: {
   cardBackgroundColor?: string;
   /** When set, draw a list divider under the row (Property section style). */
   dividerColor?: string;
+  /** Bottom divider thickness when `dividerColor` is set (default hairline). */
+  dividerWidth?: number;
   /** Optional type glyph in the top-right of the card (e.g. notes for Search all). */
   cornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
 }) {
@@ -714,6 +757,7 @@ export function PropertyTodoListRow(props: {
     variant = 'todo',
     cardBackgroundColor,
     dividerColor,
+    dividerWidth,
     cornerIcon,
   } = props;
   const isIdea = variant === 'idea';
@@ -745,7 +789,7 @@ export function PropertyTodoListRow(props: {
                 marginBottom: 0,
                 borderRadius: 0,
                 borderWidth: 0,
-                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomWidth: dividerWidth ?? StyleSheet.hairlineWidth,
                 borderBottomColor: dividerColor,
               }
             : null),
@@ -1256,9 +1300,17 @@ export function PropertyInteractionListRow(props: {
   onPress: () => void;
   onPressVendor?: () => void;
   cardBackgroundColor?: string;
+  /** Slightly darker band behind the vendor/owner header (What's happening). */
+  ownerBackgroundColor?: string;
   dividerColor?: string;
-  /** Optional type glyph in the top-right of the card (e.g. forum for interactions). */
+  /** Bottom divider thickness when `dividerColor` is set (default hairline). */
+  dividerWidth?: number;
+  /** Type glyph on the owner header (vendor), top-right. */
+  ownerCornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
+  /** Type glyph on the interaction detail strip, leftmost. */
   cornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
+  /** Put relative `(# days…)` on its own bold line (Future Activity). */
+  stackRelative?: boolean;
 }) {
   const {
     projectName,
@@ -1279,8 +1331,12 @@ export function PropertyInteractionListRow(props: {
     onPress,
     onPressVendor,
     cardBackgroundColor,
+    ownerBackgroundColor,
     dividerColor,
+    dividerWidth,
+    ownerCornerIcon,
     cornerIcon,
+    stackRelative,
   } = props;
   const projectText = projectName?.trim();
   const contactText = contactName?.trim();
@@ -1294,6 +1350,16 @@ export function PropertyInteractionListRow(props: {
   const showInteractionLine = Boolean(methodText || notesText);
   const leftColWidth = ITEM_LIST_THUMB_SIZE;
   const showCompanyPhoto = !hideCompanyPhoto;
+  const ownerBandStyle = ownerBackgroundColor
+    ? {
+        backgroundColor: ownerBackgroundColor,
+        marginHorizontal: -16,
+        marginTop: -16,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 10,
+      }
+    : null;
 
   const headerText = (
     <View style={{ flex: 1 }}>
@@ -1332,6 +1398,37 @@ export function PropertyInteractionListRow(props: {
     </View>
   );
 
+  const ownerContent = (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+      {showCompanyPhoto ? (
+        companyPhotoUri ? (
+          <Image
+            source={{ uri: companyPhotoUri }}
+            style={{
+              width: leftColWidth,
+              height: ITEM_LIST_THUMB_SIZE,
+              borderRadius: 2,
+              backgroundColor: colors.photoPlaceholder,
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              width: leftColWidth,
+              height: ITEM_LIST_THUMB_SIZE,
+              borderRadius: 2,
+              backgroundColor: colors.photoPlaceholder,
+            }}
+          />
+        )
+      ) : null}
+      {headerText}
+      {ownerCornerIcon ? (
+        <MaterialIcons name={ownerCornerIcon} size={22} color={colors.primary} />
+      ) : null}
+    </View>
+  );
+
   return (
     <View
       style={[
@@ -1343,7 +1440,7 @@ export function PropertyInteractionListRow(props: {
                 marginBottom: 0,
                 borderRadius: 0,
                 borderWidth: 0,
-                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomWidth: dividerWidth ?? StyleSheet.hairlineWidth,
                 borderBottomColor: dividerColor,
               }
             : null),
@@ -1353,73 +1450,22 @@ export function PropertyInteractionListRow(props: {
       {onPressVendor ? (
         <Pressable
           onPress={onPressVendor}
-          style={({ pressed }) => [pressed && sharedStyles.cardPressed]}
+          style={({ pressed }) => [ownerBandStyle, pressed && sharedStyles.cardPressed]}
           accessibilityRole="button"
           accessibilityLabel={`Open vendor ${companyName}`}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-            {showCompanyPhoto ? (
-              companyPhotoUri ? (
-                <Image
-                  source={{ uri: companyPhotoUri }}
-                  style={{
-                    width: leftColWidth,
-                    height: ITEM_LIST_THUMB_SIZE,
-                    borderRadius: 2,
-                    backgroundColor: colors.photoPlaceholder,
-                  }}
-                />
-              ) : (
-                <View
-                  style={{
-                    width: leftColWidth,
-                    height: ITEM_LIST_THUMB_SIZE,
-                    borderRadius: 2,
-                    backgroundColor: colors.photoPlaceholder,
-                  }}
-                />
-              )
-            ) : null}
-            {headerText}
-            {cornerIcon ? (
-              <MaterialIcons name={cornerIcon} size={22} color={colors.primary} />
-            ) : null}
-          </View>
+          {ownerContent}
         </Pressable>
       ) : (
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-          {showCompanyPhoto ? (
-            companyPhotoUri ? (
-              <Image
-                source={{ uri: companyPhotoUri }}
-                style={{
-                  width: leftColWidth,
-                  height: ITEM_LIST_THUMB_SIZE,
-                  borderRadius: 2,
-                  backgroundColor: colors.photoPlaceholder,
-                }}
-              />
-            ) : (
-              <View
-                style={{
-                  width: leftColWidth,
-                  height: ITEM_LIST_THUMB_SIZE,
-                  borderRadius: 2,
-                  backgroundColor: colors.photoPlaceholder,
-                }}
-              />
-            )
-          ) : null}
-          {headerText}
-          {cornerIcon ? (
-            <MaterialIcons name={cornerIcon} size={22} color={colors.primary} />
-          ) : null}
-        </View>
+        <View style={ownerBandStyle ?? undefined}>{ownerContent}</View>
       )}
 
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [{ marginTop: 6 }, pressed && sharedStyles.cardPressed]}
+        style={({ pressed }) => [
+          { marginTop: ownerBackgroundColor ? 10 : 6 },
+          pressed && sharedStyles.cardPressed,
+        ]}
         accessibilityRole="button"
         accessibilityLabel="Open interaction"
       >
@@ -1430,6 +1476,9 @@ export function PropertyInteractionListRow(props: {
             gap: 12,
           }}
         >
+          {cornerIcon ? (
+            <MaterialIcons name={cornerIcon} size={22} color={colors.primary} />
+          ) : null}
           {photoUri ? (
             <Image
               source={{ uri: photoUri }}
@@ -1443,19 +1492,21 @@ export function PropertyInteractionListRow(props: {
             />
           ) : null}
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
               {important ? (
                 <MaterialIcons
                   name="star"
                   size={16}
                   color={colors.primary}
                   accessibilityLabel="Important"
+                  style={{ marginTop: 2 }}
                 />
               ) : null}
               <InteractionDateText
                 iso={dateISO}
                 style={[sharedStyles.cardMeta, { flex: 1, marginTop: 0 }]}
                 restStyle={{ fontWeight: '400', color: colors.textMuted }}
+                stackRelative={stackRelative}
               />
             </View>
             {showInteractionLine ? (
@@ -1507,6 +1558,10 @@ export function PropertyServiceListRow(props: {
   /** When true, omit the item photo (shown once above the list for a single item). */
   hideItemPhoto?: boolean;
   dateLabel: string;
+  /** When set with stackRelative, renders via InteractionDateText instead of dateLabel. */
+  dateISO?: string;
+  /** Put relative `(# days…)` on its own bold line (Future Activity). */
+  stackRelative?: boolean;
   statusLabel: string;
   title: string;
   notes?: string;
@@ -1521,8 +1576,14 @@ export function PropertyServiceListRow(props: {
   onPress: () => void;
   onPressItem: () => void;
   cardBackgroundColor?: string;
+  /** Slightly darker band behind the room/asset header (What's happening). */
+  ownerBackgroundColor?: string;
   dividerColor?: string;
-  /** Optional type glyph in the top-right of the card (e.g. handyman for service events). */
+  /** Bottom divider thickness when `dividerColor` is set (default hairline). */
+  dividerWidth?: number;
+  /** Type glyph on the asset header, top-right. */
+  ownerCornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
+  /** Type glyph on the service detail strip, leftmost. */
   cornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
 }) {
   const {
@@ -1531,6 +1592,8 @@ export function PropertyServiceListRow(props: {
     itemPhotoUri,
     hideItemPhoto,
     dateLabel,
+    dateISO,
+    stackRelative,
     statusLabel,
     title,
     notes,
@@ -1542,7 +1605,10 @@ export function PropertyServiceListRow(props: {
     onPress,
     onPressItem,
     cardBackgroundColor,
+    ownerBackgroundColor,
     dividerColor,
+    dividerWidth,
+    ownerCornerIcon,
     cornerIcon,
   } = props;
   const scopeText = scopeLabel?.trim();
@@ -1556,6 +1622,16 @@ export function PropertyServiceListRow(props: {
     highlightQ && detailLine ? splitHighlightParts(detailLine, highlightQ) : null;
   const leftColWidth = ITEM_LIST_THUMB_SIZE;
   const showItemPhoto = !hideItemPhoto;
+  const ownerBandStyle = ownerBackgroundColor
+    ? {
+        backgroundColor: ownerBackgroundColor,
+        marginHorizontal: -16,
+        marginTop: -16,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 10,
+      }
+    : null;
 
   return (
     <View
@@ -1568,7 +1644,7 @@ export function PropertyServiceListRow(props: {
                 marginBottom: 0,
                 borderRadius: 0,
                 borderWidth: 0,
-                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomWidth: dividerWidth ?? StyleSheet.hairlineWidth,
                 borderBottomColor: dividerColor,
               }
             : null),
@@ -1577,7 +1653,7 @@ export function PropertyServiceListRow(props: {
     >
       <Pressable
         onPress={onPressItem}
-        style={({ pressed }) => [pressed && sharedStyles.cardPressed]}
+        style={({ pressed }) => [ownerBandStyle, pressed && sharedStyles.cardPressed]}
         accessibilityRole="button"
         accessibilityLabel={`Open asset ${itemName}`}
       >
@@ -1614,15 +1690,18 @@ export function PropertyServiceListRow(props: {
               {itemName}
             </Text>
           </View>
-          {cornerIcon ? (
-            <MaterialIcons name={cornerIcon} size={22} color={colors.primary} />
+          {ownerCornerIcon ? (
+            <MaterialIcons name={ownerCornerIcon} size={22} color={colors.primary} />
           ) : null}
         </View>
       </Pressable>
 
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [{ marginTop: 6 }, pressed && sharedStyles.cardPressed]}
+        style={({ pressed }) => [
+          { marginTop: ownerBackgroundColor ? 10 : 6 },
+          pressed && sharedStyles.cardPressed,
+        ]}
         accessibilityRole="button"
         accessibilityLabel="Open service"
       >
@@ -1633,6 +1712,9 @@ export function PropertyServiceListRow(props: {
             gap: 12,
           }}
         >
+          {cornerIcon ? (
+            <MaterialIcons name={cornerIcon} size={22} color={colors.primary} />
+          ) : null}
           {photoUri ? (
             <Image
               source={{ uri: photoUri }}
@@ -1646,17 +1728,31 @@ export function PropertyServiceListRow(props: {
             />
           ) : null}
           <View style={{ flex: 1 }}>
-            <Text
-              style={[
-                sharedStyles.cardMeta,
-                {
-                  marginTop: 0,
-                  color: colors.lastService,
-                },
-              ]}
-            >
-              {boldTodayNodes(dateLabel)}
-            </Text>
+            {dateISO && stackRelative ? (
+              <InteractionDateText
+                iso={dateISO}
+                style={[
+                  sharedStyles.cardMeta,
+                  { marginTop: 0, color: colors.lastService },
+                ]}
+                dateStyle={{ color: colors.lastService }}
+                restStyle={{ fontWeight: '400', color: colors.lastService }}
+                relativeStyle={{ color: colors.lastService }}
+                stackRelative
+              />
+            ) : (
+              <Text
+                style={[
+                  sharedStyles.cardMeta,
+                  {
+                    marginTop: 0,
+                    color: colors.lastService,
+                  },
+                ]}
+              >
+                {boldTodayNodes(dateLabel)}
+              </Text>
+            )}
             <Text
               style={[
                 sharedStyles.cardMeta,

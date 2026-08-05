@@ -2,6 +2,12 @@ import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImagesFromLibrary } from './pickImages';
 import { pickFileAttachment } from './fileAttachment';
+import {
+  isReuseExistingPhotosAvailable,
+  requestReuseExistingPhotos,
+  stashReusePhotoMeta,
+  type ReuseExistingPhotoPick,
+} from './reuseExistingPhotos';
 
 export const ADD_PHOTO_TILE_LABEL = 'Add photo';
 
@@ -10,6 +16,31 @@ export type PickedDocument = {
   fileName: string;
   mimeType: string;
 };
+
+function reuseExistingAlertButton(
+  multi: boolean,
+  onPicks: (picks: ReuseExistingPhotoPick[]) => void | Promise<void>,
+  onBusyChange?: (busy: boolean) => void
+) {
+  return {
+    text: 'Reuse existing',
+    onPress: () => {
+      onBusyChange?.(true);
+      void requestReuseExistingPhotos({ multi })
+        .then((picks) => {
+          if (picks && picks.length > 0) {
+            stashReusePhotoMeta(picks);
+            void onPicks(picks);
+            return;
+          }
+          onBusyChange?.(false);
+        })
+        .catch(() => {
+          onBusyChange?.(false);
+        });
+    },
+  };
+}
 
 export async function takePhotoFromCamera(): Promise<string | undefined> {
   const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -62,7 +93,11 @@ function runLoadFileForPhoto(
 }
 
 export function promptPickOrTakeSingle(onPhoto: (uri: string) => void | Promise<void>) {
-  Alert.alert('Add photo', undefined, [
+  const buttons: {
+    text: string;
+    style?: 'cancel';
+    onPress?: () => void;
+  }[] = [
     { text: 'Done', style: 'cancel' },
     {
       text: 'Choose photo',
@@ -84,14 +119,27 @@ export function promptPickOrTakeSingle(onPhoto: (uri: string) => void | Promise<
       text: 'Load file',
       onPress: () => runLoadFileForPhoto(onPhoto),
     },
-  ]);
+  ];
+  if (isReuseExistingPhotosAvailable()) {
+    buttons.push(
+      reuseExistingAlertButton(false, (picks) => {
+        const uri = picks[0]?.uri;
+        if (uri) void onPhoto(uri);
+      })
+    );
+  }
+  Alert.alert('Add photo', undefined, buttons);
 }
 
 export function promptSlotAttachment(handlers: {
   onPhoto: (uri: string) => void | Promise<void>;
   onDocument: (picked: PickedDocument) => void | Promise<void>;
 }) {
-  Alert.alert('Add attachment', undefined, [
+  const buttons: {
+    text: string;
+    style?: 'cancel';
+    onPress?: () => void;
+  }[] = [
     { text: 'Done', style: 'cancel' },
     {
       text: 'Choose photo',
@@ -126,16 +174,34 @@ export function promptSlotAttachment(handlers: {
         });
       },
     },
-  ]);
+  ];
+  if (isReuseExistingPhotosAvailable()) {
+    buttons.push(
+      reuseExistingAlertButton(false, (picks) => {
+        const uri = picks[0]?.uri;
+        if (uri) void handlers.onPhoto(uri);
+      })
+    );
+  }
+  Alert.alert('Add attachment', undefined, buttons);
 }
 
 export function promptPickOrTakeMulti(
   onPhotos: (uris: string[]) => void | Promise<void>,
   onDocument?: (picked: PickedDocument) => void | Promise<void>,
-  options?: { onBusyChange?: (busy: boolean) => void }
+  options?: {
+    onBusyChange?: (busy: boolean) => void;
+    /** When set, reuse goes here (so callers can skip label prompts when meta copied). */
+    onReuseExisting?: (picks: ReuseExistingPhotoPick[]) => void | Promise<void>;
+  }
 ) {
   const onBusyChange = options?.onBusyChange;
-  Alert.alert('Add photo', undefined, [
+  const onReuseExisting = options?.onReuseExisting;
+  const buttons: {
+    text: string;
+    style?: 'cancel';
+    onPress?: () => void;
+  }[] = [
     { text: 'Done', style: 'cancel' },
     {
       text: 'Choose photos',
@@ -206,5 +272,21 @@ export function promptPickOrTakeMulti(
           });
       },
     },
-  ]);
+  ];
+  if (isReuseExistingPhotosAvailable()) {
+    buttons.push(
+      reuseExistingAlertButton(
+        true,
+        (picks) => {
+          if (onReuseExisting) {
+            void onReuseExisting(picks);
+            return;
+          }
+          void onPhotos(picks.map((pick) => pick.uri));
+        },
+        onBusyChange
+      )
+    );
+  }
+  Alert.alert('Add photo', undefined, buttons);
 }

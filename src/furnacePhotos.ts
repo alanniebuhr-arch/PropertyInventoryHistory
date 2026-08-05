@@ -1,5 +1,6 @@
 import type { AppState, FurnaceDetails, InventoryItem, ItemPhoto } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { photosForItem } from './storage';
 import { uid, nowISO } from './utils';
 import { furnacePhotoSlotsForDetails, furnaceUsesFuelShutoff, furnaceUsesFuelTank, type FurnacePhotoSlotKey } from './furnaceSlots';
@@ -68,12 +69,12 @@ export async function addFurnaceExtraPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         itemId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 
@@ -146,12 +147,12 @@ export async function setFurnaceSlotPhoto(
 
   const photoId = uid('photo');
   const localUri = await persistPhotoFromUri(sourceUri, photoId);
-  const photo: ItemPhoto = {
+  const photo = withReusePhotoMeta(sourceUri, {
     id: photoId,
     itemId,
     localUri,
     createdAtISO: nowISO(),
-  };
+  });
 
   const currentItem = nextState.items.find((i) => i.id === itemId)!;
   const currentDetails = asFurnaceDetails(currentItem.details);

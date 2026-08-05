@@ -5,9 +5,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ZoomablePhotoImage } from './ZoomablePhotoImage';
 
-/** Second Back within this window closes the slideshow; first advances. */
-export const SLIDESHOW_DOUBLE_BACK_MS = 500;
-
 export type ViewerPhoto = {
   id: string;
   uri: string;
@@ -29,7 +26,7 @@ export function PhotoViewerModal(props: {
   onEditLabel?: (photo: ViewerPhoto) => void;
   /**
    * Slideshow browse mode: no delete/label edit.
-   * Renders embedded in the parent (parent owns ← Back: single = next, double = close).
+   * Renders embedded in the parent (parent owns ← Back to exit).
    */
   browseOnly?: boolean;
 }) {

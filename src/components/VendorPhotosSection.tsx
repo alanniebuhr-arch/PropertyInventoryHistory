@@ -27,8 +27,9 @@ export function VendorPhotosSection(props: {
   onSave: (state: AppState) => void;
   children?: React.ReactNode;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
-  const { state, vendorId, onSave, children, showReorderArrows } = props;
+  const { state, vendorId, onSave, children, showReorderArrows, onToggleReorderArrows } = props;
   const vendor = state.projectVendors.find((v) => v.id === vendorId);
   const imagePhoto = vendorImagePhoto(state, vendorId);
   const extraPhotos = extraPhotosForVendor(state, vendorId);
@@ -97,6 +98,7 @@ export function VendorPhotosSection(props: {
       <PhotoSection
         tiles={photoTiles}
         showReorderArrows={showReorderArrows}
+        onToggleReorderArrows={onToggleReorderArrows}
         title="Photos"
         heroResizeMode="contain"
         onAddPhotos={handleAddPhotos}

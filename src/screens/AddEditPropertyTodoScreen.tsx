@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, PropertyPhoto, PropertyTodo } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import { InteractionPhotoSection } from '../components/InteractionPhotoSection';
 import { DetailDisplayRow } from '../components/DetailDisplayRow';
 import { DateInputField } from '../components/DateInputField';
@@ -38,6 +39,7 @@ import {
   propertyTodoById,
 } from '../storage';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { reorderItemsById, type PhotoReorderDirection } from '../photoReorder';
 
 const REPEAT_MONTH_OPTIONS = [
@@ -267,13 +269,13 @@ export function AddEditPropertyTodoScreen(props: {
       sourceUris.map(async (sourceUri) => {
         const photoId = uid('photo');
         const localUri = await persistPhotoFromUri(sourceUri, photoId);
-        return {
+        return withReusePhotoMeta(sourceUri, {
           id: photoId,
           propertyId,
           todoId: todo.id,
           localUri,
           createdAtISO: nowISO(),
-        };
+        });
       })
     );
     const nextPhotos = [...todoPhotos, ...newPhotos];
@@ -450,6 +452,7 @@ export function AddEditPropertyTodoScreen(props: {
   const headerLabel = isEditing && isDirty ? '← Cancel' : '← Back';
 
   return (
+    <ReuseExistingPhotosProvider state={state} propertyId={propertyId}>
     <KeyboardAvoidingView
       style={[sharedStyles.screen, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -691,5 +694,6 @@ export function AddEditPropertyTodoScreen(props: {
       </ScrollView>
       {isEditing ? keyboardDone.accessory : null}
     </KeyboardAvoidingView>
+    </ReuseExistingPhotosProvider>
   );
 }

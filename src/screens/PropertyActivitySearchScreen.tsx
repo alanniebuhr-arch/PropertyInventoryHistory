@@ -25,6 +25,7 @@ import type {
   VendorInteraction,
 } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ActivityBucketBanner } from '../components/ActivityBucketBanner';
 import {
   ItemListRow,
   PropertyInteractionListRow,
@@ -35,6 +36,7 @@ import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
 import { sharedStyles, colors } from '../theme';
 import { formatCurrency, formatDisplayDate } from '../utils';
 import {
+  isAfterToday,
   serviceListDateISO,
   upcomingDueAtISO,
 } from '../eventRecurrence';
@@ -78,7 +80,7 @@ import {
   itemListRowLabels,
 } from '../itemCatalog';
 import { itemListSummaryFields } from '../itemListSummaryFields';
-import { isItemOverdue, nextDueLabelForItem } from '../itemMaintenance';
+import { isItemOverdue, itemSearchActivityAtISO, nextDueLabelForItem } from '../itemMaintenance';
 import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
@@ -89,6 +91,12 @@ import {
   getActivitySearchPrefs,
   setActivitySearchPrefs,
 } from '../activitySearchPrefs';
+import {
+  activityBucketCounts,
+  foldActivityBucketGroups,
+  type ActivityTimeBucket,
+} from '../activityTimeBuckets';
+import { isActivityBucketExpanded } from '../activityBucketExpandPrefs';
 
 function itemVisibleWithRoomAuth(
   state: AppState,
@@ -113,6 +121,8 @@ export function PropertyActivitySearchScreen(props: {
   state: AppState;
   /** When omitted, search across all properties. */
   propertyId?: string;
+  /** When set with propertyId, seed the project filter to this project. */
+  projectId?: string;
   onBack: () => void;
   onGoToProperty?: (propertyId: string) => void;
   onOpenInteraction: (
@@ -133,6 +143,7 @@ export function PropertyActivitySearchScreen(props: {
   const {
     state,
     propertyId: routePropertyId,
+    projectId: routeProjectId,
     onBack,
     onGoToProperty,
     onOpenInteraction,
@@ -155,7 +166,10 @@ export function PropertyActivitySearchScreen(props: {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(
     () => routePropertyId ?? null
   );
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => {
+    if (routeProjectId) return routeProjectId;
+    return getActivitySearchPrefs(activitySearchScopeKey(routePropertyId)).selectedProjectId;
+  });
   const [propertyMenuOpen, setPropertyMenuOpen] = useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const scopeKey = activitySearchScopeKey(selectedPropertyId ?? undefined);
@@ -169,6 +183,18 @@ export function PropertyActivitySearchScreen(props: {
   const [menuOpen, setMenuOpen] = useState(false);
   /** Bumps when room unlock session may have changed (resume). */
   const [roomAuthEpoch, setRoomAuthEpoch] = useState(0);
+  const [activityFutureExpanded, setActivityFutureExpanded] = useState(
+    () => savedPrefs.activityFuture
+  );
+  const [activityTodayExpanded, setActivityTodayExpanded] = useState(
+    () => savedPrefs.activityToday
+  );
+  const [activityHistoryExpanded, setActivityHistoryExpanded] = useState(
+    () => savedPrefs.activityHistory
+  );
+  const [activityUndatedExpanded, setActivityUndatedExpanded] = useState(
+    () => savedPrefs.activityUndated
+  );
 
   const propertiesInList = useMemo(
     () => [...state.properties].sort((a, b) => a.name.localeCompare(b.name)),
@@ -235,11 +261,19 @@ export function PropertyActivitySearchScreen(props: {
     scrollYRef.current = prefs.scrollY;
     pendingRestoreScrollYRef.current = prefs.scrollY > 0 ? prefs.scrollY : null;
     didRestoreScrollRef.current = prefs.scrollY <= 0;
+    setActivityFutureExpanded(prefs.activityFuture);
+    setActivityTodayExpanded(prefs.activityToday);
+    setActivityHistoryExpanded(prefs.activityHistory);
+    setActivityUndatedExpanded(prefs.activityUndated);
   }, [scopeKey]);
 
   useEffect(() => {
     setActivitySearchPrefs(scopeKey, { searchQuery });
   }, [scopeKey, searchQuery]);
+
+  useEffect(() => {
+    setActivitySearchPrefs(scopeKey, { selectedProjectId });
+  }, [scopeKey, selectedProjectId]);
 
   useEffect(() => {
     return () => {
@@ -264,13 +298,15 @@ export function PropertyActivitySearchScreen(props: {
       : selectedPropertyId
         ? interactionsForProperty(state, selectedPropertyId)
         : allVendorInteractions(state);
-    const events = (selectedPropertyId
-      ? eventsForProperty(state, selectedPropertyId)
-      : allItemEvents(state)
-    ).filter((event) => {
-      const item = itemById(state, event.itemId);
-      return item ? itemVisibleWithRoomAuth(state, item) : false;
-    });
+    const events = selectedProjectId
+      ? []
+      : (selectedPropertyId
+          ? eventsForProperty(state, selectedPropertyId)
+          : allItemEvents(state)
+        ).filter((event) => {
+          const item = itemById(state, event.itemId);
+          return item ? itemVisibleWithRoomAuth(state, item) : false;
+        });
     return [
       ...interactions.map((interaction) => ({
         kind: 'interaction' as const,
@@ -290,62 +326,68 @@ export function PropertyActivitySearchScreen(props: {
   const filteredResults = useMemo((): SearchResultEntry[] => {
     void roomAuthEpoch;
     const query = searchQuery.trim();
-    if (!query) return activityAll;
 
-    const matchedActivity = activityAll.filter((entry) => {
-      if (entry.kind === 'interaction') {
-        const interaction = entry.interaction;
-        const vendor = interaction.vendorId
-          ? vendorById(state, interaction.vendorId)
-          : undefined;
-        const vendorProjectId = projectIdForInteraction(state, interaction);
-        const vendorProject = vendorProjectId
-          ? projectById(state, vendorProjectId)
-          : undefined;
-        const interactionPropertyId = propertyIdForInteraction(state, interaction);
-        const interactionProperty = interactionPropertyId
-          ? propertyById(state, interactionPropertyId)
-          : undefined;
-        return Boolean(
-          findInteractionSearchMatch({
-            query,
-            notes: interaction.notes,
-            contactName: interaction.contactName,
-            vendorName: vendor?.name,
-            methodLabel: vendorContactMethodLabel(interaction.contactMethod),
-            dateLabel: formatDisplayDate(interaction.occurredAtISO),
-            projectName: vendorProject?.name,
-            propertyName: interactionProperty?.name ?? property?.name,
-          })
-        );
-      }
-      const event = entry.event;
-      const item = itemById(state, event.itemId);
-      if (!item) return false;
-      const eventRoom = roomById(state, item.roomId);
-      const eventProperty = eventRoom
-        ? propertyById(state, eventRoom.propertyId)
-        : undefined;
-      return Boolean(
-        findServiceSearchMatch({
-          query,
-          title: event.title,
-          assetLabel: itemDisplayLabel(item),
-          roomName: eventRoom?.name,
-          propertyName: eventProperty?.name ?? property?.name,
-          notes: event.notes,
-          company: event.serviceCompany,
-          dateLabel: formatDisplayDate(serviceListDateISO(event)),
-        })
-      );
-    });
+    const matchedActivity = !query
+      ? activityAll
+      : activityAll.filter((entry) => {
+          if (entry.kind === 'interaction') {
+            const interaction = entry.interaction;
+            const vendor = interaction.vendorId
+              ? vendorById(state, interaction.vendorId)
+              : undefined;
+            const vendorProjectId = projectIdForInteraction(state, interaction);
+            const vendorProject = vendorProjectId
+              ? projectById(state, vendorProjectId)
+              : undefined;
+            const interactionPropertyId = propertyIdForInteraction(state, interaction);
+            const interactionProperty = interactionPropertyId
+              ? propertyById(state, interactionPropertyId)
+              : undefined;
+            return Boolean(
+              findInteractionSearchMatch({
+                query,
+                notes: interaction.notes,
+                contactName: interaction.contactName,
+                vendorName: vendor?.name,
+                methodLabel: vendorContactMethodLabel(interaction.contactMethod),
+                dateLabel: formatDisplayDate(interaction.occurredAtISO),
+                projectName: vendorProject?.name,
+                propertyName: interactionProperty?.name ?? property?.name,
+              })
+            );
+          }
+          const event = entry.event;
+          const item = itemById(state, event.itemId);
+          if (!item) return false;
+          const eventRoom = roomById(state, item.roomId);
+          const eventProperty = eventRoom
+            ? propertyById(state, eventRoom.propertyId)
+            : undefined;
+          return Boolean(
+            findServiceSearchMatch({
+              query,
+              title: event.title,
+              assetLabel: itemDisplayLabel(item),
+              roomName: eventRoom?.name,
+              propertyName: eventProperty?.name ?? property?.name,
+              notes: event.notes,
+              company: event.serviceCompany,
+              dateLabel: formatDisplayDate(serviceListDateISO(event)),
+            })
+          );
+        });
 
-    const assetPool = selectedPropertyId
-      ? itemsForProperty(state, selectedPropertyId)
-      : allItems(state);
+    // Assets / todos / punch are searchable kinds — include them with an empty
+    // query too so Undated (and other) buckets aren't search-only.
+    const assetPool = selectedProjectId
+      ? []
+      : selectedPropertyId
+        ? itemsForProperty(state, selectedPropertyId)
+        : allItems(state);
     const matchedAssets = assetPool
       .filter((item) => itemVisibleWithRoomAuth(state, item))
       .filter((item) => {
+        if (!query) return true;
         const itemRoom = roomById(state, item.roomId);
         const itemProperty = itemRoom
           ? propertyById(state, itemRoom.propertyId)
@@ -372,14 +414,17 @@ export function PropertyActivitySearchScreen(props: {
       .sort((a, b) => itemDisplayLabel(a).localeCompare(itemDisplayLabel(b)))
       .map((item) => ({ kind: 'asset' as const, id: item.id, item }));
 
-    const todoPool = selectedPropertyId
-      ? [
-          ...todosForProperty(state, selectedPropertyId),
-          ...ideasForProperty(state, selectedPropertyId),
-        ]
-      : state.propertyTodos.slice();
+    const todoPool = selectedProjectId
+      ? []
+      : selectedPropertyId
+        ? [
+            ...todosForProperty(state, selectedPropertyId),
+            ...ideasForProperty(state, selectedPropertyId),
+          ]
+        : state.propertyTodos.slice();
     const matchedTodos = todoPool
       .filter((todo) => {
+        if (!query) return true;
         const todoProperty = propertyById(state, todo.propertyId);
         return Boolean(
           findTodoSearchMatch({
@@ -410,6 +455,7 @@ export function PropertyActivitySearchScreen(props: {
         : state.projectPunchItems.slice();
     const matchedPunchItems = punchPool
       .filter((punchItem) => {
+        if (!query) return true;
         const punchProject = projectById(state, punchItem.projectId);
         const punchProperty = punchProject
           ? propertyById(state, punchProject.propertyId)
@@ -446,9 +492,61 @@ export function PropertyActivitySearchScreen(props: {
     state,
   ]);
 
+  function searchEntryAt(entry: SearchResultEntry): string {
+    if (entry.kind === 'interaction' || entry.kind === 'event') return entry.at;
+    if (entry.kind === 'todo' || entry.kind === 'idea') {
+      return entry.todo.dueAtISO?.trim() || '';
+    }
+    if (entry.kind === 'punch') {
+      return entry.punchItem.dueAtISO?.trim() || '';
+    }
+    return itemSearchActivityAtISO(state, entry.item);
+  }
+
+  const searchBucketGroups = useMemo(
+    () => foldActivityBucketGroups(filteredResults, searchEntryAt),
+    [filteredResults, state]
+  );
+
+  const searchBucketCounts = activityBucketCounts(searchBucketGroups);
+
+  const expandPrefs = {
+    activityFuture: activityFutureExpanded,
+    activityToday: activityTodayExpanded,
+    activityHistory: activityHistoryExpanded,
+    activityUndated: activityUndatedExpanded,
+  };
+
+  function toggleSearchBucket(bucket: ActivityTimeBucket) {
+    if (bucket === 'future') {
+      const next = !activityFutureExpanded;
+      setActivityFutureExpanded(next);
+      setActivitySearchPrefs(scopeKey, { activityFuture: next });
+      return;
+    }
+    if (bucket === 'today') {
+      const next = !activityTodayExpanded;
+      setActivityTodayExpanded(next);
+      setActivitySearchPrefs(scopeKey, { activityToday: next });
+      return;
+    }
+    if (bucket === 'undated') {
+      const next = !activityUndatedExpanded;
+      setActivityUndatedExpanded(next);
+      setActivitySearchPrefs(scopeKey, { activityUndated: next });
+      return;
+    }
+    const next = !activityHistoryExpanded;
+    setActivityHistoryExpanded(next);
+    setActivitySearchPrefs(scopeKey, { activityHistory: next });
+  }
+
   /** True when locked-room assets/events are omitted from what would otherwise appear. */
   const skippedLockedContent = useMemo(() => {
     void roomAuthEpoch;
+    // Project scope has no room assets/events — locked rooms are irrelevant.
+    if (selectedProjectId) return false;
+
     const query = searchQuery.trim();
     const eventPool = selectedPropertyId
       ? eventsForProperty(state, selectedPropertyId)
@@ -513,7 +611,14 @@ export function PropertyActivitySearchScreen(props: {
       }
     }
     return false;
-  }, [property?.name, selectedPropertyId, roomAuthEpoch, searchQuery, state]);
+  }, [
+    property?.name,
+    selectedProjectId,
+    selectedPropertyId,
+    roomAuthEpoch,
+    searchQuery,
+    state,
+  ]);
 
   // Fallback if content never grows past saved y (shorter result set).
   useEffect(() => {
@@ -780,7 +885,10 @@ export function PropertyActivitySearchScreen(props: {
                       key={entry.id}
                       onPress={() => {
                         setSelectedPropertyId(entry.id);
-                        setSelectedProjectId(null);
+                        setSelectedProjectId(
+                          getActivitySearchPrefs(activitySearchScopeKey(entry.id))
+                            .selectedProjectId
+                        );
                         setPropertyMenuOpen(false);
                       }}
                       style={({ pressed }) => [
@@ -984,251 +1092,316 @@ export function PropertyActivitySearchScreen(props: {
           />
         </View>
 
-        {activityAll.length === 0 && searchQuery.trim().length === 0 ? (
-          <Text style={[sharedStyles.emptyText, { marginTop: 24 }]}>No activity yet.</Text>
-        ) : filteredResults.length === 0 ? (
+        {filteredResults.length === 0 ? (
           <Text style={[sharedStyles.emptyText, { marginTop: 24 }]}>
-            No matching results.
+            {searchQuery.trim().length === 0 ? 'No activity yet.' : 'No matching results.'}
           </Text>
         ) : (
-          <View style={{ marginTop: 12, gap: 10 }}>
-            {filteredResults.map((entry) => {
-              if (entry.kind === 'interaction') {
-                const interaction = entry.interaction;
-                const vendor = interaction.vendorId
-                  ? vendorById(state, interaction.vendorId)
-                  : undefined;
-                const photo = photosForVendorInteraction(state, interaction.id)[0];
-                const vendorProjectId = projectIdForInteraction(state, interaction);
-                const vendorProject = vendorProjectId
-                  ? projectById(state, vendorProjectId)
-                  : undefined;
-                const interactionPropertyId = propertyIdForInteraction(state, interaction);
-                const interactionProperty = interactionPropertyId
-                  ? propertyById(state, interactionPropertyId)
-                  : undefined;
-                const methodLabel = vendorContactMethodLabel(interaction.contactMethod);
-                const dateLabel = formatDisplayDate(interaction.occurredAtISO);
-                const scopeLabel = isAllScope
-                  ? interactionProperty &&
-                    vendorProject &&
-                    interactionProperty.name !== vendorProject.name
-                    ? `${interactionProperty.name} · ${vendorProject.name}`
-                    : (interactionProperty?.name ?? vendorProject?.name)
-                  : vendorProject?.name;
-                const searchMatch =
-                  searchQuery.trim().length > 0
-                    ? findInteractionSearchMatch({
-                        query: searchQuery,
-                        notes: interaction.notes,
-                        contactName: interaction.contactName,
-                        vendorName: vendor?.name,
-                        methodLabel,
-                        dateLabel,
-                        projectName: vendorProject?.name,
-                        propertyName: interactionProperty?.name ?? property?.name,
-                      })
-                    : undefined;
-                return (
-                  <PropertyInteractionListRow
-                    key={`interaction:${interaction.id}`}
-                    projectName={scopeLabel}
-                    contactName={interaction.contactName}
-                    companyName={vendor?.name ?? 'No vendor'}
-                    companyPhotoUri={
-                      vendor ? firstPhotoUriForVendor(state, vendor) : undefined
-                    }
-                    hideCompanyPhoto={!vendor}
-                    vendorStatusLabel={
-                      vendor ? vendorStatusLabel(vendor.status) : undefined
-                    }
-                    vendorStatusColor={
-                      vendor ? vendorStatusColor(vendor.status) : undefined
-                    }
-                    dateISO={interaction.occurredAtISO}
-                    methodLabel={methodLabel}
-                    notes={interaction.notes}
-                    searchSnippet={searchMatch?.searchSnippet}
-                    highlightQuery={
-                      searchQuery.trim() || searchMatch ? searchQuery.trim() : undefined
-                    }
-                    matchHint={searchMatch?.matchHint}
-                    photoUri={photo?.localUri}
-                    important={interaction.important === true}
-                    onPress={() =>
-                      onOpenInteraction(interaction.vendorId, interaction.id, {
-                        ...(searchMatch
-                          ? {
-                              searchQuery: searchQuery.trim(),
-                              searchMatchField: searchMatch.field,
-                            }
-                          : {}),
-                        propertyId: interactionPropertyId,
-                      })
-                    }
-                    onPressVendor={vendor ? () => onOpenVendor(vendor.id) : undefined}
-                    cardBackgroundColor={colors.helpBg}
-                    cornerIcon="forum"
-                  />
-                );
-              }
-
-              if (entry.kind === 'todo' || entry.kind === 'idea') {
-                const todo = entry.todo;
-                const todoProperty = propertyById(state, todo.propertyId);
-                const photo = photosForPropertyTodo(state, todo.id)[0];
-                const dueLabel = todo.dueAtISO
-                  ? formatDisplayDate(todo.dueAtISO)
-                  : undefined;
-                const notes =
-                  isAllScope && todoProperty
-                    ? [todoProperty.name, todo.notes?.trim()]
-                        .filter(Boolean)
-                        .join(' · ')
-                    : todo.notes;
-                return (
-                  <PropertyTodoListRow
-                    key={`${entry.kind}:${todo.id}`}
-                    title={todo.title}
-                    dueLabel={dueLabel}
-                    notes={notes}
-                    done={todo.done}
-                    thumbnailUri={photo?.localUri}
-                    variant={entry.kind}
-                    onPress={() => onOpenTodo(todo.id, { kind: entry.kind })}
-                    cardBackgroundColor={colors.historyCardBg}
-                    cornerIcon={entry.kind === 'idea' ? 'notes' : 'checklist'}
-                  />
-                );
-              }
-
-              if (entry.kind === 'punch') {
-                const punchItem = entry.punchItem;
-                const punchProject = projectById(state, punchItem.projectId);
-                const punchProperty = punchProject
-                  ? propertyById(state, punchProject.propertyId)
-                  : undefined;
-                const photo = photosForPunchItem(state, punchItem.id)[0];
-                const dueLabel = punchItem.dueAtISO
-                  ? formatDisplayDate(punchItem.dueAtISO)
-                  : undefined;
-                const scopeParts =
-                  selectedProjectId == null
-                    ? [
-                        isAllScope ? punchProperty?.name : undefined,
-                        punchProject?.name,
-                      ].filter(Boolean)
-                    : [];
-                const notes = [...scopeParts, punchItem.notes?.trim()]
-                  .filter(Boolean)
-                  .join(' · ');
-                return (
-                  <PropertyTodoListRow
-                    key={`punch:${punchItem.id}`}
-                    title={punchItem.title}
-                    dueLabel={dueLabel}
-                    notes={notes || undefined}
-                    done={punchItem.done}
-                    thumbnailUri={photo?.localUri}
-                    onPress={() => onOpenPunchItem(punchItem.id)}
-                    cardBackgroundColor={colors.historyCardBg}
-                    cornerIcon="assignment"
-                  />
-                );
-              }
-
-              if (entry.kind === 'asset') {
-                const item = entry.item;
-                const lastEvent = serviceHistoryEventsForItem(state, item.id)[0];
-                const { label, nameLabel } = itemListRowLabels(item);
-                const itemRoom = roomById(state, item.roomId);
-                const itemProperty = itemRoom
-                  ? propertyById(state, itemRoom.propertyId)
-                  : undefined;
-                const scopeLabel = isAllScope
-                  ? itemProperty && itemRoom && itemProperty.name !== itemRoom.name
-                    ? `${itemProperty.name} · ${itemRoom.name}`
-                    : (itemProperty?.name ?? itemRoom?.name)
-                  : itemRoom?.name;
-                return (
-                  <ItemListRow
-                    key={`asset:${item.id}`}
-                    label={label}
-                    nameLabel={nameLabel}
-                    scopeLabel={scopeLabel}
-                    thumbnailUri={firstPhotoUriForItem(state, item)}
-                    detailFields={
-                      item.itemTypeId === 'automobile'
-                        ? undefined
-                        : itemListSummaryFields(item)
-                    }
-                    lastServiceDate={
-                      lastEvent ? formatDisplayDate(lastEvent.occurredAtISO) : undefined
-                    }
-                    lastServiceTitle={lastEvent?.title}
-                    lastServiceNotes={lastEvent?.notes}
-                    lastServiceCost={
-                      lastEvent?.cost != null ? formatCurrency(lastEvent.cost) : undefined
-                    }
-                    nextDueLabel={nextDueLabelForItem(state, item.id)}
-                    overdue={isItemOverdue(state, item.id)}
-                    onPress={() => onOpenItem(item.id)}
-                    cardBackgroundColor={colors.historyCardBg}
-                    cornerIcon="inventory"
-                  />
-                );
-              }
-
-              const event = entry.event;
-              const item = itemById(state, event.itemId);
-              if (!item) return null;
-              const eventRoom = roomById(state, item.roomId);
-              const eventProperty = eventRoom
-                ? propertyById(state, eventRoom.propertyId)
-                : undefined;
-              const photo = photosForEvent(state, event.id)[0];
-              const open = upcomingDueAtISO(event) != null;
-              const dateLabel = formatDisplayDate(serviceListDateISO(event));
-              const scopeLabel = isAllScope
-                ? eventProperty && eventRoom && eventProperty.name !== eventRoom.name
-                  ? `${eventProperty.name} · ${eventRoom.name}`
-                  : (eventProperty?.name ?? eventRoom?.name)
-                : eventRoom?.name;
-              const searchMatch =
-                searchQuery.trim().length > 0
-                  ? findServiceSearchMatch({
-                      query: searchQuery,
-                      title: event.title,
-                      assetLabel: itemDisplayLabel(item),
-                      roomName: eventRoom?.name,
-                      propertyName: eventProperty?.name ?? property?.name,
-                      notes: event.notes,
-                      company: event.serviceCompany,
-                      dateLabel,
-                    })
-                  : undefined;
+          <View style={{ marginTop: 12 }}>
+            {searchBucketGroups.map((group) => {
+              const expanded = isActivityBucketExpanded(expandPrefs, group.bucket);
+              const isTodayBucket = group.bucket === 'today';
+              const frameColor = isTodayBucket ? colors.danger : colors.sectionTitle;
               return (
-                <PropertyServiceListRow
-                  key={`event:${event.id}`}
-                  scopeLabel={scopeLabel}
-                  itemName={itemDisplayLabel(item)}
-                  itemPhotoUri={firstPhotoUriForItem(state, item)}
-                  dateLabel={dateLabel}
-                  statusLabel={open ? 'Open' : 'Done'}
-                  title={event.title}
-                  notes={event.notes}
-                  company={event.serviceCompany}
-                  searchSnippet={searchMatch?.searchSnippet}
-                  highlightQuery={
-                    searchQuery.trim() || searchMatch ? searchQuery.trim() : undefined
-                  }
-                  matchHint={searchMatch?.matchHint}
-                  photoUri={photo?.localUri}
-                  onPress={() => onOpenEvent(event.itemId, event.id)}
-                  onPressItem={() => onOpenItem(event.itemId)}
-                  cardBackgroundColor={colors.upcomingCardBg}
-                  cornerIcon="handyman"
-                />
+                <View key={group.bucket}>
+                  <ActivityBucketBanner
+                    label={group.label}
+                    count={searchBucketCounts[group.bucket]}
+                    expanded={expanded}
+                    variant={isTodayBucket ? 'today' : 'default'}
+                    onToggle={() => toggleSearchBucket(group.bucket)}
+                    attachedToGroup
+                  />
+                  {expanded ? (
+                    <View
+                      style={[
+                        sharedStyles.activityBucketGroup,
+                        isTodayBucket && sharedStyles.activityBucketGroupToday,
+                      ]}
+                    >
+                      {group.entries.map((entry, index) => {
+                        const betweenRows = index < group.entries.length - 1;
+                        const dividerWidth = betweenRows ? 2 : 0;
+
+                        if (entry.kind === 'interaction') {
+                          const interaction = entry.interaction;
+                          const vendor = interaction.vendorId
+                            ? vendorById(state, interaction.vendorId)
+                            : undefined;
+                          const photo = photosForVendorInteraction(state, interaction.id)[0];
+                          const vendorProjectId = projectIdForInteraction(state, interaction);
+                          const vendorProject = vendorProjectId
+                            ? projectById(state, vendorProjectId)
+                            : undefined;
+                          const interactionPropertyId = propertyIdForInteraction(
+                            state,
+                            interaction
+                          );
+                          const interactionProperty = interactionPropertyId
+                            ? propertyById(state, interactionPropertyId)
+                            : undefined;
+                          const methodLabel = vendorContactMethodLabel(
+                            interaction.contactMethod
+                          );
+                          const dateLabel = formatDisplayDate(interaction.occurredAtISO);
+                          const scopeLabel = isAllScope
+                            ? interactionProperty &&
+                              vendorProject &&
+                              interactionProperty.name !== vendorProject.name
+                              ? `${interactionProperty.name} · ${vendorProject.name}`
+                              : (interactionProperty?.name ?? vendorProject?.name)
+                            : vendorProject?.name;
+                          const searchMatch =
+                            searchQuery.trim().length > 0
+                              ? findInteractionSearchMatch({
+                                  query: searchQuery,
+                                  notes: interaction.notes,
+                                  contactName: interaction.contactName,
+                                  vendorName: vendor?.name,
+                                  methodLabel,
+                                  dateLabel,
+                                  projectName: vendorProject?.name,
+                                  propertyName:
+                                    interactionProperty?.name ?? property?.name,
+                                })
+                              : undefined;
+                          return (
+                            <PropertyInteractionListRow
+                              key={`interaction:${interaction.id}`}
+                              projectName={scopeLabel}
+                              contactName={interaction.contactName}
+                              companyName={vendor?.name ?? 'No vendor'}
+                              companyPhotoUri={
+                                vendor ? firstPhotoUriForVendor(state, vendor) : undefined
+                              }
+                              hideCompanyPhoto={!vendor}
+                              vendorStatusLabel={
+                                vendor ? vendorStatusLabel(vendor.status) : undefined
+                              }
+                              vendorStatusColor={
+                                vendor ? vendorStatusColor(vendor.status) : undefined
+                              }
+                              dateISO={interaction.occurredAtISO}
+                              methodLabel={methodLabel}
+                              notes={interaction.notes}
+                              searchSnippet={searchMatch?.searchSnippet}
+                              highlightQuery={
+                                searchQuery.trim() || searchMatch
+                                  ? searchQuery.trim()
+                                  : undefined
+                              }
+                              matchHint={searchMatch?.matchHint}
+                              photoUri={photo?.localUri}
+                              important={interaction.important === true}
+                              onPress={() =>
+                                onOpenInteraction(interaction.vendorId, interaction.id, {
+                                  ...(searchMatch
+                                    ? {
+                                        searchQuery: searchQuery.trim(),
+                                        searchMatchField: searchMatch.field,
+                                      }
+                                    : {}),
+                                  propertyId: interactionPropertyId,
+                                })
+                              }
+                              onPressVendor={
+                                vendor ? () => onOpenVendor(vendor.id) : undefined
+                              }
+                              cardBackgroundColor={colors.bg}
+                              ownerBackgroundColor={colors.interactionOwnerBg}
+                              dividerColor={frameColor}
+                              dividerWidth={dividerWidth}
+                              ownerCornerIcon="storefront"
+                              cornerIcon="forum"
+                              stackRelative
+                            />
+                          );
+                        }
+
+                        if (entry.kind === 'todo' || entry.kind === 'idea') {
+                          const todo = entry.todo;
+                          const todoProperty = propertyById(state, todo.propertyId);
+                          const photo = photosForPropertyTodo(state, todo.id)[0];
+                          const dueLabel = todo.dueAtISO
+                            ? formatDisplayDate(todo.dueAtISO)
+                            : undefined;
+                          const notes =
+                            isAllScope && todoProperty
+                              ? [todoProperty.name, todo.notes?.trim()]
+                                  .filter(Boolean)
+                                  .join(' · ')
+                              : todo.notes;
+                          return (
+                            <PropertyTodoListRow
+                              key={`${entry.kind}:${todo.id}`}
+                              title={todo.title}
+                              dueLabel={dueLabel}
+                              notes={notes}
+                              done={todo.done}
+                              thumbnailUri={photo?.localUri}
+                              variant={entry.kind}
+                              onPress={() => onOpenTodo(todo.id, { kind: entry.kind })}
+                              cardBackgroundColor={colors.historyCardBg}
+                              dividerColor={frameColor}
+                              dividerWidth={dividerWidth}
+                              cornerIcon={entry.kind === 'idea' ? 'notes' : 'checklist'}
+                            />
+                          );
+                        }
+
+                        if (entry.kind === 'punch') {
+                          const punchItem = entry.punchItem;
+                          const punchProject = projectById(state, punchItem.projectId);
+                          const punchProperty = punchProject
+                            ? propertyById(state, punchProject.propertyId)
+                            : undefined;
+                          const photo = photosForPunchItem(state, punchItem.id)[0];
+                          const dueLabel = punchItem.dueAtISO
+                            ? formatDisplayDate(punchItem.dueAtISO)
+                            : undefined;
+                          const scopeParts =
+                            selectedProjectId == null
+                              ? [
+                                  isAllScope ? punchProperty?.name : undefined,
+                                  punchProject?.name,
+                                ].filter(Boolean)
+                              : [];
+                          const notes = [...scopeParts, punchItem.notes?.trim()]
+                            .filter(Boolean)
+                            .join(' · ');
+                          return (
+                            <PropertyTodoListRow
+                              key={`punch:${punchItem.id}`}
+                              title={punchItem.title}
+                              dueLabel={dueLabel}
+                              notes={notes || undefined}
+                              done={punchItem.done}
+                              thumbnailUri={photo?.localUri}
+                              onPress={() => onOpenPunchItem(punchItem.id)}
+                              cardBackgroundColor={colors.historyCardBg}
+                              dividerColor={frameColor}
+                              dividerWidth={dividerWidth}
+                              cornerIcon="assignment"
+                            />
+                          );
+                        }
+
+                        if (entry.kind === 'asset') {
+                          const item = entry.item;
+                          const lastEvent = serviceHistoryEventsForItem(state, item.id)[0];
+                          const { label, nameLabel } = itemListRowLabels(item);
+                          const itemRoom = roomById(state, item.roomId);
+                          const itemProperty = itemRoom
+                            ? propertyById(state, itemRoom.propertyId)
+                            : undefined;
+                          const scopeLabel = isAllScope
+                            ? itemProperty &&
+                              itemRoom &&
+                              itemProperty.name !== itemRoom.name
+                              ? `${itemProperty.name} · ${itemRoom.name}`
+                              : (itemProperty?.name ?? itemRoom?.name)
+                            : itemRoom?.name;
+                          return (
+                            <ItemListRow
+                              key={`asset:${item.id}`}
+                              label={label}
+                              nameLabel={nameLabel}
+                              scopeLabel={scopeLabel}
+                              thumbnailUri={firstPhotoUriForItem(state, item)}
+                              detailFields={
+                                item.itemTypeId === 'automobile'
+                                  ? undefined
+                                  : itemListSummaryFields(item)
+                              }
+                              lastServiceDate={
+                                lastEvent
+                                  ? formatDisplayDate(lastEvent.occurredAtISO)
+                                  : undefined
+                              }
+                              lastServiceTitle={lastEvent?.title}
+                              lastServiceNotes={lastEvent?.notes}
+                              lastServiceCost={
+                                lastEvent?.cost != null
+                                  ? formatCurrency(lastEvent.cost)
+                                  : undefined
+                              }
+                              nextDueLabel={nextDueLabelForItem(state, item.id)}
+                              overdue={isItemOverdue(state, item.id)}
+                              onPress={() => onOpenItem(item.id)}
+                              cardBackgroundColor={colors.historyCardBg}
+                              dividerColor={frameColor}
+                              dividerWidth={dividerWidth}
+                              cornerIcon="inventory"
+                            />
+                          );
+                        }
+
+                        const event = entry.event;
+                        const item = itemById(state, event.itemId);
+                        if (!item) return null;
+                        const eventRoom = roomById(state, item.roomId);
+                        const eventProperty = eventRoom
+                          ? propertyById(state, eventRoom.propertyId)
+                          : undefined;
+                        const photo = photosForEvent(state, event.id)[0];
+                        const open = upcomingDueAtISO(event) != null;
+                        const eventDateISO = serviceListDateISO(event);
+                        const dateLabel = formatDisplayDate(eventDateISO);
+                        const scopeLabel = isAllScope
+                          ? eventProperty &&
+                            eventRoom &&
+                            eventProperty.name !== eventRoom.name
+                            ? `${eventProperty.name} · ${eventRoom.name}`
+                            : (eventProperty?.name ?? eventRoom?.name)
+                          : eventRoom?.name;
+                        const searchMatch =
+                          searchQuery.trim().length > 0
+                            ? findServiceSearchMatch({
+                                query: searchQuery,
+                                title: event.title,
+                                assetLabel: itemDisplayLabel(item),
+                                roomName: eventRoom?.name,
+                                propertyName: eventProperty?.name ?? property?.name,
+                                notes: event.notes,
+                                company: event.serviceCompany,
+                                dateLabel,
+                              })
+                            : undefined;
+                        return (
+                          <PropertyServiceListRow
+                            key={`event:${event.id}`}
+                            scopeLabel={scopeLabel}
+                            itemName={itemDisplayLabel(item)}
+                            itemPhotoUri={firstPhotoUriForItem(state, item)}
+                            dateLabel={dateLabel}
+                            dateISO={eventDateISO}
+                            stackRelative={isAfterToday(eventDateISO)}
+                            statusLabel={open ? 'Open' : 'Done'}
+                            title={event.title}
+                            notes={event.notes}
+                            company={event.serviceCompany}
+                            searchSnippet={searchMatch?.searchSnippet}
+                            highlightQuery={
+                              searchQuery.trim() || searchMatch
+                                ? searchQuery.trim()
+                                : undefined
+                            }
+                            matchHint={searchMatch?.matchHint}
+                            photoUri={photo?.localUri}
+                            onPress={() => onOpenEvent(event.itemId, event.id)}
+                            onPressItem={() => onOpenItem(event.itemId)}
+                            cardBackgroundColor={colors.upcomingCardBg}
+                            ownerBackgroundColor={colors.upcomingInteractionOwnerBg}
+                            dividerColor={frameColor}
+                            dividerWidth={dividerWidth}
+                            ownerCornerIcon="inventory"
+                            cornerIcon="handyman"
+                          />
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
               );
             })}
           </View>

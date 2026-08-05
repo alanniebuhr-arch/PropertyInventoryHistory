@@ -46,8 +46,9 @@ export function WasteWaterDisplayView(props: {
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
-  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows } = props;
+  const { state, details, itemId, onSave, onDetailsChange, photoHeader, onActiveHeroLabelChange, showReorderArrows, onToggleReorderArrows } = props;
   const [editingSection, setEditingSection] = useState<'main' | 'notes' | null>(null);
 
   const slots = wasteWaterPhotoSlotsForDetails(details);
@@ -164,6 +165,7 @@ export function WasteWaterDisplayView(props: {
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
         showReorderArrows={showReorderArrows}
+        onToggleReorderArrows={onToggleReorderArrows}
         hasHiddenSlots={hasHiddenSlots}
         onRestoreHiddenSlots={() => onSave(restoreItemHiddenPhotoSlots(state, itemId))}
       >

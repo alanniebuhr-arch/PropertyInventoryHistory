@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isDevBuild } from '../isDevBuild';
 import { colors } from '../theme';
 
-/** Thin top strip shown only outside standalone (TestFlight / App Store) builds. */
+/** Thin top strip shown only in Expo Go / Metro debug — not TestFlight or App Store. */
 export function DevBuildBanner() {
   const insets = useSafeAreaInsets();
   if (!isDevBuild()) return null;

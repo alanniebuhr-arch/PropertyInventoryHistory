@@ -22,6 +22,7 @@ export type ItemTypeId =
   | 'ev_charger'
   | 'solar'
   | 'hot_tub'
+  | 'toilet'
   | 'other';
 
 export type ElectricPanelDetails = {
@@ -573,6 +574,32 @@ export type ApplianceDetails = {
   repairWebsite?: string;
 };
 
+export type ToiletFlushType = 'gravity' | 'pressure_assist' | 'dual_flush' | 'other';
+
+export type ToiletDetails = {
+  kind: 'toilet';
+  make?: string;
+  modelNumber?: string;
+  serialNumber?: string;
+  flushType?: ToiletFlushType;
+  flushTypeOther?: string;
+  gallonsPerFlush?: string;
+  installDateAtISO?: string;
+  flushValveKit?: string;
+  fillValveKit?: string;
+  notes?: string;
+  frontPhotoId?: string;
+  manufacturerTagPhotoId?: string;
+  flushValvePhotoId?: string;
+  fillValvePhotoId?: string;
+  receiptPhotoId?: string;
+  frontDocumentId?: string;
+  manufacturerTagDocumentId?: string;
+  flushValveDocumentId?: string;
+  fillValveDocumentId?: string;
+  receiptDocumentId?: string;
+};
+
 export type OtherItemDetails = {
   kind: 'other';
   notes?: string;
@@ -602,6 +629,7 @@ export type ItemDetails =
   | AirConditionerDetails
   | AutomobileDetails
   | ApplianceDetails
+  | ToiletDetails
   | OtherItemDetails;
 
 export type StoredDocument = {

@@ -33,8 +33,18 @@ export function PropertyPhotosSection(props: {
   expanded?: boolean;
   onToggleExpanded?: () => void;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
-  const { state, property, onSave, children, expanded, onToggleExpanded, showReorderArrows } = props;
+  const {
+    state,
+    property,
+    onSave,
+    children,
+    expanded,
+    onToggleExpanded,
+    showReorderArrows,
+    onToggleReorderArrows,
+  } = props;
 
   const extraPhotos = propertyExtraPhotos(state, property.id);
   const hasHiddenSlots = (property.hiddenPhotoSlotKeys?.length ?? 0) > 0;
@@ -143,6 +153,7 @@ export function PropertyPhotosSection(props: {
       expanded={expanded}
       onToggleExpanded={onToggleExpanded}
       showReorderArrows={showReorderArrows}
+      onToggleReorderArrows={onToggleReorderArrows}
     >
       {children}
     </PhotoSection>

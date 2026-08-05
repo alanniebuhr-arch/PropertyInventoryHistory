@@ -56,6 +56,8 @@ export const ITEM_CATALOG: CatalogEntry[] = [
 
   { id: 'hot_tub', label: 'Hot tub', defaultRecurrenceHint: 'Annual service' },
 
+  { id: 'toilet', label: 'Toilet' },
+
   { id: 'furnace', label: 'Heating', defaultRecurrenceHint: 'Annual maintenance' },
 
   { id: 'air_conditioner', label: 'Air conditioner', defaultRecurrenceHint: 'Annual maintenance' },
@@ -223,6 +225,10 @@ export function defaultDetailsForType(itemTypeId: ItemTypeId): ItemDetails {
     case 'hot_tub':
 
       return { kind: 'hot_tub' };
+
+    case 'toilet':
+
+      return { kind: 'toilet' };
 
     case 'furnace':
 

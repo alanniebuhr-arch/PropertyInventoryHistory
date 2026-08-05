@@ -23,6 +23,8 @@ export function UpcomingReminderCard(props: {
   cardBackgroundColor?: string;
   /** When set, draw a list divider under the row (Property section style). */
   dividerColor?: string;
+  /** Optional type glyph in the top-right (e.g. handyman / forum / checklist). */
+  cornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
 }) {
   const {
     title,
@@ -34,6 +36,7 @@ export function UpcomingReminderCard(props: {
     important,
     cardBackgroundColor,
     dividerColor,
+    cornerIcon,
   } = props;
   const dueOverdue = isOverdue(dueAtISO);
   const dateParts = dueAtISO ? formatDisplayDateParts(dueAtISO) : null;
@@ -75,34 +78,39 @@ export function UpcomingReminderCard(props: {
         pressed && sharedStyles.cardPressed,
       ]}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        {important ? (
-          <MaterialIcons name="star" size={16} color={colors.primary} accessibilityLabel="Important" />
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {important ? (
+            <MaterialIcons name="star" size={16} color={colors.primary} accessibilityLabel="Important" />
+          ) : null}
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 13,
+              fontWeight: important ? '700' : '500',
+              letterSpacing: 0.2,
+              color: dueOverdue ? colors.overdue : colors.text,
+            }}
+          >
+            {dueOverdue ? 'OVERDUE · ' : ''}
+            {interactionDateAccent && dateParts ? (
+              <>
+                <Text style={{ fontWeight: '700', color: colors.interactionDate }}>{dateParts.date}</Text>
+                {dateParts.rest ? (
+                  <Text style={{ fontWeight: '500', color: colors.textMuted }}>
+                    {' '}
+                    {boldTodayNodes(dateParts.rest)}
+                  </Text>
+                ) : null}
+              </>
+            ) : (
+              boldTodayNodes(dateLabel)
+            )}
+          </Text>
+        </View>
+        {cornerIcon ? (
+          <MaterialIcons name={cornerIcon} size={22} color={colors.primary} />
         ) : null}
-        <Text
-          style={{
-            flex: 1,
-            fontSize: 13,
-            fontWeight: important ? '700' : '500',
-            letterSpacing: 0.2,
-            color: dueOverdue ? colors.overdue : colors.text,
-          }}
-        >
-          {dueOverdue ? 'OVERDUE · ' : ''}
-          {interactionDateAccent && dateParts ? (
-            <>
-              <Text style={{ fontWeight: '700', color: colors.interactionDate }}>{dateParts.date}</Text>
-              {dateParts.rest ? (
-                <Text style={{ fontWeight: '500', color: colors.textMuted }}>
-                  {' '}
-                  {boldTodayNodes(dateParts.rest)}
-                </Text>
-              ) : null}
-            </>
-          ) : (
-            boldTodayNodes(dateLabel)
-          )}
-        </Text>
       </View>
       <Text
         style={{
@@ -163,9 +171,17 @@ export function UpcomingServiceCard(props: {
   onLogService?: () => void;
   cardBackgroundColor?: string;
   dividerColor?: string;
+  cornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
 }) {
-  const { event, leadingLabel, thumbnailUri, onPressDetails, cardBackgroundColor, dividerColor } =
-    props;
+  const {
+    event,
+    leadingLabel,
+    thumbnailUri,
+    onPressDetails,
+    cardBackgroundColor,
+    dividerColor,
+    cornerIcon,
+  } = props;
   const dueAt = upcomingDueAtISO(event);
   const titleText = leadingLabel?.trim()
     ? `${leadingLabel.trim()} · ${event.title}`
@@ -182,6 +198,7 @@ export function UpcomingServiceCard(props: {
       noun="scheduled service"
       cardBackgroundColor={cardBackgroundColor}
       dividerColor={dividerColor}
+      cornerIcon={cornerIcon}
     />
   );
 }

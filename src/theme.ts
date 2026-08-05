@@ -18,6 +18,10 @@ export const colors = {
   upcomingOverdueBg: '#f0e4e2',
   historyCardBg: '#efeae3',
   upcomingCardBg: '#e4ebe0',
+  /** Vendor header on What's happening interaction rows — slightly darker than `bg`. */
+  interactionOwnerBg: '#ddd8ce',
+  /** Vendor header when the interaction strip uses `upcomingCardBg`. */
+  upcomingInteractionOwnerBg: '#d4ddd0',
   photoPlaceholder: '#d4cfc6',
   hairline: '#cfc8bc',
   /** Last-service accents on Room asset list rows. */
@@ -139,6 +143,28 @@ export const sharedStyles = StyleSheet.create({
     shadowOpacity: 0.22,
     shadowRadius: 6,
     elevation: 4,
+  },
+  /** What's happening Future / History bucket body under the colored banner. */
+  activityBucketGroup: {
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderTopWidth: 0,
+    borderColor: colors.sectionTitle,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  /** Today bucket body — danger frame instead of sectionTitle. */
+  activityBucketGroupToday: {
+    borderColor: colors.danger,
+  },
+  /**
+   * Bleed Future/Today/History groups to the property section panel edges
+   * (cancels propertySectionPanel horizontal padding).
+   */
+  activityBucketList: {
+    marginHorizontal: -16,
   },
   /** Catalog-style detail block — minimal chrome for editable sections. */
   catalogSection: {

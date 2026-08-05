@@ -23,6 +23,7 @@ import {
 } from '../components/ListRows';
 import { UpcomingReminderCard, UpcomingServiceCard } from '../components/UpcomingServiceCard';
 import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import {
   ToolbarNewSearchControls,
   usePropertyGearNav,
@@ -30,6 +31,7 @@ import {
 import { RenameModal } from '../components/RenameModal';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { CollapsibleSectionTitle } from '../components/CollapsibleSectionTitle';
+import { ActivityBucketBanner } from '../components/ActivityBucketBanner';
 import { sharedStyles, colors } from '../theme';
 import { formatCurrency, formatDisplayDate, nowISO, uid } from '../utils';
 import {
@@ -59,7 +61,7 @@ import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
 import { slideshowPhotosForProperty, type PropertyCatalogPhoto } from '../propertyFavoritePhotos';
-import { PhotoViewerModal, SLIDESHOW_DOUBLE_BACK_MS, type ViewerPhoto } from '../components/PhotoViewerModal';
+import { PhotoViewerModal, type ViewerPhoto } from '../components/PhotoViewerModal';
 import { SlideshowEditorModal } from '../components/SlideshowEditorModal';
 import { PropertyAllPhotosModal } from '../components/PropertyAllPhotosModal';
 import {
@@ -126,6 +128,10 @@ import {
   consumeSearchPhotosReopen,
   markSearchPhotosReopen,
 } from '../propertySearchPhotosPrefs';
+import {
+  activitySearchScopeKey,
+  setActivitySearchPrefs,
+} from '../activitySearchPrefs';
 
 export function PropertyDetailScreen(props: {
   state: AppState;
@@ -145,6 +151,7 @@ export function PropertyDetailScreen(props: {
     options?: { startEditing?: boolean; kind?: 'todo' | 'idea' }
   ) => void;
   onOpenInteraction: (vendorId: string | undefined, interactionId: string) => void;
+  onOpenVendor: (vendorId: string) => void;
   onAddInteraction: () => void;
   onAddServiceEvent: () => void;
   onOpenItem: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
@@ -166,6 +173,7 @@ export function PropertyDetailScreen(props: {
     onSearchAssets,
     onOpenTodo,
     onOpenInteraction,
+    onOpenVendor,
     onAddInteraction,
     onAddServiceEvent,
     onOpenItem,
@@ -207,7 +215,6 @@ export function PropertyDetailScreen(props: {
   );
   /** Snapshot used while the viewer is open so Play uses the order just committed. */
   const [slideshowPlayPhotos, setSlideshowPlayPhotos] = useState<ViewerPhoto[] | null>(null);
-  const slideshowBackPressAtRef = useRef(0);
   /** When Play was started from Search photos, ← Back returns there. */
   const slideshowReturnToSearchPhotosRef = useRef(false);
   const [upcomingHorizon, setUpcomingHorizon] = useState<UpcomingHorizon>(
@@ -238,6 +245,15 @@ export function PropertyDetailScreen(props: {
   );
   const [recentActivityExpanded, setRecentActivityExpanded] = useState(
     () => getPropertySectionExpand(propertyId).recentActivity
+  );
+  const [activityFutureExpanded, setActivityFutureExpanded] = useState(
+    () => getPropertySectionExpand(propertyId).activityFuture
+  );
+  const [activityTodayExpanded, setActivityTodayExpanded] = useState(
+    () => getPropertySectionExpand(propertyId).activityToday
+  );
+  const [activityHistoryExpanded, setActivityHistoryExpanded] = useState(
+    () => getPropertySectionExpand(propertyId).activityHistory
   );
   const textScaleControls = useTextScaleControls();
 
@@ -330,6 +346,9 @@ export function PropertyDetailScreen(props: {
     setTodosExpanded(expand.todos);
     setIdeasExpanded(expand.ideas);
     setRecentActivityExpanded(expand.recentActivity);
+    setActivityFutureExpanded(expand.activityFuture);
+    setActivityTodayExpanded(expand.activityToday);
+    setActivityHistoryExpanded(expand.activityHistory);
   }, [propertyId]);
 
   const openShareOptions = useCallback(() => {
@@ -418,7 +437,6 @@ export function PropertyDetailScreen(props: {
   }
 
   function closeSlideshow() {
-    slideshowBackPressAtRef.current = 0;
     setSlideshowIndex(null);
     setSlideshowPlayPhotos(null);
     if (slideshowReturnToSearchPhotosRef.current) {
@@ -427,28 +445,13 @@ export function PropertyDetailScreen(props: {
     }
   }
 
-  /** Favorite slideshow: ← Back advances; double-tap closes. Search photos Play: ← Back returns to Search. */
+  /** Slideshow: ← Back exits. Swipe or Previous/Next change photos. */
   function handleHeaderBack() {
-    if (slideshowIndex == null) {
-      onBack();
-      return;
-    }
-    if (slideshowReturnToSearchPhotosRef.current) {
+    if (slideshowIndex != null) {
       closeSlideshow();
       return;
     }
-    const length = slideshowPhotos.length;
-    if (length <= 1) {
-      closeSlideshow();
-      return;
-    }
-    const now = Date.now();
-    if (now - slideshowBackPressAtRef.current < SLIDESHOW_DOUBLE_BACK_MS) {
-      closeSlideshow();
-      return;
-    }
-    slideshowBackPressAtRef.current = now;
-    setSlideshowIndex((slideshowIndex + 1) % length);
+    onBack();
   }
 
   function playFavoriteSlideshow(playState?: AppState) {
@@ -476,7 +479,6 @@ export function PropertyDetailScreen(props: {
     );
     setSlideshowEditorOpen(false);
     setAllPhotosOpen(false);
-    slideshowBackPressAtRef.current = 0;
     setSlideshowIndex(0);
   }
 
@@ -497,7 +499,6 @@ export function PropertyDetailScreen(props: {
       }))
     );
     setAllPhotosOpen(false);
-    slideshowBackPressAtRef.current = 0;
     setSlideshowIndex(safeIndex);
   }
 
@@ -587,9 +588,11 @@ export function PropertyDetailScreen(props: {
   const recentActivity = recentActivityAll.slice(0, 10);
 
   type ActivityBucket = 'future' | 'today' | 'history';
-  type ActivityListRow =
-    | { kind: 'header'; id: string; label: string }
-    | { kind: 'item'; entry: ActivityEntry };
+  type ActivityBucketGroup = {
+    bucket: ActivityBucket;
+    label: string;
+    entries: ActivityEntry[];
+  };
 
   function activityBucket(at: string): ActivityBucket {
     if (isAfterToday(at)) return 'future';
@@ -603,19 +606,52 @@ export function PropertyDetailScreen(props: {
     history: 'History',
   };
 
-  const recentActivityRows: ActivityListRow[] = [];
-  let lastBucket: ActivityBucket | null = null;
+  const activityBucketCounts: Record<ActivityBucket, number> = {
+    future: 0,
+    today: 0,
+    history: 0,
+  };
+  for (const entry of recentActivity) {
+    activityBucketCounts[activityBucket(entry.at)] += 1;
+  }
+
+  const recentActivityGroups: ActivityBucketGroup[] = [];
   for (const entry of recentActivity) {
     const bucket = activityBucket(entry.at);
-    if (bucket !== lastBucket) {
-      recentActivityRows.push({
-        kind: 'header',
-        id: `header:${bucket}`,
+    const last = recentActivityGroups[recentActivityGroups.length - 1];
+    if (!last || last.bucket !== bucket) {
+      recentActivityGroups.push({
+        bucket,
         label: ACTIVITY_BUCKET_LABEL[bucket],
+        entries: [entry],
       });
-      lastBucket = bucket;
+    } else {
+      last.entries.push(entry);
     }
-    recentActivityRows.push({ kind: 'item', entry });
+  }
+
+  function isActivityBucketExpanded(bucket: ActivityBucket): boolean {
+    if (bucket === 'future') return activityFutureExpanded;
+    if (bucket === 'today') return activityTodayExpanded;
+    return activityHistoryExpanded;
+  }
+
+  function toggleActivityBucket(bucket: ActivityBucket) {
+    if (bucket === 'future') {
+      const next = !activityFutureExpanded;
+      setActivityFutureExpanded(next);
+      void setPropertySectionExpand(propertyId, { activityFuture: next });
+      return;
+    }
+    if (bucket === 'today') {
+      const next = !activityTodayExpanded;
+      setActivityTodayExpanded(next);
+      void setPropertySectionExpand(propertyId, { activityToday: next });
+      return;
+    }
+    const next = !activityHistoryExpanded;
+    setActivityHistoryExpanded(next);
+    void setPropertySectionExpand(propertyId, { activityHistory: next });
   }
 
   function selectUpcomingHorizon(horizon: UpcomingHorizon) {
@@ -635,14 +671,6 @@ export function PropertyDetailScreen(props: {
         { text: 'Done', style: 'cancel' as const },
       ]
     );
-  }
-
-  function openShowAllRecentActivity() {
-    Alert.alert('Show all', undefined, [
-      { text: 'Interactions', onPress: () => onOpenInteractions() },
-      { text: 'Service Events', onPress: () => onOpenServices() },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
   }
 
   function openAddReminderPicker() {
@@ -770,6 +798,7 @@ export function PropertyDetailScreen(props: {
   const slideshowOpen = slideshowIndex != null;
 
   return (
+    <ReuseExistingPhotosProvider state={state} propertyId={propertyId}>
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
       <ScreenBackHeader onPress={handleHeaderBack}>
         {slideshowOpen ? (
@@ -902,6 +931,7 @@ export function PropertyDetailScreen(props: {
           property={prop}
           onSave={onSave}
           showReorderArrows={showReorderArrows}
+            onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
           expanded={photosExpanded}
           onToggleExpanded={() => {
             const next = !photosExpanded;
@@ -1046,8 +1076,9 @@ export function PropertyDetailScreen(props: {
                     thumbnailUri={eventPhotos[0]?.localUri}
                     onPressDetails={() => onEditEvent(e.itemId, e.id)}
                     onLogService={() => onLogUpcomingService(e.itemId, e.id)}
-                    cardBackgroundColor={colors.helpBg}
+                    cardBackgroundColor={colors.upcomingCardBg}
                     dividerColor={colors.text}
+                    cornerIcon="handyman"
                   />
                 );
               }
@@ -1078,6 +1109,7 @@ export function PropertyDetailScreen(props: {
                     important={interaction.important === true}
                     cardBackgroundColor={colors.helpBg}
                     dividerColor={colors.text}
+                    cornerIcon="forum"
                   />
                 );
               }
@@ -1092,8 +1124,9 @@ export function PropertyDetailScreen(props: {
                   thumbnailUri={todoPhotos[0]?.localUri}
                   onPress={() => onOpenTodo(todo.id, { kind: 'todo' })}
                   noun="to-do"
-                  cardBackgroundColor={colors.helpBg}
+                  cardBackgroundColor={colors.historyCardBg}
                   dividerColor={colors.text}
+                  cornerIcon="checklist"
                 />
               );
             })}
@@ -1652,110 +1685,129 @@ export function PropertyDetailScreen(props: {
           ) : recentActivityExpanded ? (
             <>
               <View
-                style={{
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                  borderTopColor: colors.text,
-                }}
+                style={[
+                  sharedStyles.activityBucketList,
+                  {
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: colors.text,
+                  },
+                ]}
               >
-                {recentActivityRows.map((row) => {
-                  if (row.kind === 'header') {
-                    const isTodayHeader = row.id === 'header:today';
-                    return (
-                      <View
-                        key={row.id}
-                        style={{
-                          marginTop: 10,
-                          marginBottom: 6,
-                          paddingVertical: 3,
-                          paddingHorizontal: 10,
-                          backgroundColor: isTodayHeader ? colors.danger : colors.sectionTitle,
-                          borderRadius: 4,
-                        }}
-                        accessibilityRole="header"
-                      >
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            fontWeight: '600',
-                            letterSpacing: 1.2,
-                            textTransform: 'uppercase',
-                            color: colors.card,
-                            textAlign: 'center',
-                          }}
-                        >
-                          {row.label}
-                        </Text>
-                      </View>
-                    );
-                  }
-                  const entry = row.entry;
-                  if (entry.kind === 'interaction') {
-                    const interaction = entry.interaction;
-                    const vendor = interaction.vendorId
-                      ? vendorById(state, interaction.vendorId)
-                      : undefined;
-                    const photo = photosForVendorInteraction(state, interaction.id)[0];
-                    return (
-                      <PropertyInteractionListRow
-                        key={`interaction:${interaction.id}`}
-                        contactName={interaction.contactName}
-                        companyName={vendor?.name ?? 'No vendor'}
-                        companyPhotoUri={
-                          vendor ? firstPhotoUriForVendor(state, vendor) : undefined
-                        }
-                        hideCompanyPhoto={!vendor}
-                        vendorStatusLabel={
-                          vendor ? vendorStatusLabel(vendor.status) : undefined
-                        }
-                        vendorStatusColor={
-                          vendor ? vendorStatusColor(vendor.status) : undefined
-                        }
-                        dateISO={interaction.occurredAtISO}
-                        methodLabel={vendorContactMethodLabel(interaction.contactMethod)}
-                        notes={interaction.notes}
-                        photoUri={photo?.localUri}
-                        important={interaction.important === true}
-                        onPress={() =>
-                          onOpenInteraction(interaction.vendorId, interaction.id)
-                        }
-                        cardBackgroundColor={colors.helpBg}
-                        dividerColor={colors.text}
-                        cornerIcon="forum"
-                      />
-                    );
-                  }
-                  const event = entry.event;
-                  const item = itemById(state, event.itemId);
-                  if (!item) return null;
-                  const eventRoom = roomById(state, item.roomId);
-                  const photo = photosForEvent(state, event.id)[0];
-                  const open = upcomingDueAtISO(event) != null;
+                {recentActivityGroups.map((group) => {
+                  const expanded = isActivityBucketExpanded(group.bucket);
+                  const isTodayBucket = group.bucket === 'today';
                   return (
-                    <PropertyServiceListRow
-                      key={`event:${event.id}`}
-                      scopeLabel={eventRoom?.name}
-                      itemName={itemDisplayLabel(item)}
-                      itemPhotoUri={firstPhotoUriForItem(state, item)}
-                      dateLabel={formatDisplayDate(serviceListDateISO(event))}
-                      statusLabel={open ? 'Open' : 'Done'}
-                      title={event.title}
-                      notes={event.notes}
-                      company={event.serviceCompany}
-                      photoUri={photo?.localUri}
-                      onPress={() => onEditEvent(event.itemId, event.id)}
-                      onPressItem={() => onOpenItem(event.itemId)}
-                      cardBackgroundColor={colors.upcomingCardBg}
-                      dividerColor={colors.text}
-                      cornerIcon="handyman"
-                    />
+                    <View key={group.bucket}>
+                      <ActivityBucketBanner
+                        label={group.label}
+                        count={activityBucketCounts[group.bucket]}
+                        expanded={expanded}
+                        variant={isTodayBucket ? 'today' : 'default'}
+                        onToggle={() => toggleActivityBucket(group.bucket)}
+                        attachedToGroup
+                      />
+                      {expanded ? (
+                        <View
+                          style={[
+                            sharedStyles.activityBucketGroup,
+                            isTodayBucket && sharedStyles.activityBucketGroupToday,
+                          ]}
+                        >
+                          {group.entries.map((entry, index) => {
+                            const frameColor = isTodayBucket
+                              ? colors.danger
+                              : colors.sectionTitle;
+                            const betweenRows = index < group.entries.length - 1;
+                            if (entry.kind === 'interaction') {
+                              const interaction = entry.interaction;
+                              const vendor = interaction.vendorId
+                                ? vendorById(state, interaction.vendorId)
+                                : undefined;
+                              const photo = photosForVendorInteraction(state, interaction.id)[0];
+                              return (
+                                <PropertyInteractionListRow
+                                  key={`interaction:${interaction.id}`}
+                                  contactName={interaction.contactName}
+                                  companyName={vendor?.name ?? 'No vendor'}
+                                  companyPhotoUri={
+                                    vendor ? firstPhotoUriForVendor(state, vendor) : undefined
+                                  }
+                                  hideCompanyPhoto={!vendor}
+                                  vendorStatusLabel={
+                                    vendor ? vendorStatusLabel(vendor.status) : undefined
+                                  }
+                                  vendorStatusColor={
+                                    vendor ? vendorStatusColor(vendor.status) : undefined
+                                  }
+                                  dateISO={interaction.occurredAtISO}
+                                  methodLabel={vendorContactMethodLabel(interaction.contactMethod)}
+                                  notes={interaction.notes}
+                                  photoUri={photo?.localUri}
+                                  important={interaction.important === true}
+                                  onPress={() =>
+                                    onOpenInteraction(interaction.vendorId, interaction.id)
+                                  }
+                                  onPressVendor={
+                                    vendor ? () => onOpenVendor(vendor.id) : undefined
+                                  }
+                                  cardBackgroundColor={colors.bg}
+                                  ownerBackgroundColor={colors.interactionOwnerBg}
+                                  dividerColor={frameColor}
+                                  dividerWidth={betweenRows ? 2 : 0}
+                                  ownerCornerIcon="storefront"
+                                  cornerIcon="forum"
+                                  stackRelative={isAfterToday(interaction.occurredAtISO)}
+                                />
+                              );
+                            }
+                            const event = entry.event;
+                            const item = itemById(state, event.itemId);
+                            if (!item) return null;
+                            const eventRoom = roomById(state, item.roomId);
+                            const photo = photosForEvent(state, event.id)[0];
+                            const open = upcomingDueAtISO(event) != null;
+                            const eventDateISO = serviceListDateISO(event);
+                            return (
+                              <PropertyServiceListRow
+                                key={`event:${event.id}`}
+                                scopeLabel={eventRoom?.name}
+                                itemName={itemDisplayLabel(item)}
+                                itemPhotoUri={firstPhotoUriForItem(state, item)}
+                                dateLabel={formatDisplayDate(eventDateISO)}
+                                dateISO={eventDateISO}
+                                stackRelative={isAfterToday(eventDateISO)}
+                                statusLabel={open ? 'Open' : 'Done'}
+                                title={event.title}
+                                notes={event.notes}
+                                company={event.serviceCompany}
+                                photoUri={photo?.localUri}
+                                onPress={() => onEditEvent(event.itemId, event.id)}
+                                onPressItem={() => onOpenItem(event.itemId)}
+                                cardBackgroundColor={colors.upcomingCardBg}
+                                ownerBackgroundColor={colors.upcomingInteractionOwnerBg}
+                                dividerColor={frameColor}
+                                dividerWidth={betweenRows ? 2 : 0}
+                                ownerCornerIcon="inventory"
+                                cornerIcon="handyman"
+                              />
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                    </View>
                   );
                 })}
               </View>
               {recentActivityAll.length > 10 ? (
                 <Pressable
-                  onPress={openShowAllRecentActivity}
+                  onPress={() => {
+                    setActivitySearchPrefs(activitySearchScopeKey(propertyId), {
+                      selectedProjectId: null,
+                    });
+                    onSearchActivity();
+                  }}
                   accessibilityRole="button"
-                  accessibilityLabel="Show all recent activity"
+                  accessibilityLabel={`Show all recent activity, ${recentActivityAll.length} items`}
                   style={({ pressed }) => ({
                     alignSelf: 'flex-start',
                     marginTop: 4,
@@ -1763,7 +1815,9 @@ export function PropertyDetailScreen(props: {
                     opacity: pressed ? 0.7 : 1,
                   })}
                 >
-                  <Text style={sharedStyles.textLink}>Show all</Text>
+                  <Text style={sharedStyles.textLink}>
+                    Show all ({recentActivityAll.length})
+                  </Text>
                 </Pressable>
               ) : null}
             </>
@@ -2006,5 +2060,6 @@ export function PropertyDetailScreen(props: {
         onOpenOwner={openPhotoOwner}
       />
     </View>
+    </ReuseExistingPhotosProvider>
   );
 }

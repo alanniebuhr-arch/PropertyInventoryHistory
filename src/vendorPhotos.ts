@@ -1,5 +1,6 @@
 import type { AppState, ProjectVendor, VendorPhoto } from './types';
 import { deletePhotoFile, persistPhotoFromUri } from './photoStorage';
+import { withReusePhotoMeta } from './reuseExistingPhotos';
 import { uid, nowISO } from './utils';
 
 /** Stable caption marking the reserved Vendor image slot. */
@@ -86,12 +87,12 @@ export async function addVendorPhotos(
     sourceUris.map(async (sourceUri) => {
       const photoId = uid('photo');
       const localUri = await persistPhotoFromUri(sourceUri, photoId);
-      return {
+      return withReusePhotoMeta(sourceUri, {
         id: photoId,
         vendorId,
         localUri,
         createdAtISO: nowISO(),
-      };
+      });
     })
   );
 

@@ -45,6 +45,7 @@ import { IRRIGATION_PHOTO_SLOTS } from './irrigationSlots';
 import { EV_CHARGER_PHOTO_SLOTS } from './evChargerSlots';
 import { SOLAR_PHOTO_SLOTS } from './solarSlots';
 import { HOT_TUB_PHOTO_SLOTS } from './hotTubSlots';
+import { TOILET_PHOTO_SLOTS, normalizeToiletFlushType } from './toiletSlots';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 import { isAfterToday, serviceListDateISO } from './eventRecurrence';
@@ -604,6 +605,38 @@ function normalizeIrrigationDetails(details: ItemDetails): ItemDetails {
   };
 }
 
+function normalizeToiletDetails(details: ItemDetails): ItemDetails {
+  if (details.kind !== 'toilet') return defaultDetailsForType('toilet');
+  const trim = (value?: string) =>
+    typeof value === 'string' ? value.trim() || undefined : undefined;
+  const flushType = normalizeToiletFlushType(
+    typeof details.flushType === 'string' ? details.flushType : undefined
+  );
+  return {
+    kind: 'toilet',
+    make: trim(details.make),
+    modelNumber: trim(details.modelNumber),
+    serialNumber: trim(details.serialNumber),
+    flushType,
+    flushTypeOther: flushType === 'other' ? trim(details.flushTypeOther) : undefined,
+    gallonsPerFlush: trim(details.gallonsPerFlush),
+    installDateAtISO: trim(details.installDateAtISO),
+    flushValveKit: trim(details.flushValveKit),
+    fillValveKit: trim(details.fillValveKit),
+    notes: trim(details.notes),
+    frontPhotoId: details.frontPhotoId,
+    manufacturerTagPhotoId: details.manufacturerTagPhotoId,
+    flushValvePhotoId: details.flushValvePhotoId,
+    fillValvePhotoId: details.fillValvePhotoId,
+    receiptPhotoId: details.receiptPhotoId,
+    frontDocumentId: details.frontDocumentId,
+    manufacturerTagDocumentId: details.manufacturerTagDocumentId,
+    flushValveDocumentId: details.flushValveDocumentId,
+    fillValveDocumentId: details.fillValveDocumentId,
+    receiptDocumentId: details.receiptDocumentId,
+  };
+}
+
 function normalizeEvChargerDetails(details: ItemDetails): ItemDetails {
   if (details.kind !== 'ev_charger') return defaultDetailsForType('ev_charger');
   const trim = (value?: string) =>
@@ -899,6 +932,12 @@ function exclusiveItemDetails(itemTypeId: ItemTypeId, details: ItemDetails): Ite
       HOT_TUB_PHOTO_SLOTS.map((slot) => slot.key)
     ) as ItemDetails;
   }
+  if (details.kind === 'toilet') {
+    return enforceExclusiveSlots(
+      details as Record<string, string | undefined>,
+      TOILET_PHOTO_SLOTS.map((slot) => slot.key)
+    ) as ItemDetails;
+  }
   return details;
 }
 
@@ -955,6 +994,9 @@ function normalizeDetails(itemTypeId: ItemTypeId, details: ItemDetails): ItemDet
   }
   if (itemTypeId === 'hot_tub') {
     return exclusiveItemDetails(itemTypeId, normalizeHotTubDetails(details));
+  }
+  if (itemTypeId === 'toilet') {
+    return exclusiveItemDetails(itemTypeId, normalizeToiletDetails(details));
   }
   if (itemTypeId === 'water_treatment') {
     return exclusiveItemDetails(itemTypeId, normalizeWaterTreatmentDetails(details));
@@ -1528,6 +1570,16 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
 
   if (item.itemTypeId === 'hot_tub' && item.details.kind === 'hot_tub') {
     for (const slot of HOT_TUB_PHOTO_SLOTS) {
+      const photoId = item.details[slot.key];
+      if (photoId) {
+        const photo = itemPhotos.find((p) => p.id === photoId);
+        if (photo) return photo.localUri;
+      }
+    }
+  }
+
+  if (item.itemTypeId === 'toilet' && item.details.kind === 'toilet') {
+    for (const slot of TOILET_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
         const photo = itemPhotos.find((p) => p.id === photoId);

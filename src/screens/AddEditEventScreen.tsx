@@ -24,6 +24,7 @@ import { EventPhotoSection } from '../components/EventPhotoSection';
 import { EventListRow } from '../components/ListRows';
 import { boldTodayNodes } from '../components/TextWithBoldToday';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import { EventExportSheet } from '../components/EventExportSheet';
 import { SharePhotoModeModal } from '../components/SharePhotoModeModal';
 import { DateInputField } from '../components/DateInputField';
@@ -70,6 +71,7 @@ import {
   upcomingDueAtISO,
 } from '../eventRecurrence';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { reorderItemsById, type PhotoReorderDirection } from '../photoReorder';
 import {
   buildEventExportSnapshot,
@@ -501,7 +503,12 @@ export function AddEditEventScreen(props: {
 
   if (lockedItemId && !item) {
     return (
-      <View style={[sharedStyles.screen, { paddingTop: insets.top, padding: 16 }]}>
+      <View
+        style={[
+          sharedStyles.screen,
+          { paddingTop: insets.top, padding: 16, backgroundColor: colors.upcomingCardBg },
+        ]}
+      >
         <Text style={sharedStyles.emptyText}>Asset not found.</Text>
         <Pressable onPress={onBack} style={sharedStyles.secondaryBtn}>
           <Text style={sharedStyles.secondaryBtnText}>Back</Text>
@@ -695,13 +702,13 @@ export function AddEditEventScreen(props: {
       sourceUris.map(async (sourceUri) => {
         const photoId = uid('photo');
         const localUri = await persistPhotoFromUri(sourceUri, photoId);
-        return {
+        return withReusePhotoMeta(sourceUri, {
           id: photoId,
           itemId,
           eventId: existing?.id,
           localUri,
           createdAtISO: nowISO(),
-        };
+        });
       })
     );
     const nextPhotos = [...eventPhotos, ...newPhotos];
@@ -1085,9 +1092,16 @@ export function AddEditEventScreen(props: {
     );
   }
 
+  const reusePropertyId =
+    itemProperty?.id ?? selectedPropertyId ?? routePropertyId ?? '';
+
   return (
+    <ReuseExistingPhotosProvider state={state} propertyId={reusePropertyId}>
     <KeyboardAvoidingView
-      style={[sharedStyles.screen, { paddingTop: insets.top }]}
+      style={[
+        sharedStyles.screen,
+        { paddingTop: insets.top, backgroundColor: colors.upcomingCardBg },
+      ]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={insets.top}
     >
@@ -1437,6 +1451,7 @@ export function AddEditEventScreen(props: {
                     costLabel={e.cost != null ? formatCurrency(e.cost) : undefined}
                     notes={e.notes}
                     thumbnailUri={historyPhotos[0]?.localUri}
+                    cardBackgroundColor={colors.upcomingCardBg}
                   />
                 );
               })}
@@ -1738,5 +1753,6 @@ export function AddEditEventScreen(props: {
         </View>
       ) : null}
     </KeyboardAvoidingView>
+    </ReuseExistingPhotosProvider>
   );
 }

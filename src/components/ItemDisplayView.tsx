@@ -43,6 +43,7 @@ export function ItemDisplayView(props: {
   photoHeader?: ReactNode;
   onActiveHeroLabelChange?: (label: string | undefined) => void;
   showReorderArrows?: boolean;
+  onToggleReorderArrows?: () => void;
 }) {
   const {
     itemTypeId,
@@ -62,6 +63,7 @@ export function ItemDisplayView(props: {
     photoHeader,
     onActiveHeroLabelChange,
     showReorderArrows,
+    onToggleReorderArrows,
   } = props;
 
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -271,6 +273,7 @@ export function ItemDisplayView(props: {
         extraDocumentRows={extraDocumentRows}
         onActiveHeroLabelChange={onActiveHeroLabelChange}
         showReorderArrows={showReorderArrows}
+        onToggleReorderArrows={onToggleReorderArrows}
       >
         {photoHeader}
       </PhotoSection>

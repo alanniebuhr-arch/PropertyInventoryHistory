@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, ProjectVendor, VendorStatus } from '../types';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
+import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import { VendorPhotosSection } from '../components/VendorPhotosSection';
 import { VendorExportSheet } from '../components/VendorExportSheet';
 import { VendorInteractionListRow } from '../components/ListRows';
@@ -429,6 +430,7 @@ export function VendorDetailScreen(props: {
   }
 
   return (
+    <ReuseExistingPhotosProvider state={state} propertyId={propertyId}>
     <KeyboardAvoidingView
       style={[sharedStyles.screen, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -559,7 +561,9 @@ export function VendorDetailScreen(props: {
           state={state}
           vendorId={vendorId}
           onSave={onSave}
-          showReorderArrows={showReorderArrows}>
+          showReorderArrows={showReorderArrows}
+          onToggleReorderArrows={() => setShowReorderArrows((v) => !v)}
+        >
           <View style={{ marginBottom: 4 }}>
             <Text style={[sharedStyles.title, { marginBottom: 0 }]}>{vnd.name}</Text>
             {project ? (
@@ -890,5 +894,6 @@ export function VendorDetailScreen(props: {
         </View>
       ) : null}
     </KeyboardAvoidingView>
+    </ReuseExistingPhotosProvider>
   );
 }

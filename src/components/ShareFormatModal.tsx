@@ -3,10 +3,16 @@ import { Modal, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../textScale';
 import { colors, sharedStyles } from '../theme';
-import type { ShareFormat } from '../shareFormat';
+import { DEFAULT_SHARE_FORMATS, type ShareFormat } from '../shareFormat';
 import { ShareFormatOptions } from './ShareFormatOptions';
 
-/** Minimal share sheet: PNG vs PDF only (Vendor / Interaction / list shares). */
+function formatHint(formats: ShareFormat[]): string {
+  const hasText = formats.includes('text');
+  if (hasText) return 'Choose image, PDF, or clipboard for the shared summary.';
+  return 'Choose image or PDF for the shared summary.';
+}
+
+/** Share sheet: PNG / PDF by default; screens may opt into Text via `formats`. */
 export function ShareFormatModal(props: {
   visible: boolean;
   title: string;
@@ -14,8 +20,17 @@ export function ShareFormatModal(props: {
   onChangeShareFormat: (format: ShareFormat) => void;
   onShare: () => void;
   onClose: () => void;
+  formats?: ShareFormat[];
 }) {
-  const { visible, title, shareFormat, onChangeShareFormat, onShare, onClose } = props;
+  const {
+    visible,
+    title,
+    shareFormat,
+    onChangeShareFormat,
+    onShare,
+    onClose,
+    formats = DEFAULT_SHARE_FORMATS,
+  } = props;
   const insets = useSafeAreaInsets();
 
   return (
@@ -39,11 +54,13 @@ export function ShareFormatModal(props: {
           onPress={() => {}}
         >
           <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>{title}</Text>
-          <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
-            Choose image or PDF for the shared summary.
-          </Text>
+          <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>{formatHint(formats)}</Text>
 
-          <ShareFormatOptions value={shareFormat} onChange={onChangeShareFormat} />
+          <ShareFormatOptions
+            value={shareFormat}
+            onChange={onChangeShareFormat}
+            formats={formats}
+          />
 
           <Pressable
             onPress={onShare}

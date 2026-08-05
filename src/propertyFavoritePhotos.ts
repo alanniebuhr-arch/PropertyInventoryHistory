@@ -25,6 +25,7 @@ import { IRRIGATION_PHOTO_SLOTS } from './irrigationSlots';
 import { EV_CHARGER_PHOTO_SLOTS } from './evChargerSlots';
 import { SOLAR_PHOTO_SLOTS } from './solarSlots';
 import { HOT_TUB_PHOTO_SLOTS } from './hotTubSlots';
+import { TOILET_PHOTO_SLOTS } from './toiletSlots';
 
 export type FavoriteHeroPhoto = {
   id: string;
@@ -34,6 +35,8 @@ export type FavoriteHeroPhoto = {
 };
 
 export type PropertyCatalogPhoto = FavoriteHeroPhoto & {
+  /** Raw stored caption when present (used when reusing). */
+  caption?: string;
   favorite?: boolean;
   source: 'property' | 'room' | 'item';
   contextLabel: string;
@@ -99,6 +102,8 @@ function itemPhotoSlots(item: InventoryItem): SlotDef[] {
       return SOLAR_PHOTO_SLOTS;
     case 'hot_tub':
       return HOT_TUB_PHOTO_SLOTS;
+    case 'toilet':
+      return TOILET_PHOTO_SLOTS;
     default:
       return [];
   }
@@ -146,6 +151,7 @@ export function allHeroPhotosForProperty(
       id: photo.id,
       uri: photo.localUri,
       label: photoLabel(photo, label),
+      caption: photo.caption?.trim() || undefined,
       notes: photo.notes?.trim() || undefined,
       favorite: photo.favorite === true,
       source,
