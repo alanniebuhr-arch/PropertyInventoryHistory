@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,9 +22,11 @@ import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import { VendorPhotosSection } from '../components/VendorPhotosSection';
 import { VendorExportSheet } from '../components/VendorExportSheet';
-import { VendorInteractionListRow } from '../components/ListRows';
+import { PropertyInteractionListRow } from '../components/ListRows';
 import { DetailDisplayRow } from '../components/DetailDisplayRow';
 import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
+import { ActivityBucketBanner } from '../components/ActivityBucketBanner';
+import { CollapsibleSectionTitle } from '../components/CollapsibleSectionTitle';
 import { sharedStyles, colors } from '../theme';
 import {
   deleteVendorCascade,
@@ -38,6 +40,18 @@ import { deletePhotoFile } from '../photoStorage';
 import { VENDOR_STATUS_OPTIONS, vendorStatusLabel } from '../vendorStatus';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { formatPhoneNumber } from '../utils';
+import { isAfterToday } from '../eventRecurrence';
+import {
+  activityBucketCounts,
+  foldActivityBucketGroups,
+  type ActivityTimeBucket,
+} from '../activityTimeBuckets';
+import {
+  activityBucketExpandKey,
+  getActivityBucketExpand,
+  isActivityBucketExpanded,
+  setActivityBucketExpand,
+} from '../activityBucketExpandPrefs';
 import { buildVendorExportSnapshot, type VendorExportSnapshot } from '../vendorExportContent';
 import { DEFAULT_SHARE_FORMAT, type ShareFormat } from '../shareFormat';
 import { shareViewAsPng } from '../shareViewImage';
@@ -100,6 +114,21 @@ export function VendorDetailScreen(props: {
   const project = vendor ? projectById(state, vendor.projectId) : undefined;
   const propertyId = project?.propertyId ?? '';
   const interactions = interactionsForVendor(state, vendorId);
+  const vendorExpandKey = activityBucketExpandKey('vendor', vendorId);
+  const savedBucketExpand = getActivityBucketExpand(vendorExpandKey);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
+  const [activityFutureExpanded, setActivityFutureExpanded] = useState(
+    () => savedBucketExpand.activityFuture
+  );
+  const [activityTodayExpanded, setActivityTodayExpanded] = useState(
+    () => savedBucketExpand.activityToday
+  );
+  const [activityHistoryExpanded, setActivityHistoryExpanded] = useState(
+    () => savedBucketExpand.activityHistory
+  );
+  const [activityUndatedExpanded, setActivityUndatedExpanded] = useState(
+    () => savedBucketExpand.activityUndated
+  );
 
   const [nameDraft, setNameDraft] = useState('');
   const [contactDraft, setContactDraft] = useState('');
@@ -126,9 +155,59 @@ export function VendorDetailScreen(props: {
 
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'vendorDetailEditDone',
-    label: 'Enter',
     variant: 'overlay',
   });
+
+  useEffect(() => {
+    setActivityBucketExpand(vendorExpandKey, {
+      activityFuture: activityFutureExpanded,
+      activityToday: activityTodayExpanded,
+      activityHistory: activityHistoryExpanded,
+      activityUndated: activityUndatedExpanded,
+    });
+  }, [
+    vendorExpandKey,
+    activityFutureExpanded,
+    activityTodayExpanded,
+    activityHistoryExpanded,
+    activityUndatedExpanded,
+  ]);
+
+  useEffect(() => {
+    const prefs = getActivityBucketExpand(vendorExpandKey);
+    setActivityFutureExpanded(prefs.activityFuture);
+    setActivityTodayExpanded(prefs.activityToday);
+    setActivityHistoryExpanded(prefs.activityHistory);
+    setActivityUndatedExpanded(prefs.activityUndated);
+  }, [vendorExpandKey]);
+
+  const interactionBucketGroups = useMemo(
+    () => foldActivityBucketGroups(interactions, (interaction) => interaction.occurredAtISO),
+    [interactions]
+  );
+  const interactionBucketCounts = activityBucketCounts(interactionBucketGroups);
+  const expandPrefs = {
+    activityFuture: activityFutureExpanded,
+    activityToday: activityTodayExpanded,
+    activityHistory: activityHistoryExpanded,
+    activityUndated: activityUndatedExpanded,
+  };
+
+  function toggleInteractionBucket(bucket: ActivityTimeBucket) {
+    if (bucket === 'future') {
+      setActivityFutureExpanded((v) => !v);
+      return;
+    }
+    if (bucket === 'today') {
+      setActivityTodayExpanded((v) => !v);
+      return;
+    }
+    if (bucket === 'undated') {
+      setActivityUndatedExpanded((v) => !v);
+      return;
+    }
+    setActivityHistoryExpanded((v) => !v);
+  }
 
   useEffect(() => {
     if (vendor) {
@@ -463,25 +542,6 @@ export function VendorDetailScreen(props: {
           >
             <MaterialIcons name="home" size={22} color={colors.primary} />
           </Pressable>
-          <Pressable
-            onPress={openShareOptions}
-            disabled={exporting}
-            accessibilityRole="button"
-            accessibilityLabel="Share vendor"
-            accessibilityHint="Creates an image of this vendor and opens the share sheet."
-            hitSlop={8}
-            style={({ pressed }) => [
-              headerIconBtn,
-              { opacity: exporting ? 0.6 : 1 },
-              pressed && !exporting && { opacity: 0.8 },
-            ]}
-          >
-            {exporting ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <MaterialIcons name="ios-share" size={22} color={colors.primary} />
-            )}
-          </Pressable>
           {propertyId ? (
             <ToolbarNewSearchControls
               title={vnd.name}
@@ -535,7 +595,7 @@ export function VendorDetailScreen(props: {
             disabled={exporting}
             accessibilityRole="button"
             accessibilityLabel="Vendor options"
-            accessibilityHint="Opens actions like text size."
+            accessibilityHint="Opens actions like share and text size."
             hitSlop={6}
             style={({ pressed }) => ({
               padding: 4,
@@ -694,9 +754,12 @@ export function VendorDetailScreen(props: {
               marginBottom: 8,
             }}
           >
-            <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
-              Interaction history
-            </Text>
+            <CollapsibleSectionTitle
+              title="Interaction history"
+              expanded={historyExpanded}
+              count={interactions.length}
+              onExpand={() => setHistoryExpanded((v) => !v)}
+            />
             <Pressable
               onPress={onAddInteraction}
               accessibilityRole="button"
@@ -709,27 +772,98 @@ export function VendorDetailScreen(props: {
             >
               <MaterialIcons name="add" size={24} color={colors.primary} />
             </Pressable>
+            {interactions.length > 0 ? (
+              <Pressable
+                onPress={() => setHistoryExpanded((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  historyExpanded ? 'Hide interaction history' : 'Show interaction history'
+                }
+                accessibilityState={{ expanded: historyExpanded }}
+                hitSlop={6}
+                style={({ pressed }) => ({
+                  marginLeft: 'auto',
+                  padding: 4,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <MaterialIcons
+                  name={historyExpanded ? 'expand-less' : 'expand-more'}
+                  size={24}
+                  color={colors.primary}
+                />
+              </Pressable>
+            ) : null}
           </View>
           {interactions.length === 0 ? (
             <Text style={[sharedStyles.cardMeta, { marginTop: 0 }]}>
               Log calls, emails, texts, and meetings with this vendor.
             </Text>
-          ) : (
-            <View>
-              {interactions.map((interaction) => (
-                <VendorInteractionListRow
-                  key={interaction.id}
-                  methodLabel={vendorContactMethodLabel(interaction.contactMethod)}
-                  dateISO={interaction.occurredAtISO}
-                  contactName={interaction.contactName}
-                  notes={interaction.notes}
-                  thumbnailUri={photosForVendorInteraction(state, interaction.id)[0]?.localUri}
-                  important={interaction.important === true}
-                  onPress={() => onEditInteraction(interaction.id)}
-                />
-              ))}
+          ) : historyExpanded ? (
+            <View
+              style={[
+                sharedStyles.activityBucketList,
+                {
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.text,
+                },
+              ]}
+            >
+              {interactionBucketGroups.map((group) => {
+                const expanded = isActivityBucketExpanded(expandPrefs, group.bucket);
+                const isTodayBucket = group.bucket === 'today';
+                const frameColor = isTodayBucket ? colors.danger : colors.sectionTitle;
+                return (
+                  <View key={group.bucket}>
+                    <ActivityBucketBanner
+                      label={group.label}
+                      count={interactionBucketCounts[group.bucket]}
+                      expanded={expanded}
+                      variant={isTodayBucket ? 'today' : 'default'}
+                      onToggle={() => toggleInteractionBucket(group.bucket)}
+                      attachedToGroup
+                    />
+                    {expanded ? (
+                      <View
+                        style={[
+                          sharedStyles.activityBucketGroup,
+                          isTodayBucket && sharedStyles.activityBucketGroupToday,
+                        ]}
+                      >
+                        {group.entries.map((interaction, index) => {
+                          const betweenRows = index < group.entries.length - 1;
+                          const linkedProject = interaction.projectId
+                            ? projectById(state, interaction.projectId)
+                            : project;
+                          const photo = photosForVendorInteraction(state, interaction.id)[0];
+                          return (
+                            <PropertyInteractionListRow
+                              key={interaction.id}
+                              projectName={linkedProject?.name}
+                              contactName={interaction.contactName}
+                              companyName={vnd.name}
+                              hideOwner
+                              dateISO={interaction.occurredAtISO}
+                              methodLabel={vendorContactMethodLabel(interaction.contactMethod)}
+                              notes={interaction.notes}
+                              photoUri={photo?.localUri}
+                              important={interaction.important === true}
+                              onPress={() => onEditInteraction(interaction.id)}
+                              cardBackgroundColor={colors.bg}
+                              dividerColor={frameColor}
+                              dividerWidth={betweenRows ? 2 : 0}
+                              cornerIcon="forum"
+                              stackRelative={isAfterToday(interaction.occurredAtISO)}
+                            />
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
-          )}
+          ) : null}
         </View>
       </ScrollView>
 
@@ -766,6 +900,22 @@ export function VendorDetailScreen(props: {
                 {vnd.name}
               </Text>
             </View>
+            <Pressable
+              onPress={() => runMenuAction(openShareOptions)}
+              disabled={exporting}
+              accessibilityRole="button"
+              accessibilityLabel="Share vendor"
+              accessibilityHint="Creates an image of this vendor and opens the share sheet."
+              accessibilityState={{ disabled: exporting }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: exporting ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>Share</Text>
+            </Pressable>
             <Pressable
               onPress={() =>
                 runMenuAction(() => setShowReorderArrows((prev) => !prev))

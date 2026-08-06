@@ -703,34 +703,6 @@ export function PropertyAssetsScreen(props: {
               <MaterialIcons name="home" size={22} color={colors.primary} />
             </Pressable>
           ) : null}
-          <Pressable
-            onPress={openShareOptions}
-            disabled={exporting}
-            accessibilityRole="button"
-            accessibilityLabel="Share assets"
-            accessibilityHint="Creates an image of the current assets list and opens the share sheet."
-            hitSlop={8}
-            style={({ pressed }) => [
-              {
-                width: 42,
-                height: 36,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: colors.border,
-                borderRadius: 4,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: 'transparent',
-                opacity: exporting ? 0.6 : 1,
-              },
-              pressed && !exporting && { opacity: 0.8 },
-            ]}
-          >
-            {exporting ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <MaterialIcons name="ios-share" size={22} color={colors.primary} />
-            )}
-          </Pressable>
           <ToolbarNewSearchControls
             title="Assets"
             newItems={toolbarNewItems}
@@ -742,7 +714,7 @@ export function PropertyAssetsScreen(props: {
             disabled={exporting}
             accessibilityRole="button"
             accessibilityLabel="Assets options"
-            accessibilityHint="Opens actions like text size."
+            accessibilityHint="Opens actions like share and text size."
             hitSlop={6}
             style={({ pressed }) => ({
               padding: 4,
@@ -1229,6 +1201,22 @@ export function PropertyAssetsScreen(props: {
                 Assets
               </Text>
             </View>
+            <Pressable
+              onPress={() => runMenuAction(openShareOptions)}
+              disabled={exporting}
+              accessibilityRole="button"
+              accessibilityLabel="Share assets"
+              accessibilityHint="Creates an image of the current assets list and opens the share sheet."
+              accessibilityState={{ disabled: exporting }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: exporting ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>Share</Text>
+            </Pressable>
             <Pressable
               onPress={() => {
                 if (!textScaleControls.canMakeLarger) return;

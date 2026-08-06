@@ -98,7 +98,6 @@ export function AddEditPropertyTodoScreen(props: {
 
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'propertyTodoNotesDone',
-    label: 'Enter',
     variant: 'overlay',
   });
 

@@ -1284,6 +1284,8 @@ export function PropertyInteractionListRow(props: {
   companyPhotoUri?: string;
   /** When true, omit the company logo (shown once above the list for a single vendor). */
   hideCompanyPhoto?: boolean;
+  /** When true, omit the vendor/owner header (e.g. Vendor detail — already on that vendor). */
+  hideOwner?: boolean;
   vendorStatusLabel?: string;
   vendorStatusColor?: string;
   dateISO: string;
@@ -1318,6 +1320,7 @@ export function PropertyInteractionListRow(props: {
     companyName,
     companyPhotoUri,
     hideCompanyPhoto,
+    hideOwner = false,
     vendorStatusLabel,
     vendorStatusColor,
     dateISO,
@@ -1447,23 +1450,25 @@ export function PropertyInteractionListRow(props: {
         },
       ]}
     >
-      {onPressVendor ? (
-        <Pressable
-          onPress={onPressVendor}
-          style={({ pressed }) => [ownerBandStyle, pressed && sharedStyles.cardPressed]}
-          accessibilityRole="button"
-          accessibilityLabel={`Open vendor ${companyName}`}
-        >
-          {ownerContent}
-        </Pressable>
-      ) : (
-        <View style={ownerBandStyle ?? undefined}>{ownerContent}</View>
-      )}
+      {!hideOwner ? (
+        onPressVendor ? (
+          <Pressable
+            onPress={onPressVendor}
+            style={({ pressed }) => [ownerBandStyle, pressed && sharedStyles.cardPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Open vendor ${companyName}`}
+          >
+            {ownerContent}
+          </Pressable>
+        ) : (
+          <View style={ownerBandStyle ?? undefined}>{ownerContent}</View>
+        )
+      ) : null}
 
       <Pressable
         onPress={onPress}
         style={({ pressed }) => [
-          { marginTop: ownerBackgroundColor ? 10 : 6 },
+          { marginTop: hideOwner ? 0 : ownerBackgroundColor ? 10 : 6 },
           pressed && sharedStyles.cardPressed,
         ]}
         accessibilityRole="button"
@@ -1492,6 +1497,20 @@ export function PropertyInteractionListRow(props: {
             />
           ) : null}
           <View style={{ flex: 1 }}>
+            {hideOwner && (projectText || contactText) ? (
+              <View style={{ marginBottom: 2 }}>
+                {projectText ? (
+                  <Text style={[sharedStyles.subtitle, { marginBottom: 2 }]} numberOfLines={1}>
+                    {projectText}
+                  </Text>
+                ) : null}
+                {contactText ? (
+                  <Text style={sharedStyles.cardTitle} numberOfLines={1}>
+                    {contactText}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
               {important ? (
                 <MaterialIcons

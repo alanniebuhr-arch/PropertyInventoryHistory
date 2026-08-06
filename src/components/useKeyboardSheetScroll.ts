@@ -10,12 +10,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/** Approximate height of the overlay Enter dismiss bar. */
-const ENTER_BAR_HEIGHT = 48;
+/** Approximate height of the overlay Done dismiss bar. */
+const DONE_BAR_HEIGHT = 48;
 
 /**
  * Scroll-into-view helpers for TextInputs inside Modal bottom sheets / popups
- * so the keyboard (and Enter bar) do not cover the focused field.
+ * so the keyboard (and Done bar) do not cover the focused field.
  */
 export function useKeyboardSheetScroll(options?: { extraBottom?: number }) {
   const insets = useSafeAreaInsets();
@@ -23,7 +23,7 @@ export function useKeyboardSheetScroll(options?: { extraBottom?: number }) {
   const scrollYRef = useRef(0);
   const pendingRef = useRef<{ y: number; height: number } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const extraBottom = options?.extraBottom ?? ENTER_BAR_HEIGHT;
+  const extraBottom = options?.extraBottom ?? DONE_BAR_HEIGHT;
 
   const scrollFieldIntoView = useCallback(
     (windowY: number, height: number, kbHeight: number) => {

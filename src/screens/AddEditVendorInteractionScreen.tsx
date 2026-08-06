@@ -86,8 +86,8 @@ const headerIconBtn = {
   backgroundColor: 'transparent' as const,
 };
 
-/** Overlay Enter dismiss bar sits above the keyboard. */
-const ENTER_BAR_HEIGHT = 56;
+/** Overlay Done dismiss bar sits above the keyboard. */
+const DONE_BAR_HEIGHT = 56;
 
 export function AddEditVendorInteractionScreen(props: {
   state: AppState;
@@ -154,7 +154,7 @@ export function AddEditVendorInteractionScreen(props: {
   const scrollFieldIntoView = useCallback(
     (windowY: number, height: number, kbHeight: number) => {
       const visibleBottom =
-        Dimensions.get('window').height - kbHeight - ENTER_BAR_HEIGHT - Math.max(insets.bottom, 8) - 16;
+        Dimensions.get('window').height - kbHeight - DONE_BAR_HEIGHT - Math.max(insets.bottom, 8) - 16;
       const fieldBottom = windowY + height;
       if (fieldBottom > visibleBottom) {
         scrollRef.current?.scrollTo({
@@ -289,7 +289,6 @@ export function AddEditVendorInteractionScreen(props: {
 
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'vendorInteractionNotesDone',
-    label: 'Enter',
     variant: 'overlay',
   });
 
@@ -636,7 +635,26 @@ export function AddEditVendorInteractionScreen(props: {
   async function removeInteractionPhoto(photoId: string) {
     const photo = interactionPhotos.find((p) => p.id === photoId);
     if (photo) await deletePhotoFile(photo.localUri);
-    setInteractionPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    const nextPhotos = interactionPhotos.filter((p) => p.id !== photoId);
+    setInteractionPhotos(nextPhotos);
+    // View mode on an existing interaction: persist immediately (like add / labels).
+    if (!isEditing && existing) {
+      void Promise.resolve(
+        onSave({
+          ...state,
+          vendorInteractions: state.vendorInteractions.map((i) =>
+            i.id === existing.id
+              ? {
+                  ...i,
+                  photoIds: i.photoIds.filter((id) => id !== photoId),
+                  updatedAtISO: nowISO(),
+                }
+              : i
+          ),
+          vendorPhotos: state.vendorPhotos.filter((p) => p.id !== photoId),
+        })
+      );
+    }
   }
 
   function reorderInteractionPhoto(photoId: string, direction: PhotoReorderDirection) {
@@ -927,10 +945,10 @@ export function AddEditVendorInteractionScreen(props: {
           sharedStyles.content,
           {
             paddingTop: 0,
-            // Grow with keyboard + Enter bar so short (no-photo) forms can scroll
+            // Grow with keyboard + Done bar so short (no-photo) forms can scroll
             // the focused field above both.
             paddingBottom:
-              keyboardHeight > 0 ? keyboardHeight + ENTER_BAR_HEIGHT + 24 : 120,
+              keyboardHeight > 0 ? keyboardHeight + DONE_BAR_HEIGHT + 24 : 120,
           },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -1108,19 +1126,19 @@ export function AddEditVendorInteractionScreen(props: {
           </>
         ) : (
           <View style={[sharedStyles.catalogSection, { marginTop: 12 }]}>
-            {showLinkPickers ? (
-              <>
-                <DetailDisplayRow
-                  label="Project"
-                  value={projectLabel}
-                  highlightQuery={highlightFor('project')}
-                />
-                <DetailDisplayRow
-                  label="Vendor"
-                  value={vendorLabel}
-                  highlightQuery={highlightFor('vendor')}
-                />
-              </>
+            {showLinkPickers && projectLabel !== 'None' ? (
+              <DetailDisplayRow
+                label="Project"
+                value={projectLabel}
+                highlightQuery={highlightFor('project')}
+              />
+            ) : null}
+            {showLinkPickers && vendorLabel !== 'None' ? (
+              <DetailDisplayRow
+                label="Vendor"
+                value={vendorLabel}
+                highlightQuery={highlightFor('vendor')}
+              />
             ) : null}
             {occurredAtISO && isAfterToday(occurredAtISO) ? (
               <View
@@ -1182,13 +1200,9 @@ export function AddEditVendorInteractionScreen(props: {
         <InteractionPhotoSection
           photos={interactionPhotos}
           onAddPhotos={addInteractionPhotos}
-          onDeletePhoto={
-            isEditing
-              ? (photoId) => {
-                  void removeInteractionPhoto(photoId);
-                }
-              : undefined
-          }
+          onDeletePhoto={(photoId) => {
+            void removeInteractionPhoto(photoId);
+          }}
           onReorderPhoto={isEditing ? reorderInteractionPhoto : undefined}
           onLabelPhoto={handleInteractionPhotoLabel}
         />
@@ -1232,6 +1246,21 @@ export function AddEditVendorInteractionScreen(props: {
               </Text>
             </View>
             <Pressable
+              onPress={() => runMenuAction(openShareOptions)}
+              disabled={sharingPng}
+              accessibilityRole="button"
+              accessibilityLabel="Share interaction"
+              accessibilityHint="Creates an image of this interaction and opens the share sheet."
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: sharingPng ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>Share</Text>
+            </Pressable>
+            <Pressable
               onPress={() => {
                 if (!textScaleControls.canMakeLarger) return;
                 textScaleControls.makeLarger();
@@ -1270,21 +1299,6 @@ export function AddEditVendorInteractionScreen(props: {
               <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
                 Text smaller
               </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => runMenuAction(openShareOptions)}
-              disabled={sharingPng}
-              accessibilityRole="button"
-              accessibilityLabel="Share interaction"
-              accessibilityHint="Creates an image of this interaction and opens the share sheet."
-              style={({ pressed }) => ({
-                paddingVertical: 14,
-                borderTopWidth: 1,
-                borderTopColor: colors.hairline,
-                opacity: sharingPng ? 0.35 : pressed ? 0.7 : 1,
-              })}
-            >
-              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>Share</Text>
             </Pressable>
             {existing ? (
               <Pressable

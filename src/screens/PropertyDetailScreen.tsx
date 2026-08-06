@@ -1909,6 +1909,12 @@ export function PropertyDetailScreen(props: {
             {(
               [
                 {
+                  key: 'share',
+                  label: 'Share',
+                  onPress: () => runMenuAction(openShareOptions),
+                  disabled: sharingPng,
+                },
+                {
                   key: 'playSlideshow',
                   label: 'Play slideshow',
                   onPress: () => runMenuAction(() => playFavoriteSlideshow()),
@@ -1918,12 +1924,6 @@ export function PropertyDetailScreen(props: {
                   label: 'Edit slideshow',
                   star: true,
                   onPress: () => runMenuAction(openSlideshowEditor),
-                },
-                {
-                  key: 'share',
-                  label: 'Share',
-                  onPress: () => runMenuAction(openShareOptions),
-                  disabled: sharingPng,
                 },
                 {
                   key: 'reorderPhoto',

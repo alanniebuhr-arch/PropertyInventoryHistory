@@ -963,34 +963,6 @@ export function ItemDetailScreen(props: {
             >
               <MaterialIcons name="home" size={22} color={colors.primary} />
             </Pressable>
-            <Pressable
-              onPress={onSharePress}
-              disabled={exporting}
-              accessibilityRole="button"
-              accessibilityLabel="Share asset"
-              accessibilityHint="Creates an image of this asset and opens the share sheet."
-              hitSlop={8}
-              style={({ pressed }) => [
-                {
-                  width: 42,
-                  height: 36,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: colors.border,
-                  borderRadius: 4,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: 'transparent',
-                  opacity: exporting ? 0.6 : 1,
-                },
-                pressed && !exporting && { opacity: 0.8 },
-              ]}
-            >
-              {exporting ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <MaterialIcons name="ios-share" size={22} color={colors.primary} />
-              )}
-            </Pressable>
             {propertyId ? (
               <ToolbarNewSearchControls
                 title={itemDisplayLabel(inv)}
@@ -1003,7 +975,7 @@ export function ItemDetailScreen(props: {
               onPress={() => setMenuOpen(true)}
               accessibilityRole="button"
               accessibilityLabel="Asset options"
-              accessibilityHint="Opens actions like delete asset."
+              accessibilityHint="Opens actions like share and delete asset."
               hitSlop={6}
               style={({ pressed }) => ({
                 padding: 4,
@@ -1338,6 +1310,22 @@ export function ItemDetailScreen(props: {
                 {itemDisplayLabel(inv)}
               </Text>
             </View>
+            <Pressable
+              onPress={() => runMenuAction(onSharePress)}
+              disabled={exporting}
+              accessibilityRole="button"
+              accessibilityLabel="Share asset"
+              accessibilityHint="Creates an image of this asset and opens the share sheet."
+              accessibilityState={{ disabled: exporting }}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: exporting ? 0.35 : pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>Share</Text>
+            </Pressable>
             <Pressable
               onPress={() =>
                 runMenuAction(() => setShowReorderArrows((prev) => !prev))

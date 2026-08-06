@@ -13,6 +13,8 @@ export function CollapsibleSectionTitle(props: {
   expanded: boolean;
   /** Item count; heading toggles only when count > 0. */
   count: number;
+  /** When set, collapsed label is (count/doneCount). */
+  doneCount?: number;
   onExpand: () => void;
   style?: StyleProp<TextStyle>;
   containerStyle?: StyleProp<ViewStyle>;
@@ -23,6 +25,7 @@ export function CollapsibleSectionTitle(props: {
     title,
     expanded,
     count,
+    doneCount,
     onExpand,
     style,
     containerStyle,
@@ -30,7 +33,7 @@ export function CollapsibleSectionTitle(props: {
   } = props;
 
   const label = showCountWhenCollapsed
-    ? collapsedSectionLabel(title, expanded, count)
+    ? collapsedSectionLabel(title, expanded, count, doneCount)
     : title;
   const canToggleFromHeading = count > 0;
 

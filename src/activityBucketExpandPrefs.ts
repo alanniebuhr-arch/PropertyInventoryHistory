@@ -38,7 +38,7 @@ export function setActivityBucketExpand(
 }
 
 export function activityBucketExpandKey(
-  screen: 'assets' | 'services' | 'interactions' | 'searchAll',
+  screen: 'assets' | 'services' | 'interactions' | 'searchAll' | 'vendor',
   scopeKey: string
 ): string {
   return `${screen}:${scopeKey}`;

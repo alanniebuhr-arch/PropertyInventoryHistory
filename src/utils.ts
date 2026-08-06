@@ -6,13 +6,16 @@ export function nowISO(): string {
   return new Date().toISOString();
 }
 
-/** Section heading: append (N) when collapsed with items. */
+/** Section heading: append (N) or (N/done) when collapsed with items. */
 export function collapsedSectionLabel(
   title: string,
   expanded: boolean,
-  count: number
+  count: number,
+  /** When set, format is (count/doneCount). */
+  doneCount?: number
 ): string {
   if (expanded || count <= 0) return title;
+  if (doneCount != null) return `${title} (${count}/${doneCount})`;
   return `${title} (${count})`;
 }
 

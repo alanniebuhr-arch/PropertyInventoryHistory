@@ -85,7 +85,6 @@ export function AddEditProjectPunchItemScreen(props: {
 
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'projectPunchNotesDone',
-    label: 'Enter',
     variant: 'overlay',
   });
 

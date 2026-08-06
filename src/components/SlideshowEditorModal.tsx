@@ -58,7 +58,6 @@ export function SlideshowEditorModal(props: SlideshowEditorModalProps) {
   } = useKeyboardSheetScroll();
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'slideshowOrderDone',
-    label: 'Enter',
     // Slideshow editor is itself a Modal — native InputAccessoryView won't show.
     variant: 'overlay',
   });
@@ -242,7 +241,7 @@ export function SlideshowEditorModal(props: SlideshowEditorModalProps) {
               Slideshow order ({selected.length})
             </Text>
             <Text style={[sharedStyles.cardMeta, { marginBottom: 12 }]}>
-              Change the number, then tap Enter — the photo jumps to that position (no Save needed).
+              Change the number, then tap Done — the photo jumps to that position (no Save needed).
             </Text>
 
             {selected.length === 0 ? (

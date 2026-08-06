@@ -510,7 +510,6 @@ export function ProjectDetailScreen(props: {
   const closeSectionRef = useRef<() => void>(() => {});
   const keyboardDone = useKeyboardDoneAccessory({
     id: 'projectFieldDone',
-    label: 'Enter',
     // Project detail uses gesture-handler ScrollView; native InputAccessoryView often fails.
     variant: 'overlay',
     onDone: () => closeSectionRef.current(),
@@ -1658,6 +1657,7 @@ export function ProjectDetailScreen(props: {
               title="Punch list"
               expanded={punchListExpanded}
               count={punchItems.length}
+              doneCount={punchItems.filter((item) => item.done).length}
               onExpand={() => {
                 const next = !punchListExpanded;
                 setPunchListExpanded(next);

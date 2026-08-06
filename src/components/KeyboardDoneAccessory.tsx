@@ -25,7 +25,7 @@ function sanitizeAccessoryId(id: string): string {
 }
 
 function DoneAccessoryBar(props: { onPress: () => void; label?: string }) {
-  const { onPress, label = 'Enter' } = props;
+  const { onPress, label = 'Done' } = props;
   return (
     <View style={styles.dismissBar}>
       <Pressable
@@ -52,7 +52,7 @@ export const KeyboardDoneTextInputContext = React.createContext<KeyboardDoneCont
   null
 );
 
-/** Merge Enter-dismiss handlers with a field's own focus/blur logic. */
+/** Merge Done-dismiss handlers with a field's own focus/blur logic. */
 export function useOptionalKeyboardDoneTextInputProps(extra?: KeyboardDoneTextInputExtra) {
   const ctx = useContext(KeyboardDoneTextInputContext);
   return useMemo(() => {
@@ -92,7 +92,7 @@ export function useKeyboardDoneAccessory(options?: {
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDoneRef = useRef(options?.onDone);
   onDoneRef.current = options?.onDone;
-  const label = options?.label ?? 'Enter';
+  const label = options?.label ?? 'Done';
   const variant = options?.variant ?? 'native';
   const useOverlay = variant === 'overlay';
 
