@@ -146,6 +146,7 @@ export function VendorDetailScreen(props: {
   const [showReorderArrows, setShowReorderArrows] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const exportRef = useRef<View>(null);
+  const exportLockRef = useRef(false);
   const scrollRef = useRef<RNScrollView>(null);
   const scrollYRef = useRef(0);
   const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
@@ -237,22 +238,34 @@ export function VendorDetailScreen(props: {
 
   const runVendorExport = useCallback(
     async (format: ShareFormat = DEFAULT_SHARE_FORMAT) => {
+      if (exportLockRef.current) return;
       const snapshot = buildVendorExportSnapshot(state, vendorId);
       if (!snapshot) {
         Alert.alert('Export failed', 'Could not build vendor summary.');
         return;
       }
       setShareOptionsOpen(false);
+      setMenuOpen(false);
       if (format === 'pdf') {
+        exportLockRef.current = true;
+        // Avoid racing the PNG capture path if a prior image export left a snapshot.
+        setExportSnapshot(null);
         setExporting(true);
         try {
+          // Wait for ShareFormatModal (and gear menu) to finish dismissing.
+          await new Promise<void>((resolve) => setTimeout(resolve, 400));
           const html = await buildExportPdfHtml(vendorSnapshotToPdfDoc(snapshot));
-          await shareHtmlAsPdf(html, `Share ${snapshot.title}`);
+          await shareHtmlAsPdf(html, `Share ${snapshot.title}`, {
+            // Drop the overlay before the system sheet — shareAsync can hang on dismiss.
+            onReadyToShare: () => setExporting(false),
+          });
         } finally {
           setExporting(false);
+          exportLockRef.current = false;
         }
         return;
       }
+      exportLockRef.current = true;
       setExportSnapshot(snapshot);
       setExporting(true);
     },
@@ -265,10 +278,14 @@ export function VendorDetailScreen(props: {
     let cancelled = false;
     const timer = setTimeout(() => {
       void (async () => {
-        await shareViewAsPng(exportRef, `Share ${exportSnapshot.title}`);
-        if (!cancelled) {
-          setExportSnapshot(null);
-          setExporting(false);
+        try {
+          await shareViewAsPng(exportRef, `Share ${exportSnapshot.title}`);
+        } finally {
+          if (!cancelled) {
+            setExportSnapshot(null);
+            setExporting(false);
+            exportLockRef.current = false;
+          }
         }
       })();
     }, 400);
@@ -1029,12 +1046,14 @@ export function VendorDetailScreen(props: {
 
       {exporting ? (
         <View
+          pointerEvents="auto"
           style={{
             position: 'absolute',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
+            zIndex: 2,
             backgroundColor: 'rgba(0,0,0,0.25)',
             alignItems: 'center',
             justifyContent: 'center',
