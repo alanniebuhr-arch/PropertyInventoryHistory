@@ -209,6 +209,8 @@ export function PropertyListRow(props: {
 
 export function RoomListRow(props: {
   name: string;
+  /** Property name shown under the title on Home and other cross-scope lists. */
+  scopeLabel?: string;
   thumbnailUri?: string;
   itemCount: number;
   overdueCount: number;
@@ -220,6 +222,7 @@ export function RoomListRow(props: {
 }) {
   const {
     name,
+    scopeLabel,
     thumbnailUri,
     itemCount,
     overdueCount,
@@ -228,6 +231,7 @@ export function RoomListRow(props: {
     onPress,
     dividerColor,
   } = props;
+  const scopeText = scopeLabel?.trim();
   return (
     <Pressable
       onPress={onPress}
@@ -271,6 +275,11 @@ export function RoomListRow(props: {
             <MaterialIcons name="lock" size={15} color={colors.textMuted} accessibilityLabel="Locked" />
           ) : null}
         </View>
+        {scopeText ? (
+          <Text style={sharedStyles.cardMeta} numberOfLines={1}>
+            {scopeText}
+          </Text>
+        ) : null}
         <Text style={sharedStyles.cardMeta}>
           {itemCount} asset{itemCount === 1 ? '' : 's'}
           {overdueCount > 0 ? (
@@ -954,6 +963,8 @@ export function ProjectGalleryTile(props: {
 
 export function ProjectListRow(props: {
   name: string;
+  /** Property name shown under the title on Home and other cross-scope lists. */
+  scopeLabel?: string;
   thumbnailUri?: string;
   vendorCount: number;
   waitingForQuoteCount?: number;
@@ -966,6 +977,7 @@ export function ProjectListRow(props: {
 }) {
   const {
     name,
+    scopeLabel,
     thumbnailUri,
     vendorCount,
     waitingForQuoteCount = 0,
@@ -975,6 +987,7 @@ export function ProjectListRow(props: {
     onPress,
     dividerColor,
   } = props;
+  const scopeText = scopeLabel?.trim();
   return (
     <Pressable
       onPress={onPress}
@@ -1013,6 +1026,11 @@ export function ProjectListRow(props: {
       )}
       <View style={{ flex: 1 }}>
         <Text style={sharedStyles.cardTitle}>{name}</Text>
+        {scopeText ? (
+          <Text style={sharedStyles.cardMeta} numberOfLines={1}>
+            {scopeText}
+          </Text>
+        ) : null}
         {statusLabel ? (
           <Text
             style={[
@@ -1038,6 +1056,66 @@ export function ProjectListRow(props: {
               {` · ${waitingForQuoteCount} waiting for quote`}
             </Text>
           ) : null}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+export function PinnedListRow(props: {
+  title: string;
+  kindLabel: string;
+  scopeLabel?: string;
+  thumbnailUri?: string;
+  onPress: () => void;
+}) {
+  const { title, kindLabel, scopeLabel, thumbnailUri, onPress } = props;
+  const scopeText = scopeLabel?.trim();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 14,
+          paddingVertical: 14,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: colors.hairline,
+        },
+        pressed && sharedStyles.cardPressed,
+      ]}
+      accessibilityRole="button"
+    >
+      {thumbnailUri ? (
+        <Image
+          source={{ uri: thumbnailUri }}
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 2,
+            backgroundColor: colors.photoPlaceholder,
+          }}
+        />
+      ) : (
+        <View
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 2,
+            backgroundColor: colors.photoPlaceholder,
+          }}
+        />
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={sharedStyles.cardTitle}>{title}</Text>
+        {scopeText ? (
+          <Text style={sharedStyles.cardMeta} numberOfLines={1}>
+            {scopeText}
+          </Text>
+        ) : null}
+        <Text style={[sharedStyles.cardMeta, { fontWeight: '600', color: colors.primary }]}>
+          {kindLabel}
         </Text>
       </View>
     </Pressable>
@@ -1092,6 +1170,8 @@ export function VendorGalleryTile(props: {
 
 export function VendorListRow(props: {
   name: string;
+  /** Property/project context shown under the title on Home and other cross-scope lists. */
+  scopeLabel?: string;
   contactName?: string;
   phone?: string;
   statusLabel: string;
@@ -1112,6 +1192,7 @@ export function VendorListRow(props: {
 }) {
   const {
     name,
+    scopeLabel,
     contactName,
     phone,
     statusLabel,
@@ -1129,6 +1210,7 @@ export function VendorListRow(props: {
     dividerColor,
     imageBackgroundColor,
   } = props;
+  const scopeText = scopeLabel?.trim();
   const detailParts = [
     contactName,
     phone?.trim() ? formatPhoneNumber(phone) || phone.trim() : undefined,
@@ -1203,6 +1285,11 @@ export function VendorListRow(props: {
                 </Pressable>
               ) : null}
             </View>
+            {scopeText ? (
+              <Text style={sharedStyles.cardMeta} numberOfLines={1}>
+                {scopeText}
+              </Text>
+            ) : null}
             {detailParts.length > 0 ? (
               <Text style={sharedStyles.cardMeta} numberOfLines={2}>
                 {detailParts.join(' · ')}

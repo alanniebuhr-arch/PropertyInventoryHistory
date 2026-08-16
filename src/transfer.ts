@@ -9,6 +9,7 @@ import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { recordUpdatedAt } from './syncStamp';
 import { countDeletedIds } from './syncMeta';
+import { livingPins, mergePins, pinsForProperty } from './pins';
 import { deletePropertyCascade } from './storage';
 import { itemDisplayLabel } from './itemCatalog';
 import { vendorContactMethodLabel } from './vendorContactMethod';
@@ -68,6 +69,7 @@ function coerceAppState(state: Partial<AppState> | AppState | undefined): AppSta
       : [],
     propertyTodos: Array.isArray(state?.propertyTodos) ? state!.propertyTodos : [],
     projectPunchItems: Array.isArray(state?.projectPunchItems) ? state!.projectPunchItems : [],
+    pins: Array.isArray(state?.pins) ? state!.pins : [],
   };
 }
 
@@ -113,7 +115,11 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
   }
   collectDocumentIdsFromValue(rooms, documentIds);
   collectDocumentIdsFromValue(items, documentIds);
+  collectDocumentIdsFromValue(projects, documentIds);
+  collectDocumentIdsFromValue(projectPunchItems, documentIds);
+  collectDocumentIdsFromValue(propertyTodos, documentIds);
   collectDocumentIdsFromValue(projectVendors, documentIds);
+  collectDocumentIdsFromValue(events, documentIds);
 
   const documents = state.documents.filter((d) => documentIds.has(d.id));
 
@@ -134,6 +140,7 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
     vendorInteractions,
     propertyTodos,
     projectPunchItems,
+    pins: pinsForProperty(state, propertyId),
   };
 }
 
@@ -212,7 +219,11 @@ export function slicePropertyChanges(
   }
   collectDocumentIdsFromValue(rooms, documentIds);
   collectDocumentIdsFromValue(items, documentIds);
+  collectDocumentIdsFromValue(projects, documentIds);
+  collectDocumentIdsFromValue(projectPunchItems, documentIds);
+  collectDocumentIdsFromValue(propertyTodos, documentIds);
   collectDocumentIdsFromValue(projectVendors, documentIds);
+  collectDocumentIdsFromValue(events, documentIds);
   const documents = full.documents.filter(
     (d) => documentIds.has(d.id) || isNewerThan(d, sinceISO)
   );
@@ -234,6 +245,7 @@ export function slicePropertyChanges(
     vendorInteractions,
     propertyTodos,
     projectPunchItems,
+    pins: full.pins,
   };
 }
 
@@ -428,6 +440,7 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
       ...(local.projectPunchItems ?? []),
       ...((incoming.projectPunchItems ?? []).filter((t) => !projectPunchItemIds.has(t.id))),
     ],
+    pins: mergePins(local.pins ?? [], incoming.pins ?? []),
   };
 }
 
@@ -1004,6 +1017,21 @@ function applyDeletedIds(state: AppState, deleted: SyncDeletedIds): AppState {
     projectPunchItems: (state.projectPunchItems ?? []).filter(
       (t) => !drop.projectPunchItems.has(t.id)
     ),
+    pins: livingPins({
+      ...state,
+      properties: state.properties.filter((p) => !drop.properties.has(p.id)),
+      rooms: state.rooms.filter((r) => !drop.rooms.has(r.id)),
+      items: state.items.filter((i) => !drop.items.has(i.id)),
+      events: state.events.filter((e) => !drop.events.has(e.id)),
+      projectVendors: state.projectVendors.filter((v) => !drop.projectVendors.has(v.id)),
+      vendorInteractions: state.vendorInteractions.filter(
+        (i) => !drop.vendorInteractions.has(i.id)
+      ),
+      propertyTodos: (state.propertyTodos ?? []).filter((t) => !drop.propertyTodos.has(t.id)),
+      projectPunchItems: (state.projectPunchItems ?? []).filter(
+        (t) => !drop.projectPunchItems.has(t.id)
+      ),
+    }),
   };
 }
 
@@ -1044,6 +1072,7 @@ export function mergeCollaborativeState(
       incoming.projectPunchItems ?? [],
       summary
     ),
+    pins: mergePins(local.pins ?? [], incoming.pins ?? []),
   };
 
   if (countDeletedIds(deletedIds) > 0) {

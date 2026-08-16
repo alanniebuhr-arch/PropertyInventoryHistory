@@ -202,6 +202,7 @@ export function usePropertyGearNav(options: {
       name: trimmed,
       sortOrder: nextRoomSortOrder(state, propertyId),
       photoIds: [],
+      documentIds: [],
     };
     actions.onSave({ ...state, rooms: [...state.rooms, room] });
     setRoomModalOpen(false);
@@ -222,6 +223,7 @@ export function usePropertyGearNav(options: {
       description: description || undefined,
       status: 'research',
       photoIds: [],
+      documentIds: [],
       sortOrder: nextProjectSortOrder(state, propertyId),
       createdAtISO: nowISO(),
     };

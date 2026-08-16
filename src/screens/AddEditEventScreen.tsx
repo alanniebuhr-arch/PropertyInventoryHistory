@@ -70,6 +70,18 @@ import {
   sameCalendarDay,
   upcomingDueAtISO,
 } from '../eventRecurrence';
+import { pickFileAttachment } from '../fileAttachment';
+import { deleteDocumentFile } from '../documentStorage';
+import {
+  addEventExtraDocuments,
+  addStandaloneDocuments,
+  eventExtraDocumentRows,
+  eventExtraDocumentRowsFromIds,
+  removeEventExtraDocument,
+  removeStandaloneDocuments,
+} from '../eventExtraDocuments';
+import { isPinned, togglePin } from '../pins';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
 import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { reorderItemsById, type PhotoReorderDirection } from '../photoReorder';
@@ -229,6 +241,8 @@ export function AddEditEventScreen(props: {
   const [eventPhotos, setEventPhotos] = useState<ItemPhoto[]>(() =>
     existing ? photosForEvent(state, existing.id) : []
   );
+  const [pendingDocumentIds, setPendingDocumentIds] = useState<string[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [titleTouched, setTitleTouched] = useState(
     Boolean(existing?.title) || Boolean(completeFrom?.title)
   );
@@ -379,6 +393,23 @@ export function AddEditEventScreen(props: {
   const historyEvents = historyMode === 'all' ? allPastEvents : relatedPastEvents;
   const titleKey = title.trim().toLowerCase();
   const parsedEventDate = parseDateInputToISO(dateStr);
+  const viewedEvent = existing ?? completeFrom;
+  const viewedIsDone = Boolean(viewedEvent && !viewedEvent.recurrence?.nextDueAtISO);
+  const lastServiceISO =
+    viewedIsDone && viewedEvent
+      ? viewedEvent.occurredAtISO
+      : itemId
+        ? serviceHistoryEventsForItem(state, itemId)[0]?.occurredAtISO
+        : undefined;
+  const nextServiceISO =
+    upcomingDueAtISO(existing ?? completeFrom) ??
+    (showServiceCompletedToggle ? parsedEventDate : undefined);
+  const lastServiceValue =
+    lastServiceISO &&
+    (!nextServiceISO || !sameCalendarDay(lastServiceISO, nextServiceISO))
+      ? formatDisplayDate(lastServiceISO)
+      : undefined;
+  const nextServiceValue = nextServiceISO ? formatDisplayDate(nextServiceISO) : undefined;
   const eventDateIsFuture = Boolean(parsedEventDate && isAfterToday(parsedEventDate));
   const occurrenceIsFuture = Boolean(existing && isAfterToday(existing.occurredAtISO));
   /**
@@ -548,8 +579,6 @@ export function AddEditEventScreen(props: {
         ? 'Log scheduled service'
         : 'Edit service event'
       : 'New Service Event';
-  const showRoSchedule =
-    Boolean(nextDueISO) || Boolean(scheduleNotes.trim());
   const propertyPickerLabel = selectedProperty?.name ?? 'Select property';
   const roomPickerLabel = selectedRoom?.name ?? 'Select room';
   const assetPickerLabel = itemLabel ?? 'Select asset';
@@ -720,6 +749,52 @@ export function AddEditEventScreen(props: {
     }
     return newPhotos.map((photo) => photo.id);
   }
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    const completingNow = showServiceCompletedToggle && serviceCompleted;
+    if (existing && !completingNow) {
+      onSave(await addEventExtraDocuments(state, existing.id, picked));
+      return;
+    }
+    const { state: next, documentIds } = await addStandaloneDocuments(state, picked);
+    onSave(next);
+    setPendingDocumentIds((prev) => [...prev, ...documentIds]);
+    markDirty();
+  }
+
+  function startLoadFile() {
+    void pickFileAttachment()
+      .then((picked) => {
+        setMenuOpen(false);
+        if (!picked) return;
+        if (picked.kind === 'image') {
+          void addEventPhotos([picked.uri]);
+          return;
+        }
+        void handleAddDocuments([picked]);
+      })
+      .catch(() => {
+        setMenuOpen(false);
+      });
+  }
+
+  function handleDeleteEventDocument(documentId: string) {
+    const completingNow = showServiceCompletedToggle && serviceCompleted;
+    if (existing && !completingNow) {
+      void removeEventExtraDocument(state, existing.id, documentId).then(onSave);
+      return;
+    }
+    setPendingDocumentIds((prev) => prev.filter((id) => id !== documentId));
+    void removeStandaloneDocuments(state, [documentId]).then(onSave);
+    markDirty();
+  }
+
+  const extraDocumentRows =
+    existing && !(showServiceCompletedToggle && serviceCompleted)
+      ? eventExtraDocumentRows(state, existing, handleDeleteEventDocument)
+      : eventExtraDocumentRowsFromIds(state, pendingDocumentIds, handleDeleteEventDocument);
 
   function handleEventPhotoLabel(photoId: string, label: string, notes: string) {
     markDirty();
@@ -894,6 +969,7 @@ export function AddEditEventScreen(props: {
         cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
         recurrence: isPastHistoryEdit ? existing?.recurrence : recurrence,
         photoIds: carriedPhotoIds,
+        documentIds: pendingDocumentIds,
       };
       onSave({
         ...state,
@@ -963,6 +1039,9 @@ export function AddEditEventScreen(props: {
         cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
         recurrence: updatedRecurrence,
         photoIds,
+        documentIds: [
+          ...new Set([...(target.documentIds ?? []), ...pendingDocumentIds]),
+        ],
       };
       onSave({
         ...state,
@@ -994,6 +1073,7 @@ export function AddEditEventScreen(props: {
         cost: cost != null && !Number.isNaN(cost) ? cost : undefined,
         recurrence,
         photoIds,
+        documentIds: pendingDocumentIds,
       };
       onSave({
         ...state,
@@ -1027,16 +1107,26 @@ export function AddEditEventScreen(props: {
     setScheduleNotes(existing.recurrence?.notes ?? '');
     setEventPhotos(photosForEvent(state, existing.id));
     setTitleTouched(Boolean(existing.title));
+    setPendingDocumentIds([]);
     clearDirty();
   }
 
+  async function discardPendingDocuments() {
+    if (pendingDocumentIds.length === 0) return;
+    const ids = pendingDocumentIds;
+    setPendingDocumentIds([]);
+    onSave(await removeStandaloneDocuments(state, ids));
+  }
+
   function cancelEditing() {
-    if (existing) {
-      resetDraftFromExisting();
-      setIsEditing(false);
-      return;
-    }
-    onBack();
+    void discardPendingDocuments().then(() => {
+      if (existing) {
+        resetDraftFromExisting();
+        setIsEditing(false);
+        return;
+      }
+      onBack();
+    });
   }
 
   function handleHeaderBack() {
@@ -1062,7 +1152,13 @@ export function AddEditEventScreen(props: {
     }
     Alert.alert('Unsaved changes', 'You have entered data that will be lost if you leave.', [
       { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: onBack },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            void discardPendingDocuments().then(onBack);
+          },
+        },
       { text: 'Save', onPress: () => saveEvent() },
     ]);
   }
@@ -1073,8 +1169,8 @@ export function AddEditEventScreen(props: {
     Alert.alert(
       isScheduleReminder ? 'Delete scheduled service?' : 'Delete event?',
       isScheduleReminder
-        ? 'This removes the service from the schedule. Attached photos will also be removed.'
-        : 'Photos attached to this event will also be removed.',
+        ? 'This removes the service from the schedule. Attached photos and files will also be removed.'
+        : 'Photos and files attached to this event will also be removed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1084,7 +1180,19 @@ export function AddEditEventScreen(props: {
             for (const p of photosForEvent(state, deletableEvent.id)) {
               await deletePhotoFile(p.localUri);
             }
-            onSave(deleteEventCascade(state, deletableEvent.id));
+            const dropDocIds = new Set([
+              ...(deletableEvent.documentIds ?? []),
+              ...pendingDocumentIds,
+            ]);
+            for (const documentId of dropDocIds) {
+              const doc = state.documents.find((d) => d.id === documentId);
+              if (doc) await deleteDocumentFile(doc.localUri);
+            }
+            const afterEvent = deleteEventCascade(state, deletableEvent.id);
+            onSave({
+              ...afterEvent,
+              documents: afterEvent.documents.filter((d) => !dropDocIds.has(d.id)),
+            });
             onBack();
           },
         },
@@ -1141,6 +1249,16 @@ export function AddEditEventScreen(props: {
             ) : (
               <MaterialIcons name="ios-share" size={22} color={colors.primary} />
             )}
+          </Pressable>
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Service event options"
+            accessibilityHint="Opens actions like load file."
+            hitSlop={8}
+            style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
+          >
+            <MaterialIcons name="settings" size={22} color={colors.primary} />
           </Pressable>
           {deletableEvent ? (
             <Pressable
@@ -1385,10 +1503,12 @@ export function AddEditEventScreen(props: {
           <View style={[sharedStyles.catalogSection, { marginTop: 0 }]}>
             <DetailDisplayRow label="Title" value={title} />
             <DetailDisplayRow label="Type" value={EVENT_TYPE_LABELS[eventType]} />
-            <DetailDisplayRow
-              label={dateFieldLabel}
-              value={parsedEventDate ? formatDisplayDate(parsedEventDate) : dateStr}
-            />
+            {lastServiceValue ? (
+              <DetailDisplayRow label="Last service" value={lastServiceValue} stacked />
+            ) : null}
+            {nextServiceValue ? (
+              <DetailDisplayRow label="Next service" value={nextServiceValue} stacked />
+            ) : null}
             <DetailDisplayRow label="Notes" value={notes} stacked />
             <DetailDisplayRow label="Service company" value={serviceCompany} />
             <DetailDisplayRow label="Cost" value={costDisplay} />
@@ -1532,6 +1652,8 @@ export function AddEditEventScreen(props: {
           photos={eventPhotos}
           onAddReceipt={addReceiptPhoto}
           onAddPhotos={addEventPhotos}
+          onAddDocuments={handleAddDocuments}
+          extraDocumentRows={extraDocumentRows}
           onDeletePhoto={
             isEditing
               ? (photoId) => {
@@ -1632,14 +1754,8 @@ export function AddEditEventScreen(props: {
               </>
             ) : null}
           </>
-        ) : !isEditing && showRoSchedule ? (
+        ) : !isEditing && scheduleNotes.trim() ? (
           <View style={[sharedStyles.catalogSection, { marginTop: 16 }]}>
-            {nextDueISO ? (
-              <DetailDisplayRow
-                label="Next due date"
-                value={formatDisplayDate(nextDueISO)}
-              />
-            ) : null}
             <DetailDisplayRow label="Schedule notes" value={scheduleNotes} stacked />
           </View>
         ) : null}
@@ -1700,6 +1816,76 @@ export function AddEditEventScreen(props: {
                 </Pressable>
               );
             })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.card,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {title.trim() || 'Service event'}
+              </Text>
+            </View>
+            {existing ? (
+              <PinGearMenuItem
+                pinned={isPinned(state, 'event', existing.id)}
+                onToggle={() => {
+                  setMenuOpen(false);
+                  onSave(togglePin(state, 'event', existing.id));
+                }}
+              />
+            ) : null}
+            <Pressable
+              onPress={startLoadFile}
+              accessibilityRole="button"
+              accessibilityLabel="Load file"
+              accessibilityHint="Attaches a document or photo to this service event."
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Load file
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(false)}
+              style={({ pressed }) => [
+                sharedStyles.secondaryBtn,
+                { marginTop: 8 },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={sharedStyles.secondaryBtnText}>Done</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>

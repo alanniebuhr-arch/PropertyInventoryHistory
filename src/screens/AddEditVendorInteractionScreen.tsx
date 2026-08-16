@@ -69,6 +69,8 @@ import { shareHtmlAsPdf } from '../shareViewPdf';
 import { copyPlainTextToClipboard } from '../sharePlainText';
 import { buildExportPdfHtml, interactionSnapshotToPdfDoc } from '../exportPdfHtml';
 import { ShareFormatModal } from '../components/ShareFormatModal';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
+import { isPinned, togglePin } from '../pins';
 import {
   ToolbarNewSearchControls,
   usePropertyGearNav,
@@ -1245,6 +1247,15 @@ export function AddEditVendorInteractionScreen(props: {
                 {partyLabel}
               </Text>
             </View>
+            {existing ? (
+              <PinGearMenuItem
+                pinned={isPinned(state, 'interaction', existing.id)}
+                onToggle={() => {
+                  setMenuOpen(false);
+                  onSave(togglePin(state, 'interaction', existing.id));
+                }}
+              />
+            ) : null}
             <Pressable
               onPress={() => runMenuAction(openShareOptions)}
               disabled={sharingPng}

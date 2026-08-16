@@ -55,8 +55,13 @@ import {
   setRoomItemViewMode,
   type RoomItemViewMode,
 } from '../roomItemViewPrefs';
-import { photosForRoom } from '../roomPhotos';
+import { photosForRoom, addRoomPhotos } from '../roomPhotos';
 import { deletePhotoFile } from '../photoStorage';
+import { deleteDocumentFile } from '../documentStorage';
+import { pickFileAttachment } from '../fileAttachment';
+import { addRoomExtraDocuments } from '../roomExtraDocuments';
+import { isPinned, togglePin } from '../pins';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
 import { authenticateForRoom, markRoomUnlocked } from '../roomAuth';
 import { SectionHelpTip } from '../components/SectionHelpTip';
 import {
@@ -297,6 +302,22 @@ export function RoomDetailScreen(props: {
     }
   }
 
+  function startLoadFile() {
+    void pickFileAttachment()
+      .then((picked) => {
+        setMenuOpen(false);
+        if (!picked) return;
+        if (picked.kind === 'image') {
+          void addRoomPhotos(state, roomId, [picked.uri]).then(onSave);
+          return;
+        }
+        void addRoomExtraDocuments(state, roomId, [picked]).then(onSave);
+      })
+      .catch(() => {
+        setMenuOpen(false);
+      });
+  }
+
   function confirmDeleteRoom() {
     const roomName = rm.name;
     Alert.alert(
@@ -310,6 +331,15 @@ export function RoomDetailScreen(props: {
           onPress: async () => {
             for (const p of photosForRoom(state, roomId)) {
               await deletePhotoFile(p.localUri);
+            }
+            for (const documentId of rm.documentIds ?? []) {
+              const doc = state.documents.find((d) => d.id === documentId);
+              if (doc) await deleteDocumentFile(doc.localUri);
+            }
+            for (const attachment of Object.values(rm.slotAttachments ?? {})) {
+              if (attachment?.kind !== 'document') continue;
+              const doc = state.documents.find((d) => d.id === attachment.id);
+              if (doc) await deleteDocumentFile(doc.localUri);
             }
             onSave(deleteRoomCascade(state, roomId));
             onBack();
@@ -831,6 +861,29 @@ export function RoomDetailScreen(props: {
                 {rm.name}
               </Text>
             </View>
+            <PinGearMenuItem
+              pinned={isPinned(state, 'room', rm.id)}
+              onToggle={() => {
+                setMenuOpen(false);
+                onSave(togglePin(state, 'room', rm.id));
+              }}
+            />
+            <Pressable
+              onPress={startLoadFile}
+              accessibilityRole="button"
+              accessibilityLabel="Load file"
+              accessibilityHint="Attaches a document or photo to this room."
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Load file
+              </Text>
+            </Pressable>
             <Pressable
               onPress={() =>
                 runMenuAction(() => setShowReorderArrows((prev) => !prev))

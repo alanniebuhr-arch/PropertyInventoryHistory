@@ -18,8 +18,12 @@ export type DocumentListRow = {
   onDelete: () => void;
 };
 
-function isPdfMimeType(mimeType: string): boolean {
-  return mimeType === 'application/pdf';
+function isPdfDocument(row: DocumentListRow): boolean {
+  return (
+    row.mimeType === 'application/pdf' ||
+    row.mimeType === 'application/x-pdf' ||
+    /\.pdf$/i.test(row.fileName)
+  );
 }
 
 export function documentRowsFromState(
@@ -89,7 +93,7 @@ export function DocumentListSection(props: { rows: DocumentListRow[] }) {
   if (rows.length === 0) return null;
 
   function viewDocument(row: DocumentListRow) {
-    if (isPdfMimeType(row.mimeType)) {
+    if (isPdfDocument(row)) {
       setViewingPdf(rowToViewerPdf(row));
       return;
     }

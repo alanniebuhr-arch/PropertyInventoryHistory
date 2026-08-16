@@ -158,6 +158,10 @@ export default function App() {
           setState(s);
           setTextScaleStepState(textStep);
           void syncReminderNotifications(s);
+          if (s.properties.length === 1) {
+            const propertyId = s.properties[0]!.id;
+            setStack([{ name: 'home' }, { name: 'property', propertyId }]);
+          }
         }
       } catch {
         if (!cancelled) setState({ ...EMPTY_APP_STATE });
@@ -286,6 +290,13 @@ export default function App() {
             onOpenExport={() => push({ name: 'transfer', mode: 'export' })}
             onOpenImport={() => push({ name: 'transfer', mode: 'import' })}
             onOpenEvent={(itemId, eventId) => push({ name: 'event', itemId, eventId })}
+            onOpenProject={(projectId) => push({ name: 'project', projectId })}
+            onOpenRoom={(roomId) => void openRoom(roomId, (id) => push({ name: 'room', roomId: id }))}
+            onOpenItem={(itemId) => push({ name: 'item', itemId })}
+            onOpenVendor={(vendorId) => push({ name: 'vendor', vendorId })}
+            onOpenPunchItem={(projectId, punchItemId) =>
+              push({ name: 'projectPunchItem', projectId, punchItemId })
+            }
             onOpenTodo={(propertyId, todoId) =>
               push({ name: 'propertyTodo', propertyId, todoId })
             }

@@ -19,6 +19,11 @@ import {
 import { setRoomPhotoCaptionAndNotes, setRoomPhotoFavorite, setRoomPhotoNotes } from '../photoMeta';
 import { hideRoomPhotoSlotKey, restoreRoomHiddenPhotoSlots } from '../hiddenPhotoSlots';
 import { withReorderedRoomPhotoIds } from '../photoReorder';
+import {
+  addRoomExtraDocuments,
+  removeRoomExtraDocument,
+  roomExtraDocumentRows,
+} from '../roomExtraDocuments';
 
 export function RoomPhotosSection(props: {
   state: AppState;
@@ -138,11 +143,23 @@ export function RoomPhotosSection(props: {
       .map((photo) => photo.id);
   }
 
+  const extraDocumentRows = roomExtraDocumentRows(state, room, (documentId) => {
+    void removeRoomExtraDocument(state, roomId, documentId).then(onSave);
+  });
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addRoomExtraDocuments(state, roomId, picked));
+  }
+
   return (
     <PhotoSection
       tiles={photoTiles}
       hint={extraPhotos.length === 0 ? 'Add photos of this room.' : undefined}
       onAddPhotos={handleAddRoomPhotos}
+      onAddDocuments={handleAddDocuments}
+      extraDocumentRows={extraDocumentRows}
       onActiveHeroLabelChange={onActiveHeroLabelChange}
       childrenGesture={childrenGesture}
       hasHiddenSlots={hasHiddenSlots}

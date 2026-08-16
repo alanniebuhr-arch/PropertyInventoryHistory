@@ -48,6 +48,9 @@ import {
   setPropertyUpcomingHorizon,
 } from '../upcomingHorizonPrefs';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { pickFileAttachment } from '../fileAttachment';
+import { isPinned, togglePin } from '../pins';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
 import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { deleteDocumentFile } from '../documentStorage';
 import { updateApplianceDetails } from '../appliancePhotos';
@@ -457,27 +460,13 @@ export function ItemDetailScreen(props: {
         {[property?.name, room?.name, catalogLabel(inv.itemTypeId)].filter(Boolean).join(' · ')}
       </Text>
       {serviceLastNext ? (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginTop: 4,
-          }}
-        >
+        <View style={{ marginTop: 4 }}>
           {serviceLastNext.last ? (
             <Text style={sharedStyles.cardMeta}>Last service: {serviceLastNext.last}</Text>
-          ) : (
-            <View />
-          )}
+          ) : null}
           {serviceLastNext.next ? (
             <Text
-              style={[
-                sharedStyles.cardMeta,
-                { textAlign: 'right' },
-                overdue && { color: colors.overdue, fontWeight: '600' },
-              ]}
+              style={[sharedStyles.cardMeta, overdue && { color: colors.overdue, fontWeight: '600' }]}
             >
               Next service: {serviceLastNext.next}
             </Text>
@@ -741,6 +730,22 @@ export function ItemDetailScreen(props: {
     picked: { uri: string; fileName: string; mimeType: string }[]
   ) {
     onSave(await addItemExtraDocuments(state, itemId, picked));
+  }
+
+  function startLoadFile() {
+    void pickFileAttachment()
+      .then((picked) => {
+        setMenuOpen(false);
+        if (!picked) return;
+        if (picked.kind === 'image') {
+          void addPhotos([picked.uri]);
+          return;
+        }
+        void handleAddDocuments([picked]);
+      })
+      .catch(() => {
+        setMenuOpen(false);
+      });
   }
 
   function confirmDeleteItem() {
@@ -1310,6 +1315,13 @@ export function ItemDetailScreen(props: {
                 {itemDisplayLabel(inv)}
               </Text>
             </View>
+            <PinGearMenuItem
+              pinned={isPinned(state, 'item', inv.id)}
+              onToggle={() => {
+                setMenuOpen(false);
+                onSave(togglePin(state, 'item', inv.id));
+              }}
+            />
             <Pressable
               onPress={() => runMenuAction(onSharePress)}
               disabled={exporting}
@@ -1325,6 +1337,22 @@ export function ItemDetailScreen(props: {
               })}
             >
               <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>Share</Text>
+            </Pressable>
+            <Pressable
+              onPress={startLoadFile}
+              accessibilityRole="button"
+              accessibilityLabel="Load file"
+              accessibilityHint="Attaches a document or photo to this asset."
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Load file
+              </Text>
             </Pressable>
             <Pressable
               onPress={() =>

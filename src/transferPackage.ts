@@ -403,6 +403,7 @@ function coerceState(stateRaw: AppState): AppState {
       : [],
     propertyTodos: Array.isArray(stateRaw.propertyTodos) ? stateRaw.propertyTodos : [],
     projectPunchItems: Array.isArray(stateRaw.projectPunchItems) ? stateRaw.projectPunchItems : [],
+    pins: Array.isArray(stateRaw.pins) ? stateRaw.pins : [],
   };
 }
 

@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Modal, Platform, Pressable, View } from 'react-native';
 import { Text } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import { readDocumentAsBase64 } from '../documentStorage';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors } from '../theme';
 
 export type ViewerPdf = {
@@ -12,20 +12,10 @@ export type ViewerPdf = {
   fileName: string;
 };
 
-function pdfHtmlFromBase64(base64: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-  <style>
-    html, body { margin: 0; padding: 0; height: 100%; background: #525659; }
-    embed { width: 100%; height: 100%; }
-  </style>
-</head>
-<body>
-  <embed src="data:application/pdf;base64,${base64}" type="application/pdf" />
-</body>
-</html>`;
+function directoryOfFileUri(uri: string): string | undefined {
+  const slash = uri.lastIndexOf('/');
+  if (slash <= 0) return FileSystem.documentDirectory ?? undefined;
+  return uri.slice(0, slash + 1);
 }
 
 export function PdfViewerModal(props: {
@@ -34,30 +24,10 @@ export function PdfViewerModal(props: {
 }) {
   const { pdf, onClose } = props;
   const insets = useSafeAreaInsets();
-  const [html, setHtml] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState(false);
-
-  useEffect(() => {
-    if (!pdf) {
-      setHtml(null);
-      setLoadError(false);
-      return;
-    }
-    let cancelled = false;
-    setHtml(null);
-    setLoadError(false);
-    void readDocumentAsBase64(pdf.uri).then((base64) => {
-      if (cancelled) return;
-      if (!base64) {
-        setLoadError(true);
-        return;
-      }
-      setHtml(pdfHtmlFromBase64(base64));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [pdf]);
+  const readAccessUrl = useMemo(
+    () => (pdf ? directoryOfFileUri(pdf.uri) : undefined),
+    [pdf]
+  );
 
   return (
     <Modal
@@ -105,25 +75,19 @@ export function PdfViewerModal(props: {
           <View style={{ width: 48 }} />
         </View>
 
-        {loadError ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <Text style={{ color: colors.textMuted, fontSize: 16, textAlign: 'center' }}>
-              Could not load this PDF. Try Share from the long-press menu.
-            </Text>
-          </View>
-        ) : html ? (
+        {pdf ? (
           <WebView
-            key={pdf?.uri}
-            source={{ html }}
-            style={{ flex: 1 }}
-            originWhitelist={['*']}
+            key={pdf.uri}
+            source={{ uri: pdf.uri }}
+            style={{ flex: 1, backgroundColor: '#525659' }}
+            originWhitelist={['*', 'file://']}
+            allowFileAccess
+            allowFileAccessFromFileURLs
+            allowingReadAccessToURL={readAccessUrl}
+            scalesPageToFit={Platform.OS === 'android'}
             startInLoadingState
           />
-        ) : (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        )}
+        ) : null}
       </View>
     </Modal>
   );

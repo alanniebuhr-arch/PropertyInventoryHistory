@@ -4,6 +4,7 @@ import {
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -39,6 +40,15 @@ import {
   propertyById,
 } from '../storage';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { deleteDocumentFile } from '../documentStorage';
+import { pickFileAttachment } from '../fileAttachment';
+import { isPinned, togglePin } from '../pins';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
+import {
+  addPunchItemExtraDocuments,
+  punchItemExtraDocumentRows,
+  removePunchItemExtraDocument,
+} from '../punchItemExtraDocuments';
 import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { reorderItemsById, type PhotoReorderDirection } from '../photoReorder';
 
@@ -74,6 +84,7 @@ export function AddEditProjectPunchItemScreen(props: {
   );
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [done, setDone] = useState(existing?.done ?? false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [itemPhotos, setItemPhotos] = useState<ProjectPhoto[]>(() =>
     existing ? photosForPunchItem(state, existing.id) : []
   );
@@ -386,6 +397,28 @@ export function AddEditProjectPunchItemScreen(props: {
     saveItem();
   }
 
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addPunchItemExtraDocuments(state, item.id, picked));
+  }
+
+  function startLoadFile() {
+    void pickFileAttachment()
+      .then((picked) => {
+        setMenuOpen(false);
+        if (!picked) return;
+        if (picked.kind === 'image') {
+          void addItemPhotos([picked.uri]);
+          return;
+        }
+        void handleAddDocuments([picked]);
+      })
+      .catch(() => {
+        setMenuOpen(false);
+      });
+  }
+
   function confirmDelete() {
     Alert.alert('Delete punch item?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -396,6 +429,10 @@ export function AddEditProjectPunchItemScreen(props: {
           void (async () => {
             for (const photo of itemPhotos) {
               await deletePhotoFile(photo.localUri);
+            }
+            for (const documentId of item.documentIds ?? []) {
+              const doc = state.documents.find((d) => d.id === documentId);
+              if (doc) await deleteDocumentFile(doc.localUri);
             }
             onSave(deletePunchItemCascade(state, item.id));
             onBack();
@@ -428,6 +465,16 @@ export function AddEditProjectPunchItemScreen(props: {
             gap: 4,
           }}
         >
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Punch item options"
+            accessibilityHint="Opens actions like load file."
+            hitSlop={8}
+            style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
+          >
+            <MaterialIcons name="settings" size={22} color={colors.primary} />
+          </Pressable>
           <Pressable
             onPress={confirmDelete}
             accessibilityRole="button"
@@ -491,6 +538,10 @@ export function AddEditProjectPunchItemScreen(props: {
         <InteractionPhotoSection
           photos={itemPhotos}
           onAddPhotos={addItemPhotos}
+          onAddDocuments={handleAddDocuments}
+          extraDocumentRows={punchItemExtraDocumentRows(state, item, (documentId) => {
+            void removePunchItemExtraDocument(state, item.id, documentId).then(onSave);
+          })}
           onDeletePhoto={
             isEditing
               ? (photoId) => {
@@ -562,6 +613,74 @@ export function AddEditProjectPunchItemScreen(props: {
         )}
       </ScrollView>
       {isEditing ? keyboardDone.accessory : null}
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.card,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {item.title}
+              </Text>
+            </View>
+            <PinGearMenuItem
+              pinned={isPinned(state, 'punch', item.id)}
+              onToggle={() => {
+                setMenuOpen(false);
+                onSave(togglePin(state, 'punch', item.id));
+              }}
+            />
+            <Pressable
+              onPress={startLoadFile}
+              accessibilityRole="button"
+              accessibilityLabel="Load file"
+              accessibilityHint="Attaches a document or photo to this punch item."
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Load file
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(false)}
+              style={({ pressed }) => [
+                sharedStyles.secondaryBtn,
+                { marginTop: 8 },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={sharedStyles.secondaryBtnText}>Done</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
     </ReuseExistingPhotosProvider>
   );

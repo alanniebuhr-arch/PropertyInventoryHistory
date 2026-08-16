@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import type { VendorPhoto } from '../types';
 import { PhotoSection } from './PhotoSection';
 import { buildExtraOnlyPhotoTiles } from '../photoSectionBuilders';
+import type { DocumentListRow } from './DocumentListSection';
 import type { PhotoReorderDirection } from '../photoReorder';
 
 type GalleryPhoto = Pick<VendorPhoto, 'id' | 'localUri' | 'caption' | 'notes'>;
@@ -11,6 +12,10 @@ type GalleryPhoto = Pick<VendorPhoto, 'id' | 'localUri' | 'caption' | 'notes'>;
 export function InteractionPhotoSection(props: {
   photos: GalleryPhoto[];
   onAddPhotos?: (uris: string[]) => Promise<string[] | void> | string[] | void;
+  onAddDocuments?: (
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) => void | Promise<void>;
+  extraDocumentRows?: DocumentListRow[];
   onDeletePhoto?: (photoId: string) => void;
   onReorderPhoto?: (photoId: string, direction: PhotoReorderDirection) => void;
   onLabelPhoto?: (photoId: string, label: string, notes: string) => void;
@@ -21,6 +26,8 @@ export function InteractionPhotoSection(props: {
   const {
     photos,
     onAddPhotos,
+    onAddDocuments,
+    extraDocumentRows,
     onDeletePhoto,
     onReorderPhoto,
     onLabelPhoto,
@@ -47,6 +54,8 @@ export function InteractionPhotoSection(props: {
         title={title}
         hint={hint}
         onAddPhotos={onAddPhotos}
+        onAddDocuments={onAddDocuments}
+        extraDocumentRows={extraDocumentRows}
       >
         {children}
       </PhotoSection>

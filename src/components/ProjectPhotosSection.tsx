@@ -13,6 +13,11 @@ import {
   setProjectPhotoFavorite,
 } from '../photoMeta';
 import { withReorderedProjectPhotoIds } from '../photoReorder';
+import {
+  addProjectExtraDocuments,
+  removeProjectExtraDocument,
+  projectExtraDocumentRows,
+} from '../projectExtraDocuments';
 
 export function ProjectPhotosSection(props: {
   state: AppState;
@@ -81,10 +86,26 @@ export function ProjectPhotosSection(props: {
     return added.map((photo) => photo.id);
   }
 
+  const extraDocumentRows = projectExtraDocumentRows(
+    state,
+    state.projects.find((entry) => entry.id === projectId),
+    (documentId) => {
+      void removeProjectExtraDocument(state, projectId, documentId).then(onSave);
+    }
+  );
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addProjectExtraDocuments(state, projectId, picked));
+  }
+
   return (
     <PhotoSection
       tiles={photoTiles}
       onAddPhotos={handleAddPhotos}
+      onAddDocuments={handleAddDocuments}
+      extraDocumentRows={extraDocumentRows}
       childrenGesture={childrenGesture}
       expanded={expanded}
       onToggleExpanded={onToggleExpanded}

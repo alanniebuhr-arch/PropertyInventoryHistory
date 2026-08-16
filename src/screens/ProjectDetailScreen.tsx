@@ -45,7 +45,7 @@ import {
   vendorById,
   vendorsForProject,
 } from '../storage';
-import { photosForProject } from '../projectPhotos';
+import { photosForProject, addProjectPhotos } from '../projectPhotos';
 import {
   slideshowPhotosForProject,
   type ProjectCatalogPhoto,
@@ -59,6 +59,9 @@ import {
 } from '../projectSearchPhotosPrefs';
 import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { deletePhotoFile } from '../photoStorage';
+import { deleteDocumentFile } from '../documentStorage';
+import { pickFileAttachment } from '../fileAttachment';
+import { addProjectExtraDocuments } from '../projectExtraDocuments';
 import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
 import {
   getProjectScrollPrefs,
@@ -878,6 +881,7 @@ export function ProjectDetailScreen(props: {
       title: trimmed,
       done: false,
       photoIds: [],
+      documentIds: [],
       createdAtISO: nowISO(),
     };
     onSave({
@@ -887,6 +891,22 @@ export function ProjectDetailScreen(props: {
     setAddPunchOpen(false);
     setNewPunchTitle('');
     onOpenPunchItem(punchItem.id, { startEditing: true });
+  }
+
+  function startLoadFile() {
+    void pickFileAttachment()
+      .then((picked) => {
+        setMenuOpen(false);
+        if (!picked) return;
+        if (picked.kind === 'image') {
+          void addProjectPhotos(state, projectId, [picked.uri]).then(onSave);
+          return;
+        }
+        void addProjectExtraDocuments(state, projectId, [picked]).then(onSave);
+      })
+      .catch(() => {
+        setMenuOpen(false);
+      });
   }
 
   function confirmDeleteProject() {
@@ -910,6 +930,10 @@ export function ProjectDetailScreen(props: {
                   onPress: async () => {
                     for (const p of photosForProject(state, projectId)) {
                       await deletePhotoFile(p.localUri);
+                    }
+                    for (const documentId of proj.documentIds ?? []) {
+                      const doc = state.documents.find((d) => d.id === documentId);
+                      if (doc) await deleteDocumentFile(doc.localUri);
                     }
                     onSave(deleteProjectCascade(state, projectId));
                     onBack();
@@ -1939,6 +1963,22 @@ export function ProjectDetailScreen(props: {
             >
               <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
                 Share
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={startLoadFile}
+              accessibilityRole="button"
+              accessibilityLabel="Load file"
+              accessibilityHint="Attaches a document or photo to this project."
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Load file
               </Text>
             </Pressable>
             <Pressable

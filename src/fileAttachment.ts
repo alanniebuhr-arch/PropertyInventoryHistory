@@ -56,10 +56,19 @@ export function classifyPickedFile(input: {
 }
 
 export async function pickFileAttachment(): Promise<PickedFileAttachment | undefined> {
-  const result = await DocumentPicker.getDocumentAsync({
-    type: '*/*',
-    copyToCacheDirectory: true,
-  });
+  let result: Awaited<ReturnType<typeof DocumentPicker.getDocumentAsync>>;
+  try {
+    result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+    });
+  } catch (error) {
+    Alert.alert(
+      'Could not load file',
+      error instanceof Error ? error.message : 'Try again from this screen.'
+    );
+    return undefined;
+  }
   if (result.canceled || !result.assets[0]?.uri) return undefined;
 
   const asset = result.assets[0];

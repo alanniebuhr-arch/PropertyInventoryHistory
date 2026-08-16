@@ -62,5 +62,6 @@ export function stampChangedRecords(prev: AppState, next: AppState, now: string)
       next.projectPunchItems ?? [],
       now
     ),
+    pins: next.pins ?? [],
   };
 }

@@ -1,0 +1,103 @@
+import type { AppState, Project } from './types';
+import { documentById, type SlotDocumentInfo } from './documents';
+import { addDocumentToState, removeDocumentFromState } from './slotDocumentOps';
+import type { DocumentListRow } from './components/DocumentListSection';
+
+export type PickedProjectDocument = {
+  uri: string;
+  fileName: string;
+  mimeType?: string;
+};
+
+export function projectExtraDocumentInfos(
+  state: AppState,
+  project: Project
+): SlotDocumentInfo[] {
+  const infos: SlotDocumentInfo[] = [];
+  for (const documentId of project.documentIds ?? []) {
+    const doc = documentById(state, documentId);
+    if (!doc) continue;
+    infos.push({
+      id: doc.id,
+      fileName: doc.fileName,
+      localUri: doc.localUri,
+      mimeType: doc.mimeType,
+    });
+  }
+  return infos;
+}
+
+export function projectExtraDocumentRows(
+  state: AppState,
+  project: Project | undefined,
+  onDeleteDocument: (documentId: string) => void
+): DocumentListRow[] {
+  if (!project) return [];
+  return projectExtraDocumentInfos(state, project).map((info) => ({
+    id: info.id,
+    label: info.fileName,
+    fileName: info.fileName,
+    localUri: info.localUri,
+    mimeType: info.mimeType,
+    onDelete: () => onDeleteDocument(info.id),
+  }));
+}
+
+export async function addProjectExtraDocuments(
+  state: AppState,
+  projectId: string,
+  picked: PickedProjectDocument[]
+): Promise<AppState> {
+  if (picked.length === 0) return state;
+  const project = state.projects.find((entry) => entry.id === projectId);
+  if (!project) return state;
+
+  let nextState = state;
+  const newDocumentIds: string[] = [];
+
+  for (const entry of picked) {
+    const { state: withDoc, document } = await addDocumentToState(
+      nextState,
+      entry.uri,
+      entry.fileName,
+      entry.mimeType ?? 'application/octet-stream'
+    );
+    nextState = withDoc;
+    newDocumentIds.push(document.id);
+  }
+
+  return {
+    ...nextState,
+    projects: nextState.projects.map((entry) =>
+      entry.id === projectId
+        ? {
+            ...entry,
+            documentIds: [...(entry.documentIds ?? []), ...newDocumentIds],
+          }
+        : entry
+    ),
+  };
+}
+
+export async function removeProjectExtraDocument(
+  state: AppState,
+  projectId: string,
+  documentId: string
+): Promise<AppState> {
+  const project = state.projects.find((entry) => entry.id === projectId);
+  if (!project) return state;
+  if (!(project.documentIds ?? []).includes(documentId)) return state;
+
+  const nextState = await removeDocumentFromState(state, documentId);
+  return {
+    ...nextState,
+    projects: nextState.projects.map((entry) =>
+      entry.id === projectId
+        ? {
+            ...entry,
+            documentIds: (entry.documentIds ?? []).filter((id) => id !== documentId),
+          }
+        : entry
+    ),
+  };
+}

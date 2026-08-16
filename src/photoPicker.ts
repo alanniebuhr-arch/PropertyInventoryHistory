@@ -67,29 +67,33 @@ export async function pickSinglePhotoFromLibrary(): Promise<string | undefined> 
   return result.assets[0].uri;
 }
 
-function runLoadFileForPhoto(
+export function runLoadFileForPhoto(
   onPhoto: (uri: string) => void | Promise<void>,
   onDocument?: (picked: PickedDocument) => void | Promise<void>
 ) {
-  void pickFileAttachment().then((picked) => {
-    if (!picked) return;
-    if (picked.kind === 'image') {
-      void onPhoto(picked.uri);
-      return;
-    }
-    if (onDocument) {
-      void onDocument({
-        uri: picked.uri,
-        fileName: picked.fileName,
-        mimeType: picked.mimeType,
-      });
-      return;
-    }
-    Alert.alert(
-      'Not a photo',
-      'Choose an image file to add as a photo. Use a named slot and Load file to attach a document.'
-    );
-  });
+  void pickFileAttachment()
+    .then((picked) => {
+      if (!picked) return;
+      if (picked.kind === 'image') {
+        void onPhoto(picked.uri);
+        return;
+      }
+      if (onDocument) {
+        void onDocument({
+          uri: picked.uri,
+          fileName: picked.fileName,
+          mimeType: picked.mimeType,
+        });
+        return;
+      }
+      Alert.alert(
+        'Not a photo',
+        'Choose an image file to add as a photo. Use a named slot and Load file to attach a document.'
+      );
+    })
+    .catch(() => {
+      Alert.alert('Could not load file', 'Try again from this screen.');
+    });
 }
 
 export function promptPickOrTakeSingle(onPhoto: (uri: string) => void | Promise<void>) {
@@ -241,19 +245,15 @@ export function promptPickOrTakeMulti(
     {
       text: 'Load file',
       onPress: () => {
-        onBusyChange?.(true);
         void pickFileAttachment()
           .then((picked) => {
-            if (!picked) {
-              onBusyChange?.(false);
-              return;
-            }
+            if (!picked) return;
             if (picked.kind === 'image') {
+              onBusyChange?.(true);
               void onPhotos([picked.uri]);
               return;
             }
             if (onDocument) {
-              onBusyChange?.(false);
               void onDocument({
                 uri: picked.uri,
                 fileName: picked.fileName,
@@ -261,7 +261,6 @@ export function promptPickOrTakeMulti(
               });
               return;
             }
-            onBusyChange?.(false);
             Alert.alert(
               'Not a photo',
               'Choose an image file to add as a photo. Use a named slot and Load file to attach a document.'

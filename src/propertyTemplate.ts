@@ -120,6 +120,7 @@ export function applyPropertyTemplate(
       name: roomNameForDwelling(templateRoom, dwellingType),
       sortOrder: templateRoom.sortOrder,
       photoIds: [],
+      documentIds: [],
     });
 
     for (const templateItem of templateRoom.items) {

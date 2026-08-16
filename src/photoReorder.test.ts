@@ -137,6 +137,7 @@ function expectEqual(actual: string[], expected: string[], label: string) {
     name: 'Office',
     sortOrder: 0,
     photoIds: ['slotA', 'e1', 'e2'],
+    documentIds: [],
     slotAttachments: {
       houseInsurance: { kind: 'photo', id: 'slotA' },
     },

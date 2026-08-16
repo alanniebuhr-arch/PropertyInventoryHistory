@@ -719,6 +719,7 @@ export function PropertyDetailScreen(props: {
       title: trimmed,
       done: false,
       photoIds: [],
+      documentIds: [],
       createdAtISO: nowISO(),
     };
     onSave({ ...state, propertyTodos: [...state.propertyTodos, todo] });
@@ -745,6 +746,7 @@ export function PropertyDetailScreen(props: {
       title: trimmed,
       done: false,
       photoIds: [],
+      documentIds: [],
       createdAtISO: nowISO(),
     };
     onSave({ ...state, propertyTodos: [...state.propertyTodos, idea] });

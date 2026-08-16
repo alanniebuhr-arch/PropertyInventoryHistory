@@ -4,6 +4,7 @@ import {
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -39,6 +40,15 @@ import {
   propertyTodoById,
 } from '../storage';
 import { deletePhotoFile, persistPhotoFromUri } from '../photoStorage';
+import { deleteDocumentFile } from '../documentStorage';
+import { pickFileAttachment } from '../fileAttachment';
+import { isPinned, togglePin } from '../pins';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
+import {
+  addPropertyTodoExtraDocuments,
+  propertyTodoExtraDocumentRows,
+  removePropertyTodoExtraDocument,
+} from '../propertyTodoExtraDocuments';
 import { withReusePhotoMeta } from '../reuseExistingPhotos';
 import { reorderItemsById, type PhotoReorderDirection } from '../photoReorder';
 
@@ -87,6 +97,7 @@ export function AddEditPropertyTodoScreen(props: {
   const [repeatMonths, setRepeatMonths] = useState<number | undefined>(
     () => existing?.repeatMonths
   );
+  const [menuOpen, setMenuOpen] = useState(false);
   const [todoPhotos, setTodoPhotos] = useState<PropertyPhoto[]>(() =>
     existing ? photosForPropertyTodo(state, existing.id) : []
   );
@@ -429,6 +440,28 @@ export function AddEditPropertyTodoScreen(props: {
     saveTodo();
   }
 
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addPropertyTodoExtraDocuments(state, todo.id, picked));
+  }
+
+  function startLoadFile() {
+    void pickFileAttachment()
+      .then((picked) => {
+        setMenuOpen(false);
+        if (!picked) return;
+        if (picked.kind === 'image') {
+          void addTodoPhotos([picked.uri]);
+          return;
+        }
+        void handleAddDocuments([picked]);
+      })
+      .catch(() => {
+        setMenuOpen(false);
+      });
+  }
+
   function confirmDelete() {
     Alert.alert(`Delete ${noun}?`, 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -439,6 +472,10 @@ export function AddEditPropertyTodoScreen(props: {
           void (async () => {
             for (const photo of todoPhotos) {
               await deletePhotoFile(photo.localUri);
+            }
+            for (const documentId of todo.documentIds ?? []) {
+              const doc = state.documents.find((d) => d.id === documentId);
+              if (doc) await deleteDocumentFile(doc.localUri);
             }
             onSave(deletePropertyTodoCascade(state, todo.id));
             onBack();
@@ -466,6 +503,16 @@ export function AddEditPropertyTodoScreen(props: {
             gap: 4,
           }}
         >
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`${nounTitle} options`}
+            accessibilityHint="Opens actions like load file."
+            hitSlop={8}
+            style={({ pressed }) => [headerIconBtn, pressed && { opacity: 0.8 }]}
+          >
+            <MaterialIcons name="settings" size={22} color={colors.primary} />
+          </Pressable>
           <Pressable
             onPress={confirmDelete}
             accessibilityRole="button"
@@ -531,6 +578,10 @@ export function AddEditPropertyTodoScreen(props: {
         <InteractionPhotoSection
           photos={todoPhotos}
           onAddPhotos={addTodoPhotos}
+          onAddDocuments={handleAddDocuments}
+          extraDocumentRows={propertyTodoExtraDocumentRows(state, todo, (documentId) => {
+            void removePropertyTodoExtraDocument(state, todo.id, documentId).then(onSave);
+          })}
           onDeletePhoto={
             isEditing
               ? (photoId) => {
@@ -692,6 +743,74 @@ export function AddEditPropertyTodoScreen(props: {
         )}
       </ScrollView>
       {isEditing ? keyboardDone.accessory : null}
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable style={[sharedStyles.card, { marginBottom: 0 }]} onPress={() => {}}>
+            <View
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.card,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {todo.title}
+              </Text>
+            </View>
+            <PinGearMenuItem
+              pinned={isPinned(state, 'todo', todo.id)}
+              onToggle={() => {
+                setMenuOpen(false);
+                onSave(togglePin(state, 'todo', todo.id));
+              }}
+            />
+            <Pressable
+              onPress={startLoadFile}
+              accessibilityRole="button"
+              accessibilityLabel="Load file"
+              accessibilityHint={`Attaches a document or photo to this ${noun}.`}
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                Load file
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMenuOpen(false)}
+              style={({ pressed }) => [
+                sharedStyles.secondaryBtn,
+                { marginTop: 8 },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={sharedStyles.secondaryBtnText}>Done</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
     </ReuseExistingPhotosProvider>
   );

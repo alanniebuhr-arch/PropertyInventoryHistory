@@ -58,6 +58,8 @@ import { shareViewAsPng } from '../shareViewImage';
 import { shareHtmlAsPdf } from '../shareViewPdf';
 import { buildExportPdfHtml, vendorSnapshotToPdfDoc } from '../exportPdfHtml';
 import { ShareFormatModal } from '../components/ShareFormatModal';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
+import { isPinned, togglePin } from '../pins';
 import {
   ToolbarNewSearchControls,
   usePropertyGearNav,
@@ -917,6 +919,13 @@ export function VendorDetailScreen(props: {
                 {vnd.name}
               </Text>
             </View>
+            <PinGearMenuItem
+              pinned={isPinned(state, 'vendor', vnd.id)}
+              onToggle={() => {
+                setMenuOpen(false);
+                onSave(togglePin(state, 'vendor', vnd.id));
+              }}
+            />
             <Pressable
               onPress={() => runMenuAction(openShareOptions)}
               disabled={exporting}

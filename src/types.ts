@@ -716,6 +716,8 @@ export type Room = {
   photoIds: string[];
   requiresAuth?: boolean;
   slotAttachments?: Partial<Record<RoomSlotKey, SlotAttachment>>;
+  /** Extra documents beyond named photo-slot documents. */
+  documentIds: string[];
   /** Named photo slots the user removed (placeholders stay hidden until restored). */
   hiddenPhotoSlotKeys?: string[];
   updatedAtISO?: string;
@@ -789,6 +791,8 @@ export type ItemEvent = {
   cost?: number;
   recurrence?: ItemEventRecurrence;
   photoIds: string[];
+  /** Extra documents (PDFs and other files) attached to this service event. */
+  documentIds: string[];
   updatedAtISO?: string;
 };
 
@@ -821,6 +825,8 @@ export type Project = {
   /** Optional total / budgeted project cost. */
   totalCost?: number;
   photoIds: string[];
+  /** Extra documents attached to this project. */
+  documentIds: string[];
   /**
    * Ordered photo ids for the project Slideshow (and Project Share favorites).
    * When undefined, Slideshow falls back to photos marked favorite in gallery order.
@@ -926,6 +932,8 @@ export type PropertyTodo = {
   done: boolean;
   completedAtISO?: string;
   photoIds: string[];
+  /** Extra documents attached to this to-do or idea. */
+  documentIds: string[];
   createdAtISO: string;
   updatedAtISO?: string;
 };
@@ -940,8 +948,25 @@ export type ProjectPunchItem = {
   done: boolean;
   completedAtISO?: string;
   photoIds: string[];
+  /** Extra documents attached to this punch item. */
+  documentIds: string[];
   createdAtISO: string;
   updatedAtISO?: string;
+};
+
+export type PinnedKind =
+  | 'room'
+  | 'item'
+  | 'event'
+  | 'vendor'
+  | 'todo'
+  | 'punch'
+  | 'interaction';
+
+export type PinnedRef = {
+  kind: PinnedKind;
+  id: string;
+  pinnedAtISO: string;
 };
 
 export type AppState = {
@@ -961,6 +986,11 @@ export type AppState = {
   vendorInteractions: VendorInteraction[];
   propertyTodos: PropertyTodo[];
   projectPunchItems: ProjectPunchItem[];
+  /**
+   * Home Pinned shortcuts. Optional on older backups; normalize to [].
+   * Does not include properties or projects (those have their own Home sections).
+   */
+  pins: PinnedRef[];
 };
 
 export const EMPTY_APP_STATE: AppState = {
@@ -980,6 +1010,7 @@ export const EMPTY_APP_STATE: AppState = {
   vendorInteractions: [],
   propertyTodos: [],
   projectPunchItems: [],
+  pins: [],
 };
 
 export type InventoryTransferBundle = {

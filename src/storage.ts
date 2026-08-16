@@ -23,6 +23,7 @@ import type {
   WaterTreatmentDetails,
 } from './types';
 import { EMPTY_APP_STATE } from './types';
+import { livingPins, normalizePins, withLivingPins } from './pins';
 import { defaultDetailsForType, catalogLabel, itemCustomName } from './itemCatalog';
 import { normalizeWaterSource } from './waterMainSlots';
 import { normalizeWasteWaterSystem } from './wasteWaterSlots';
@@ -1028,6 +1029,7 @@ function normalizeEvent(raw: ItemEvent): ItemEvent {
   return ensureUpdatedAt({
     ...raw,
     photoIds: Array.isArray(raw.photoIds) ? raw.photoIds : [],
+    documentIds: Array.isArray(raw.documentIds) ? raw.documentIds : [],
   });
 }
 
@@ -1141,6 +1143,9 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
         photoIds: (Array.isArray(r.photoIds) ? r.photoIds : []).filter((id) =>
           validRoomPhotoIds.has(id)
         ),
+        documentIds: (Array.isArray(r.documentIds) ? r.documentIds : []).filter((id) =>
+          validDocumentIds.has(id)
+        ),
         hiddenPhotoSlotKeys: normalizeHiddenPhotoSlotKeys(r.hiddenPhotoSlotKeys),
       };
     });
@@ -1161,6 +1166,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter((id) =>
         projectPhotos.some((photo) => photo.id === id && !photo.punchItemId)
       ),
+      documentIds: Array.isArray(p.documentIds) ? p.documentIds : [],
     }));
   const projectIds = new Set(cleanProjects.map((p) => p.id));
   const cleanProjectPunchItemsDraft = projectPunchItems.filter((item) =>
@@ -1179,6 +1185,9 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
         validProjectPhotoIds.has(id) &&
         cleanProjectPhotos.some((photo) => photo.id === id && !photo.punchItemId)
     ),
+    documentIds: (Array.isArray(p.documentIds) ? p.documentIds : []).filter((id) =>
+      validDocumentIds.has(id)
+    ),
   }));
 
   const cleanProjectPunchItems = cleanProjectPunchItemsDraft.map((item) => {
@@ -1195,6 +1204,9 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       title: typeof item.title === 'string' ? item.title : '',
       done: item.done === true,
       photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
+      documentIds: (Array.isArray(item.documentIds) ? item.documentIds : []).filter((id) =>
+        validDocumentIds.has(id)
+      ),
     };
   });
 
@@ -1281,6 +1293,9 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       done: todo.done === true,
       repeatMonths,
       photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
+      documentIds: (Array.isArray(todo.documentIds) ? todo.documentIds : []).filter((id) =>
+        validDocumentIds.has(id)
+      ),
     };
   });
 
@@ -1307,6 +1322,7 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     events: cleanEvents.map((e) => ({
       ...ensureUpdatedAt(e),
       photoIds: e.photoIds.filter((pid) => cleanPhotos.some((p) => p.id === pid)),
+      documentIds: (e.documentIds ?? []).filter((id) => validDocumentIds.has(id)),
     })),
     projects: cleanProjectsWithPhotos.map(ensureUpdatedAt),
     projectVendors: cleanProjectVendorsFinal.map(ensureUpdatedAt),
@@ -1315,6 +1331,17 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     vendorInteractions: cleanVendorInteractions.map(ensureUpdatedAt),
     propertyTodos: cleanPropertyTodos.map(ensureUpdatedAt),
     projectPunchItems: cleanProjectPunchItems.map(ensureUpdatedAt),
+    pins: livingPins({
+      ...EMPTY_APP_STATE,
+      rooms: cleanRooms,
+      items: cleanItems,
+      events: cleanEvents,
+      projectVendors: cleanProjectVendorsFinal,
+      propertyTodos: cleanPropertyTodos,
+      projectPunchItems: cleanProjectPunchItems,
+      vendorInteractions: cleanVendorInteractions,
+      pins: normalizePins((raw as AppState).pins),
+    }),
   };
 }
 
@@ -1602,9 +1629,11 @@ export function eventsForItem(state: AppState, itemId: string): ItemEvent[] {
     .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
 }
 
-/** Past/today service logs for history lists (excludes future-dated events). */
+/** Past/today completed service logs (excludes future-dated and still-open reminders). */
 export function serviceHistoryEventsForItem(state: AppState, itemId: string): ItemEvent[] {
-  return eventsForItem(state, itemId).filter((e) => !isAfterToday(e.occurredAtISO));
+  return eventsForItem(state, itemId).filter(
+    (e) => !isAfterToday(e.occurredAtISO) && !e.recurrence?.nextDueAtISO
+  );
 }
 
 export function itemsForProperty(state: AppState, propertyId: string): InventoryItem[] {
@@ -1653,6 +1682,19 @@ export function projectsForProperty(state: AppState, propertyId: string): Projec
   return state.projects
     .filter((p) => p.propertyId === propertyId)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+}
+
+/** Incomplete projects across all properties (excludes status complete). */
+export function incompleteProjects(state: AppState): Project[] {
+  const propertyName = (propertyId: string) =>
+    propertyById(state, propertyId)?.name ?? '';
+  return state.projects
+    .filter((p) => (p.status ?? 'research') !== 'complete')
+    .sort((a, b) => {
+      const byProperty = propertyName(a.propertyId).localeCompare(propertyName(b.propertyId));
+      if (byProperty !== 0) return byProperty;
+      return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+    });
 }
 
 export function projectById(state: AppState, id: string): Project | undefined {
@@ -1828,11 +1870,14 @@ export function photosForPropertyTodo(state: AppState, todoId: string): Property
 }
 
 export function deletePropertyTodoCascade(state: AppState, todoId: string): AppState {
-  return {
+  const todo = state.propertyTodos.find((t) => t.id === todoId);
+  const dropDocumentIds = new Set(todo?.documentIds ?? []);
+  return withLivingPins({
     ...state,
     propertyTodos: state.propertyTodos.filter((t) => t.id !== todoId),
     propertyPhotos: state.propertyPhotos.filter((p) => p.todoId !== todoId),
-  };
+    documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
+  });
 }
 
 export function punchItemsForProject(state: AppState, projectId: string): ProjectPunchItem[] {
@@ -1872,11 +1917,14 @@ export function photosForPunchItem(state: AppState, punchItemId: string): Projec
 }
 
 export function deletePunchItemCascade(state: AppState, punchItemId: string): AppState {
-  return {
+  const punchItem = state.projectPunchItems.find((item) => item.id === punchItemId);
+  const dropDocumentIds = new Set(punchItem?.documentIds ?? []);
+  return withLivingPins({
     ...state,
     projectPunchItems: state.projectPunchItems.filter((item) => item.id !== punchItemId),
     projectPhotos: state.projectPhotos.filter((p) => p.punchItemId !== punchItemId),
-  };
+    documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
+  });
 }
 
 export function nextProjectSortOrder(state: AppState, propertyId: string): number {
@@ -1907,7 +1955,34 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
       for (const docId of vendor.documentIds ?? []) dropDocumentIds.add(docId);
     }
   }
-  return {
+  for (const room of state.rooms) {
+    if (!roomIds.has(room.id)) continue;
+    for (const docId of room.documentIds ?? []) dropDocumentIds.add(docId);
+    for (const attachment of Object.values(room.slotAttachments ?? {})) {
+      if (attachment?.kind === 'document') dropDocumentIds.add(attachment.id);
+    }
+  }
+  for (const item of state.items) {
+    if (!roomIds.has(item.roomId)) continue;
+    for (const docId of item.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  for (const event of state.events) {
+    if (!itemIds.has(event.itemId)) continue;
+    for (const docId of event.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  for (const project of state.projects) {
+    if (!projectIds.has(project.id)) continue;
+    for (const docId of project.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  for (const punchItem of state.projectPunchItems) {
+    if (!projectIds.has(punchItem.projectId)) continue;
+    for (const docId of punchItem.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  for (const todo of state.propertyTodos) {
+    if (todo.propertyId !== propertyId) continue;
+    for (const docId of todo.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  return withLivingPins({
     ...state,
     properties: state.properties.filter((p) => p.id !== propertyId),
     rooms: state.rooms.filter((r) => r.propertyId !== propertyId),
@@ -1928,59 +2003,80 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
     propertyTodos: state.propertyTodos.filter((t) => t.propertyId !== propertyId),
     projectPunchItems: state.projectPunchItems.filter((item) => !projectIds.has(item.projectId)),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
-  };
+  });
 }
 
 export function deleteRoomCascade(state: AppState, roomId: string): AppState {
+  const room = state.rooms.find((r) => r.id === roomId);
   const itemIds = new Set(state.items.filter((i) => i.roomId === roomId).map((i) => i.id));
-  return {
+  const dropDocumentIds = new Set(room?.documentIds ?? []);
+  for (const attachment of Object.values(room?.slotAttachments ?? {})) {
+    if (attachment?.kind === 'document') dropDocumentIds.add(attachment.id);
+  }
+  for (const item of state.items) {
+    if (item.roomId !== roomId) continue;
+    for (const docId of item.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  for (const event of state.events) {
+    if (!itemIds.has(event.itemId)) continue;
+    for (const docId of event.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  return withLivingPins({
     ...state,
     rooms: state.rooms.filter((r) => r.id !== roomId),
     items: state.items.filter((i) => i.roomId !== roomId),
     photos: state.photos.filter((p) => !itemIds.has(p.itemId)),
     roomPhotos: state.roomPhotos.filter((p) => p.roomId !== roomId),
     events: state.events.filter((e) => !itemIds.has(e.itemId)),
-  };
+    documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
+  });
 }
 
 export function deleteItemCascade(state: AppState, itemId: string): AppState {
   const item = state.items.find((i) => i.id === itemId);
   const dropDocumentIds = new Set(item?.documentIds ?? []);
-  return {
+  for (const event of state.events) {
+    if (event.itemId !== itemId) continue;
+    for (const docId of event.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  return withLivingPins({
     ...state,
     items: state.items.filter((i) => i.id !== itemId),
     photos: state.photos.filter((p) => p.itemId !== itemId),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
     events: state.events.filter((e) => e.itemId !== itemId),
-  };
+  });
 }
 
 export function deleteEventCascade(state: AppState, eventId: string): AppState {
-  return {
+  const event = state.events.find((e) => e.id === eventId);
+  const dropDocumentIds = new Set(event?.documentIds ?? []);
+  return withLivingPins({
     ...state,
     events: state.events.filter((e) => e.id !== eventId),
     photos: state.photos.filter((p) => p.eventId !== eventId),
-  };
+    documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
+  });
 }
 
 export function deleteVendorCascade(state: AppState, vendorId: string): AppState {
   const vendor = state.projectVendors.find((v) => v.id === vendorId);
   const dropDocumentIds = new Set(vendor?.documentIds ?? []);
-  return {
+  return withLivingPins({
     ...state,
     projectVendors: state.projectVendors.filter((v) => v.id !== vendorId),
     vendorPhotos: state.vendorPhotos.filter((p) => p.vendorId !== vendorId),
     vendorInteractions: state.vendorInteractions.filter((i) => i.vendorId !== vendorId),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
-  };
+  });
 }
 
 export function deleteVendorInteractionCascade(state: AppState, interactionId: string): AppState {
-  return {
+  return withLivingPins({
     ...state,
     vendorInteractions: state.vendorInteractions.filter((i) => i.id !== interactionId),
     vendorPhotos: state.vendorPhotos.filter((p) => p.interactionId !== interactionId),
-  };
+  });
 }
 
 export function deleteProjectCascade(state: AppState, projectId: string): AppState {
@@ -1993,7 +2089,13 @@ export function deleteProjectCascade(state: AppState, projectId: string): AppSta
       for (const docId of vendor.documentIds ?? []) dropDocumentIds.add(docId);
     }
   }
-  return {
+  const project = state.projects.find((p) => p.id === projectId);
+  for (const docId of project?.documentIds ?? []) dropDocumentIds.add(docId);
+  for (const punchItem of state.projectPunchItems) {
+    if (punchItem.projectId !== projectId) continue;
+    for (const docId of punchItem.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  return withLivingPins({
     ...state,
     projects: state.projects.filter((p) => p.id !== projectId),
     projectVendors: state.projectVendors.filter((v) => v.projectId !== projectId),
@@ -2007,5 +2109,5 @@ export function deleteProjectCascade(state: AppState, projectId: string): AppSta
     ),
     projectPunchItems: state.projectPunchItems.filter((item) => item.projectId !== projectId),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
-  };
+  });
 }
