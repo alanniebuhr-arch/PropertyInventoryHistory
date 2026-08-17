@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleProp, TextStyle, View, ViewStyle } from 'react-native';
 import { Text } from '../textScale';
-import { sharedStyles } from '../theme';
+import { colors, sharedStyles } from '../theme';
 import { collapsedSectionLabel } from '../utils';
 
 /**
@@ -15,6 +15,8 @@ export function CollapsibleSectionTitle(props: {
   count: number;
   /** When set, collapsed label is (count/doneCount). */
   doneCount?: number;
+  /** When > 0, collapsed label is (count with overdueCount overdue). */
+  overdueCount?: number;
   onExpand: () => void;
   style?: StyleProp<TextStyle>;
   containerStyle?: StyleProp<ViewStyle>;
@@ -26,18 +28,67 @@ export function CollapsibleSectionTitle(props: {
     expanded,
     count,
     doneCount,
+    overdueCount,
     onExpand,
     style,
     containerStyle,
     showCountWhenCollapsed = true,
   } = props;
 
+  const showOverdueSuffix =
+    showCountWhenCollapsed &&
+    !expanded &&
+    count > 0 &&
+    overdueCount != null &&
+    overdueCount > 0;
+
   const label = showCountWhenCollapsed
-    ? collapsedSectionLabel(title, expanded, count, doneCount)
+    ? collapsedSectionLabel(title, expanded, count, doneCount, overdueCount)
     : title;
   const canToggleFromHeading = count > 0;
 
-  const text = (
+  const text = showOverdueSuffix ? (
+    <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0, textTransform: 'none' }, style]}>
+      <Text
+        style={[
+          sharedStyles.sectionTitle,
+          { marginTop: 0, marginBottom: 0 },
+          style,
+        ]}
+      >
+        {`${title} (${count} `}
+      </Text>
+      <Text
+        style={[
+          sharedStyles.sectionTitle,
+          { marginTop: 0, marginBottom: 0, textTransform: 'none', letterSpacing: 0.4 },
+          style,
+        ]}
+      >
+        with{' '}
+      </Text>
+      <Text
+        style={{
+          fontSize: 14,
+          fontWeight: '600',
+          color: colors.overdue,
+          letterSpacing: 0.4,
+          textTransform: 'none',
+        }}
+      >
+        {`${overdueCount} overdue`}
+      </Text>
+      <Text
+        style={[
+          sharedStyles.sectionTitle,
+          { marginTop: 0, marginBottom: 0 },
+          style,
+        ]}
+      >
+        )
+      </Text>
+    </Text>
+  ) : (
     <Text style={[sharedStyles.sectionTitle, { marginTop: 0, marginBottom: 0 }, style]}>
       {label}
     </Text>

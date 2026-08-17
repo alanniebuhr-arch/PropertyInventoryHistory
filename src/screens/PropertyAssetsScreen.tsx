@@ -422,7 +422,7 @@ export function PropertyAssetsScreen(props: {
         ? propertyById(state, itemRoom.propertyId)
         : undefined;
       const detailsNotes =
-        'notes' in item.details ? item.details.notes : undefined;
+        item.details && 'notes' in item.details ? item.details.notes : undefined;
       const summaryValues = itemListSummaryFields(item)
         .map((field) => field.value)
         .join(' ');

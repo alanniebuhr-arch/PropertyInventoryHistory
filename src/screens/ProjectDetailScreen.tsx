@@ -18,7 +18,7 @@ import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { AppState, Project, ProjectPunchItem, ProjectVendor } from '../types';
-import { PropertyTodoListRow, PropertyInteractionListRow, VendorGalleryTile, VendorListRow } from '../components/ListRows';
+import { PropertyTodoListRow, PropertyInteractionListRow, VendorGalleryTile } from '../components/ListRows';
 import { UpcomingReminderCard } from '../components/UpcomingServiceCard';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
@@ -92,6 +92,7 @@ import { shareViewAsPng } from '../shareViewImage';
 import { shareHtmlAsPdf } from '../shareViewPdf';
 import { buildExportPdfHtml, projectSnapshotToPdfDoc } from '../exportPdfHtml';
 import {
+  PropertyGearNavMenuModal,
   ToolbarNewSearchControls,
   usePropertyGearNav,
   type PropertyGearNavItem,
@@ -115,6 +116,8 @@ import {
   setProjectActivityBucketExpand,
 } from '../projectSectionExpandPrefs';
 import { ActivityBucketBanner } from '../components/ActivityBucketBanner';
+import { isPinned, togglePin } from '../pins';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
 
 function vendorNotesPreview(notes?: string): string | undefined {
   const trimmed = notes?.trim();
@@ -202,6 +205,7 @@ export function ProjectDetailScreen(props: {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [addActivityOpen, setAddActivityOpen] = useState(false);
   const [vendorViewMode, setVendorViewMode] = useState<ProjectVendorViewMode>(getProjectVendorViewMode);
   const textScaleControls = useTextScaleControls();
   const [descriptionDraft, setDescriptionDraft] = useState('');
@@ -339,6 +343,9 @@ export function ProjectDetailScreen(props: {
     },
   });
 
+  const activityNewItems = propertyNewItems.filter(
+    (item) => item.key === 'interaction' || item.key === 'serviceEvent'
+  );
   const projectLocalNewItems: PropertyGearNavItem[] = [
     {
       key: 'vendor',
@@ -994,6 +1001,8 @@ export function ProjectDetailScreen(props: {
           </Pressable>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          {vendorsExpanded ? (
+            <>
           <Pressable
             onPress={() => {
               setVendorViewMode('gallery');
@@ -1028,6 +1037,8 @@ export function ProjectDetailScreen(props: {
               color={vendorViewMode === 'list' ? colors.primary : colors.textMuted}
             />
           </Pressable>
+            </>
+          ) : null}
           {vendors.length > 0 ? (
             <Pressable
               onPress={() => {
@@ -1084,59 +1095,58 @@ export function ProjectDetailScreen(props: {
         </View>
       ) : (
         <View
-          style={{
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: colors.text,
-          }}
+          style={[
+            sharedStyles.activityBucketList,
+            {
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.text,
+            },
+          ]}
         >
-          {visibleVendors.map((vendor) => {
+          {visibleVendors.map((vendor, index) => {
             const lastInteraction = interactionsForVendor(state, vendor.id)[0];
             const lastInteractionPhoto = lastInteraction
               ? photosForVendorInteraction(state, lastInteraction.id)[0]
               : undefined;
+            const betweenRows = index < visibleVendors.length - 1;
             return (
-              <VendorListRow
+              <PropertyInteractionListRow
                 key={vendor.id}
-                name={vendor.name}
                 contactName={vendor.contactName}
-                phone={vendor.phone}
-                statusLabel={vendorStatusLabel(vendor.status)}
-                statusColor={vendorStatusColor(vendor.status)}
-                notesPreview={vendorNotesPreview(vendor.notes)}
-                thumbnailUri={firstPhotoUriForVendor(state, vendor)}
-                lastInteractionAtISO={lastInteraction?.occurredAtISO}
-                lastInteractionTitle={
+                companyName={vendor.name}
+                companyPhotoUri={firstPhotoUriForVendor(state, vendor)}
+                vendorStatusLabel={vendorStatusLabel(vendor.status)}
+                vendorStatusColor={vendorStatusColor(vendor.status)}
+                dateISO={lastInteraction?.occurredAtISO}
+                methodLabel={
                   lastInteraction
                     ? vendorContactMethodLabel(lastInteraction.contactMethod)
-                    : undefined
+                    : ''
                 }
-                lastInteractionNotes={lastInteraction?.notes}
-                lastInteractionPhotoUri={lastInteractionPhoto?.localUri}
-                onPress={() => onOpenVendor(vendor.id)}
-                onAddInteraction={() => onAddVendorInteraction(vendor.id)}
-                onPressLastInteraction={
+                notes={lastInteraction?.notes}
+                photoUri={lastInteractionPhoto?.localUri}
+                important={lastInteraction?.important === true}
+                onPress={
                   lastInteraction
                     ? () => onOpenInteraction(vendor.id, lastInteraction.id)
-                    : undefined
+                    : () => onOpenVendor(vendor.id)
                 }
-                cardBackgroundColor={colors.helpBg}
-                dividerColor={colors.text}
-                imageBackgroundColor={colors.helpBg}
+                onPressVendor={() => onOpenVendor(vendor.id)}
+                onAddOwner={() => onAddVendorInteraction(vendor.id)}
+                cardBackgroundColor={colors.bg}
+                ownerBackgroundColor={colors.interactionOwnerBg}
+                dividerColor={colors.sectionTitle}
+                dividerWidth={betweenRows ? 2 : 0}
+                ownerCornerIcon="storefront"
+                cornerIcon="forum"
+                stackRelative={
+                  lastInteraction
+                    ? isAfterToday(lastInteraction.occurredAtISO)
+                    : false
+                }
               />
             );
           })}
-          <Text
-            style={[
-              sharedStyles.cardMeta,
-              {
-                textAlign: 'right',
-                marginTop: 4,
-                marginBottom: 4,
-              },
-            ]}
-          >
-            Last interaction
-          </Text>
         </View>
       )}
     </View>
@@ -1777,6 +1787,18 @@ export function ProjectDetailScreen(props: {
                 void setProjectSectionExpand({ recentInteractions: next });
               }}
             />
+            <Pressable
+              onPress={() => setAddActivityOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Add what's happening"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons name="add" size={24} color={colors.primary} />
+            </Pressable>
             {projectInteractions.length > 0 ? (
               <Pressable
                 onPress={() => {
@@ -1946,6 +1968,12 @@ export function ProjectDetailScreen(props: {
                 {proj.name}
               </Text>
             </View>
+            <PinGearMenuItem
+              pinned={isPinned(state, 'project', proj.id)}
+              onToggle={() => {
+                runMenuAction(() => onSave(togglePin(state, 'project', proj.id)));
+              }}
+            />
             <Pressable
               onPress={() =>
                 runMenuAction(() => openShareOptions(PROJECT_SHARE_PRESET_ALL))
@@ -2128,6 +2156,13 @@ export function ProjectDetailScreen(props: {
       </Modal>
 
       {propertyId ? propertyGearCreateModals : null}
+
+      <PropertyGearNavMenuModal
+        visible={addActivityOpen}
+        title="What's happening"
+        items={activityNewItems}
+        onClose={() => setAddActivityOpen(false)}
+      />
 
       <ProjectShareOptionsModal
         visible={shareOptionsOpen}

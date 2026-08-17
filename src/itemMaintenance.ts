@@ -8,10 +8,10 @@ export function itemInstallOrPurchaseDateISO(item: InventoryItem): string | unde
   const details = item.details as {
     installDateAtISO?: string;
     purchaseDateAtISO?: string;
-  };
-  const install = details.installDateAtISO?.trim();
+  } | undefined;
+  const install = details?.installDateAtISO?.trim();
   if (install) return install;
-  const purchase = details.purchaseDateAtISO?.trim();
+  const purchase = details?.purchaseDateAtISO?.trim();
   if (purchase) return purchase;
   return undefined;
 }

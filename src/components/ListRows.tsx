@@ -974,6 +974,9 @@ export function ProjectListRow(props: {
   onPress: () => void;
   /** Divider under the row; defaults to hairline. */
   dividerColor?: string;
+  /** Home-style card: full-width photo like Properties. */
+  card?: boolean;
+  striped?: boolean;
 }) {
   const {
     name,
@@ -986,8 +989,92 @@ export function ProjectListRow(props: {
     totalCostLabel,
     onPress,
     dividerColor,
+    card,
+    striped,
   } = props;
   const scopeText = scopeLabel?.trim();
+  const vendorLine = (
+    <Text style={sharedStyles.cardMeta}>
+      {vendorCount} vendor{vendorCount === 1 ? '' : 's'}
+      {waitingForQuoteCount > 0 ? (
+        <Text style={{ color: colors.dueSoon, fontWeight: '600', fontSize: 13 }}>
+          {` · ${waitingForQuoteCount} waiting for quote`}
+        </Text>
+      ) : null}
+    </Text>
+  );
+  const details = (
+    <>
+      {scopeText ? (
+        <Text style={sharedStyles.cardMeta} numberOfLines={1}>
+          {scopeText}
+        </Text>
+      ) : null}
+      {statusLabel ? (
+        <Text
+          style={[
+            sharedStyles.cardMeta,
+            { color: statusColor ?? colors.primary, fontWeight: '600', marginTop: 2 },
+          ]}
+          numberOfLines={1}
+        >
+          {statusLabel}
+        </Text>
+      ) : null}
+      {totalCostLabel ? (
+        <Text style={sharedStyles.cardMeta} numberOfLines={1}>
+          {totalCostLabel}
+        </Text>
+      ) : null}
+      {vendorLine}
+    </>
+  );
+
+  if (card) {
+    return (
+      <View
+        style={{
+          marginBottom: 12,
+          padding: 12,
+          borderRadius: 14,
+          backgroundColor: striped ? colors.historyCardBg : colors.card,
+        }}
+      >
+        <Pressable
+          onPress={onPress}
+          style={({ pressed }) => [pressed && sharedStyles.cardPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Open project ${name}`}
+        >
+          {thumbnailUri ? (
+            <Image
+              source={{ uri: thumbnailUri }}
+              style={{
+                width: '100%',
+                aspectRatio: 16 / 10,
+                borderRadius: 12,
+                backgroundColor: colors.photoPlaceholder,
+                marginBottom: 12,
+              }}
+            />
+          ) : (
+            <View
+              style={{
+                width: '100%',
+                aspectRatio: 16 / 10,
+                borderRadius: 12,
+                backgroundColor: colors.photoPlaceholder,
+                marginBottom: 12,
+              }}
+            />
+          )}
+          <Text style={[sharedStyles.cardTitle, { fontSize: 20 }]}>{name}</Text>
+          {details}
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <Pressable
       onPress={onPress}
@@ -1003,6 +1090,7 @@ export function ProjectListRow(props: {
         pressed && sharedStyles.cardPressed,
       ]}
       accessibilityRole="button"
+      accessibilityLabel={`Open project ${name}`}
     >
       {thumbnailUri ? (
         <Image
@@ -1026,37 +1114,7 @@ export function ProjectListRow(props: {
       )}
       <View style={{ flex: 1 }}>
         <Text style={sharedStyles.cardTitle}>{name}</Text>
-        {scopeText ? (
-          <Text style={sharedStyles.cardMeta} numberOfLines={1}>
-            {scopeText}
-          </Text>
-        ) : null}
-        {statusLabel ? (
-          <Text
-            style={[
-              sharedStyles.cardMeta,
-              { color: statusColor ?? colors.primary, fontWeight: '600', marginTop: 2 },
-            ]}
-            numberOfLines={1}
-          >
-            {statusLabel}
-          </Text>
-        ) : null}
-        {totalCostLabel ? (
-          <Text style={sharedStyles.cardMeta} numberOfLines={1}>
-            {totalCostLabel}
-          </Text>
-        ) : null}
-        <Text style={sharedStyles.cardMeta}>
-          {vendorCount} vendor{vendorCount === 1 ? '' : 's'}
-          {waitingForQuoteCount > 0 ? (
-            <Text
-              style={{ color: colors.dueSoon, fontWeight: '600', fontSize: 13 }}
-            >
-              {` · ${waitingForQuoteCount} waiting for quote`}
-            </Text>
-          ) : null}
-        </Text>
+        {details}
       </View>
     </Pressable>
   );
@@ -1375,7 +1433,7 @@ export function PropertyInteractionListRow(props: {
   hideOwner?: boolean;
   vendorStatusLabel?: string;
   vendorStatusColor?: string;
-  dateISO: string;
+  dateISO?: string;
   methodLabel: string;
   notes?: string;
   /** When search hit notes: snippet replacing full notes in the preview line. */
@@ -1388,6 +1446,8 @@ export function PropertyInteractionListRow(props: {
   important?: boolean;
   onPress: () => void;
   onPressVendor?: () => void;
+  /** Add control on the vendor/owner header (e.g. new interaction). */
+  onAddOwner?: () => void;
   cardBackgroundColor?: string;
   /** Slightly darker band behind the vendor/owner header (What's happening). */
   ownerBackgroundColor?: string;
@@ -1420,6 +1480,7 @@ export function PropertyInteractionListRow(props: {
     important,
     onPress,
     onPressVendor,
+    onAddOwner,
     cardBackgroundColor,
     ownerBackgroundColor,
     dividerColor,
@@ -1438,6 +1499,9 @@ export function PropertyInteractionListRow(props: {
   const notesParts =
     highlightQ && notesText ? splitHighlightParts(notesText, highlightQ) : null;
   const showInteractionLine = Boolean(methodText || notesText);
+  const showInteractionStrip = Boolean(
+    dateISO || methodText || notesText || photoUri || important
+  );
   const leftColWidth = ITEM_LIST_THUMB_SIZE;
   const showCompanyPhoto = !hideCompanyPhoto;
   const ownerBandStyle = ownerBackgroundColor
@@ -1513,6 +1577,23 @@ export function PropertyInteractionListRow(props: {
         )
       ) : null}
       {headerText}
+      {onAddOwner ? (
+        <Pressable
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            onAddOwner();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`New interaction for ${companyName}`}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            padding: 2,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <MaterialIcons name="add" size={22} color={colors.primary} />
+        </Pressable>
+      ) : null}
       {ownerCornerIcon ? (
         <MaterialIcons name={ownerCornerIcon} size={22} color={colors.primary} />
       ) : null}
@@ -1552,6 +1633,7 @@ export function PropertyInteractionListRow(props: {
         )
       ) : null}
 
+      {showInteractionStrip ? (
       <Pressable
         onPress={onPress}
         style={({ pressed }) => [
@@ -1598,6 +1680,7 @@ export function PropertyInteractionListRow(props: {
                 ) : null}
               </View>
             ) : null}
+            {dateISO || important ? (
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
               {important ? (
                 <MaterialIcons
@@ -1608,13 +1691,16 @@ export function PropertyInteractionListRow(props: {
                   style={{ marginTop: 2 }}
                 />
               ) : null}
+              {dateISO ? (
               <InteractionDateText
                 iso={dateISO}
                 style={[sharedStyles.cardMeta, { flex: 1, marginTop: 0 }]}
                 restStyle={{ fontWeight: '400', color: colors.textMuted }}
                 stackRelative={stackRelative}
               />
+              ) : null}
             </View>
+            ) : null}
             {showInteractionLine ? (
               <Text
                 style={[sharedStyles.cardMeta, { marginTop: 2 }]}
@@ -1653,6 +1739,7 @@ export function PropertyInteractionListRow(props: {
           </View>
         </View>
       </Pressable>
+      ) : null}
     </View>
   );
 }

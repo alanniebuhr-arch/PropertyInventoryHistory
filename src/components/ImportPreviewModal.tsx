@@ -37,6 +37,8 @@ function kindLabel(kind: ImportChangeEntry['kind']): string {
       return 'Interaction';
     case 'todo':
       return 'To-do';
+    case 'punch':
+      return 'Punch item';
     case 'photo':
       return 'Photo';
     case 'document':

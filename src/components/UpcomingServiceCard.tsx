@@ -19,6 +19,8 @@ export function UpcomingReminderCard(props: {
   /** Used in accessibility labels, e.g. "service" or "to-do". */
   noun?: string;
   important?: boolean;
+  /** Property or project name when the card is shown in a mixed-scope list. */
+  scopeLabel?: string;
   /** Non-overdue card fill; defaults to upcomingCardBg. */
   cardBackgroundColor?: string;
   /** When set, draw a list divider under the row (Property section style). */
@@ -34,6 +36,7 @@ export function UpcomingReminderCard(props: {
     onPress,
     noun = 'reminder',
     important,
+    scopeLabel,
     cardBackgroundColor,
     dividerColor,
     cornerIcon,
@@ -123,6 +126,18 @@ export function UpcomingReminderCard(props: {
       >
         {title}
       </Text>
+      {scopeLabel ? (
+        <Text
+          style={[
+            sharedStyles.cardMeta,
+            { marginTop: 2 },
+            dueOverdue && { color: colors.overdue },
+          ]}
+          numberOfLines={1}
+        >
+          {scopeLabel}
+        </Text>
+      ) : null}
       {hasSecondary ? (
         <View
           style={{

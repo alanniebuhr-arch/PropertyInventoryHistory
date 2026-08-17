@@ -163,12 +163,15 @@ export function PropertyActivitySearchScreen(props: {
   const searchInputRef = useRef<RNTextInput>(null);
   const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(
-    () => routePropertyId ?? null
-  );
+  const routeScopeKey = activitySearchScopeKey(routePropertyId);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(() => {
+    const saved = getActivitySearchPrefs(routeScopeKey).selectedPropertyId;
+    if (saved !== undefined) return saved;
+    return routePropertyId ?? null;
+  });
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => {
     if (routeProjectId) return routeProjectId;
-    return getActivitySearchPrefs(activitySearchScopeKey(routePropertyId)).selectedProjectId;
+    return getActivitySearchPrefs(routeScopeKey).selectedProjectId;
   });
   const [propertyMenuOpen, setPropertyMenuOpen] = useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
@@ -266,6 +269,10 @@ export function PropertyActivitySearchScreen(props: {
     setActivityHistoryExpanded(prefs.activityHistory);
     setActivityUndatedExpanded(prefs.activityUndated);
   }, [scopeKey]);
+
+  useEffect(() => {
+    setActivitySearchPrefs(routeScopeKey, { selectedPropertyId });
+  }, [routeScopeKey, selectedPropertyId]);
 
   useEffect(() => {
     setActivitySearchPrefs(scopeKey, { searchQuery });
@@ -393,7 +400,7 @@ export function PropertyActivitySearchScreen(props: {
           ? propertyById(state, itemRoom.propertyId)
           : undefined;
         const detailsNotes =
-          'notes' in item.details ? item.details.notes : undefined;
+          item.details && 'notes' in item.details ? item.details.notes : undefined;
         const summaryValues = itemListSummaryFields(item)
           .map((field) => field.value)
           .join(' ');
@@ -591,7 +598,7 @@ export function PropertyActivitySearchScreen(props: {
         ? propertyById(state, itemRoom.propertyId)
         : undefined;
       const detailsNotes =
-        'notes' in item.details ? item.details.notes : undefined;
+        item.details && 'notes' in item.details ? item.details.notes : undefined;
       const summaryValues = itemListSummaryFields(item)
         .map((field) => field.value)
         .join(' ');

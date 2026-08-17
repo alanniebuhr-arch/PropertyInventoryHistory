@@ -547,26 +547,27 @@ function normalizeRoofDetails(details: ItemDetails): ItemDetails {
 
 function normalizePoolDetails(details: ItemDetails): ItemDetails {
   if (details.kind !== 'pool') return defaultDetailsForType('pool');
-  const trim = (value?: string) =>
-    typeof value === 'string' ? value.trim() || undefined : undefined;
+  /** Keep spaces while typing; persist still drops a truly empty string. */
+  const text = (value?: string) =>
+    typeof value === 'string' && value.length > 0 ? value : undefined;
   const poolType = normalizePoolType(
     typeof details.poolType === 'string' ? details.poolType : undefined
   );
   return {
     kind: 'pool',
     poolType,
-    poolTypeOther: poolType === 'other' ? trim(details.poolTypeOther) : undefined,
-    volumeGallons: trim(details.volumeGallons),
-    filterMake: trim(details.filterMake),
-    filterModel: trim(details.filterModel),
-    pumpMake: trim(details.pumpMake),
-    pumpModel: trim(details.pumpModel),
-    heaterType: trim(details.heaterType),
-    chemicalNotes: trim(details.chemicalNotes),
-    installDateAtISO: trim(details.installDateAtISO),
-    serviceCompany: trim(details.serviceCompany),
-    servicePhone: trim(details.servicePhone),
-    notes: trim(details.notes),
+    poolTypeOther: poolType === 'other' ? text(details.poolTypeOther) : undefined,
+    volumeGallons: text(details.volumeGallons),
+    filterMake: text(details.filterMake),
+    filterModel: text(details.filterModel),
+    pumpMake: text(details.pumpMake),
+    pumpModel: text(details.pumpModel),
+    heaterType: text(details.heaterType),
+    chemicalNotes: text(details.chemicalNotes),
+    installDateAtISO: text(details.installDateAtISO),
+    serviceCompany: text(details.serviceCompany),
+    servicePhone: text(details.servicePhone),
+    notes: text(details.notes),
     overviewPhotoId: details.overviewPhotoId,
     equipmentPadPhotoId: details.equipmentPadPhotoId,
     manufacturerTagPhotoId: details.manufacturerTagPhotoId,
@@ -943,6 +944,7 @@ function exclusiveItemDetails(itemTypeId: ItemTypeId, details: ItemDetails): Ite
 }
 
 function normalizeDetails(itemTypeId: ItemTypeId, details: ItemDetails): ItemDetails {
+  if (!details) return defaultDetailsForType(itemTypeId);
   if (itemTypeId === 'furnace') return exclusiveItemDetails(itemTypeId, normalizeFurnaceDetails(details));
   if (itemTypeId === 'air_conditioner') {
     return exclusiveItemDetails(itemTypeId, normalizeAirConditionerDetails(details));
@@ -1028,6 +1030,11 @@ function normalizeItem(raw: InventoryItem): InventoryItem {
 function normalizeEvent(raw: ItemEvent): ItemEvent {
   return ensureUpdatedAt({
     ...raw,
+    title: typeof raw.title === 'string' ? raw.title : '',
+    occurredAtISO:
+      typeof raw.occurredAtISO === 'string' && raw.occurredAtISO
+        ? raw.occurredAtISO
+        : raw.createdAtISO ?? raw.updatedAtISO ?? new Date().toISOString(),
     photoIds: Array.isArray(raw.photoIds) ? raw.photoIds : [],
     documentIds: Array.isArray(raw.documentIds) ? raw.documentIds : [],
   });
@@ -1036,21 +1043,51 @@ function normalizeEvent(raw: ItemEvent): ItemEvent {
 function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
   if (!raw || raw.version !== 1) return { ...EMPTY_APP_STATE };
 
-  const properties = Array.isArray(raw.properties) ? raw.properties : [];
-  const rooms = Array.isArray(raw.rooms) ? raw.rooms : [];
-  const items = (Array.isArray(raw.items) ? raw.items : []).map(normalizeItem);
-  const photos = Array.isArray(raw.photos) ? raw.photos : [];
-  const propertyPhotos = Array.isArray(raw.propertyPhotos) ? raw.propertyPhotos : [];
-  const roomPhotos = Array.isArray(raw.roomPhotos) ? raw.roomPhotos : [];
-  const documents = Array.isArray(raw.documents) ? raw.documents : [];
-  const events = (Array.isArray(raw.events) ? raw.events : []).map(normalizeEvent);
-  const projects = Array.isArray(raw.projects) ? raw.projects : [];
-  const projectVendors = Array.isArray(raw.projectVendors) ? raw.projectVendors : [];
-  const projectPhotos = Array.isArray(raw.projectPhotos) ? raw.projectPhotos : [];
-  const vendorPhotos = Array.isArray(raw.vendorPhotos) ? raw.vendorPhotos : [];
-  const vendorInteractions = Array.isArray(raw.vendorInteractions) ? raw.vendorInteractions : [];
-  const propertyTodos = Array.isArray(raw.propertyTodos) ? raw.propertyTodos : [];
-  const projectPunchItems = Array.isArray(raw.projectPunchItems) ? raw.projectPunchItems : [];
+  const properties = Array.isArray(raw.properties)
+    ? raw.properties.filter((p) => p && typeof p.id === 'string')
+    : [];
+  const rooms = Array.isArray(raw.rooms)
+    ? raw.rooms.filter((r) => r && typeof r.id === 'string')
+    : [];
+  const items = (Array.isArray(raw.items) ? raw.items : [])
+    .filter((item) => item && typeof item.id === 'string')
+    .map(normalizeItem);
+  const photos = Array.isArray(raw.photos)
+    ? raw.photos.filter((p) => p && typeof p.id === 'string')
+    : [];
+  const propertyPhotos = Array.isArray(raw.propertyPhotos)
+    ? raw.propertyPhotos.filter((p) => p && typeof p.id === 'string')
+    : [];
+  const roomPhotos = Array.isArray(raw.roomPhotos)
+    ? raw.roomPhotos.filter((p) => p && typeof p.id === 'string')
+    : [];
+  const documents = Array.isArray(raw.documents)
+    ? raw.documents.filter((d) => d && typeof d.id === 'string')
+    : [];
+  const events = (Array.isArray(raw.events) ? raw.events : [])
+    .filter((event) => event && typeof event.id === 'string')
+    .map(normalizeEvent);
+  const projects = Array.isArray(raw.projects)
+    ? raw.projects.filter((p) => p && typeof p.id === 'string')
+    : [];
+  const projectVendors = Array.isArray(raw.projectVendors)
+    ? raw.projectVendors.filter((v) => v && typeof v.id === 'string')
+    : [];
+  const projectPhotos = Array.isArray(raw.projectPhotos)
+    ? raw.projectPhotos.filter((p) => p && typeof p.id === 'string')
+    : [];
+  const vendorPhotos = Array.isArray(raw.vendorPhotos)
+    ? raw.vendorPhotos.filter((p) => p && typeof p.id === 'string')
+    : [];
+  const vendorInteractions = Array.isArray(raw.vendorInteractions)
+    ? raw.vendorInteractions.filter((i) => i && typeof i.id === 'string')
+    : [];
+  const propertyTodos = Array.isArray(raw.propertyTodos)
+    ? raw.propertyTodos.filter((t) => t && typeof t.id === 'string')
+    : [];
+  const projectPunchItems = Array.isArray(raw.projectPunchItems)
+    ? raw.projectPunchItems.filter((t) => t && typeof t.id === 'string')
+    : [];
 
   const validDocumentIds = new Set(
     documents
@@ -1333,6 +1370,8 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     projectPunchItems: cleanProjectPunchItems.map(ensureUpdatedAt),
     pins: livingPins({
       ...EMPTY_APP_STATE,
+      properties: cleanProperties,
+      projects: cleanProjectsWithPhotos,
       rooms: cleanRooms,
       items: cleanItems,
       events: cleanEvents,
@@ -1399,7 +1438,7 @@ export function propertyById(state: AppState, id: string): Property | undefined 
 export function roomsForProperty(state: AppState, propertyId: string): Room[] {
   return state.rooms
     .filter((r) => r.propertyId === propertyId)
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    .sort((a, b) => a.sortOrder - b.sortOrder || (a.name ?? '').localeCompare(b.name ?? ''));
 }
 
 export function roomById(state: AppState, id: string): Room | undefined {
@@ -1407,8 +1446,8 @@ export function roomById(state: AppState, id: string): Room | undefined {
 }
 
 function compareInventoryItemsForList(a: InventoryItem, b: InventoryItem): number {
-  const typeCompare = catalogLabel(a.itemTypeId).localeCompare(
-    catalogLabel(b.itemTypeId),
+  const typeCompare = (catalogLabel(a.itemTypeId) || '').localeCompare(
+    catalogLabel(b.itemTypeId) || '',
     undefined,
     { sensitivity: 'base' }
   );
@@ -1417,7 +1456,7 @@ function compareInventoryItemsForList(a: InventoryItem, b: InventoryItem): numbe
     sensitivity: 'base',
   });
   if (nameCompare !== 0) return nameCompare;
-  return a.createdAtISO.localeCompare(b.createdAtISO);
+  return (a.createdAtISO ?? '').localeCompare(b.createdAtISO ?? '');
 }
 
 export function itemsForRoom(state: AppState, roomId: string): InventoryItem[] {
@@ -1438,16 +1477,16 @@ export function photosForItem(state: AppState, itemId: string): ItemPhoto[] {
   const item = state.items.find((i) => i.id === itemId);
   if (!item) return [];
   return item.photoIds
-    .map((photoId) => state.photos.find((p) => p.id === photoId))
-    .filter((p): p is ItemPhoto => p != null && !p.eventId);
+    ?.map((photoId) => state.photos.find((p) => p.id === photoId))
+    .filter((p): p is ItemPhoto => p != null && !p.eventId) ?? [];
 }
 
 export function photosForEvent(state: AppState, eventId: string): ItemPhoto[] {
   const event = state.events.find((e) => e.id === eventId);
   if (!event) return [];
   return event.photoIds
-    .map((photoId) => state.photos.find((p) => p.id === photoId))
-    .filter((p): p is ItemPhoto => p != null);
+    ?.map((photoId) => state.photos.find((p) => p.id === photoId))
+    .filter((p): p is ItemPhoto => p != null) ?? [];
 }
 
 /** First item-level photo URI for list thumbnails (appliance slot order, else photoIds order). */
@@ -1455,7 +1494,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
   const itemPhotos = state.photos.filter((p) => p.itemId === item.id && !p.eventId);
   if (itemPhotos.length === 0) return undefined;
 
-  if (item.itemTypeId === 'appliance' && item.details.kind === 'appliance') {
+  if (item.itemTypeId === 'appliance' && item.details?.kind === 'appliance') {
     for (const slot of APPLIANCE_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1465,7 +1504,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'electric_panel' && item.details.kind === 'electric_panel') {
+  if (item.itemTypeId === 'electric_panel' && item.details?.kind === 'electric_panel') {
     for (const slot of ELECTRIC_PANEL_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1475,7 +1514,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'water_heater' && item.details.kind === 'water_heater') {
+  if (item.itemTypeId === 'water_heater' && item.details?.kind === 'water_heater') {
     for (const slot of WATER_HEATER_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1485,7 +1524,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'security_system' && item.details.kind === 'security_system') {
+  if (item.itemTypeId === 'security_system' && item.details?.kind === 'security_system') {
     for (const slot of SECURITY_SYSTEM_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1495,7 +1534,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'radon_mitigation' && item.details.kind === 'radon_mitigation') {
+  if (item.itemTypeId === 'radon_mitigation' && item.details?.kind === 'radon_mitigation') {
     for (const slot of RADON_MITIGATION_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1505,7 +1544,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'well_pump' && item.details.kind === 'well_pump') {
+  if (item.itemTypeId === 'well_pump' && item.details?.kind === 'well_pump') {
     for (const slot of WELL_PUMP_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1515,7 +1554,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'generator' && item.details.kind === 'generator') {
+  if (item.itemTypeId === 'generator' && item.details?.kind === 'generator') {
     for (const slot of GENERATOR_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1525,7 +1564,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'sump_pump' && item.details.kind === 'sump_pump') {
+  if (item.itemTypeId === 'sump_pump' && item.details?.kind === 'sump_pump') {
     for (const slot of SUMP_PUMP_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1535,7 +1574,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'garage_door' && item.details.kind === 'garage_door') {
+  if (item.itemTypeId === 'garage_door' && item.details?.kind === 'garage_door') {
     for (const slot of GARAGE_DOOR_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1545,7 +1584,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'roof' && item.details.kind === 'roof') {
+  if (item.itemTypeId === 'roof' && item.details?.kind === 'roof') {
     for (const slot of ROOF_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1555,7 +1594,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'pool' && item.details.kind === 'pool') {
+  if (item.itemTypeId === 'pool' && item.details?.kind === 'pool') {
     for (const slot of POOL_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1565,7 +1604,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'irrigation' && item.details.kind === 'irrigation') {
+  if (item.itemTypeId === 'irrigation' && item.details?.kind === 'irrigation') {
     for (const slot of IRRIGATION_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1575,7 +1614,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'ev_charger' && item.details.kind === 'ev_charger') {
+  if (item.itemTypeId === 'ev_charger' && item.details?.kind === 'ev_charger') {
     for (const slot of EV_CHARGER_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1585,7 +1624,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'solar' && item.details.kind === 'solar') {
+  if (item.itemTypeId === 'solar' && item.details?.kind === 'solar') {
     for (const slot of SOLAR_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1595,7 +1634,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'hot_tub' && item.details.kind === 'hot_tub') {
+  if (item.itemTypeId === 'hot_tub' && item.details?.kind === 'hot_tub') {
     for (const slot of HOT_TUB_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1605,7 +1644,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  if (item.itemTypeId === 'toilet' && item.details.kind === 'toilet') {
+  if (item.itemTypeId === 'toilet' && item.details?.kind === 'toilet') {
     for (const slot of TOILET_PHOTO_SLOTS) {
       const photoId = item.details[slot.key];
       if (photoId) {
@@ -1615,7 +1654,7 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
     }
   }
 
-  for (const photoId of item.photoIds) {
+  for (const photoId of item.photoIds ?? []) {
     const photo = itemPhotos.find((p) => p.id === photoId);
     if (photo) return photo.localUri;
   }
@@ -1625,8 +1664,10 @@ export function firstPhotoUriForItem(state: AppState, item: InventoryItem): stri
 
 export function eventsForItem(state: AppState, itemId: string): ItemEvent[] {
   return state.events
-    .filter((e) => e.itemId === itemId)
-    .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
+    .filter((e) => e && e.itemId === itemId)
+    .sort((a, b) =>
+      (b.occurredAtISO ?? '').localeCompare(a.occurredAtISO ?? '')
+    );
 }
 
 /** Past/today completed service logs (excludes future-dated and still-open reminders). */
@@ -1643,15 +1684,15 @@ export function itemsForProperty(state: AppState, propertyId: string): Inventory
 
 /** Display/sort date for services lists — same field as list/detail UI. */
 function eventListSortKey(event: ItemEvent): string {
-  return serviceListDateISO(event);
+  return serviceListDateISO(event) || event.occurredAtISO || event.updatedAtISO || '';
 }
 
 function sortEventsNewestFirst(events: ItemEvent[]): ItemEvent[] {
   return [...events].sort((a, b) => {
     const byDate = eventListSortKey(b).localeCompare(eventListSortKey(a));
     if (byDate !== 0) return byDate;
-    const aSecondary = a.updatedAtISO ?? a.occurredAtISO;
-    const bSecondary = b.updatedAtISO ?? b.occurredAtISO;
+    const aSecondary = a.updatedAtISO ?? a.occurredAtISO ?? '';
+    const bSecondary = b.updatedAtISO ?? b.occurredAtISO ?? '';
     return bSecondary.localeCompare(aSecondary);
   });
 }
@@ -1681,7 +1722,7 @@ export function nextRoomSortOrder(state: AppState, propertyId: string): number {
 export function projectsForProperty(state: AppState, propertyId: string): Project[] {
   return state.projects
     .filter((p) => p.propertyId === propertyId)
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    .sort((a, b) => a.sortOrder - b.sortOrder || (a.name ?? '').localeCompare(b.name ?? ''));
 }
 
 /** Incomplete projects across all properties (excludes status complete). */
@@ -1693,7 +1734,7 @@ export function incompleteProjects(state: AppState): Project[] {
     .sort((a, b) => {
       const byProperty = propertyName(a.propertyId).localeCompare(propertyName(b.propertyId));
       if (byProperty !== 0) return byProperty;
-      return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+      return a.sortOrder - b.sortOrder || (a.name ?? '').localeCompare(b.name ?? '');
     });
 }
 
@@ -1704,7 +1745,7 @@ export function projectById(state: AppState, id: string): Project | undefined {
 export function vendorsForProject(state: AppState, projectId: string): ProjectVendor[] {
   return state.projectVendors
     .filter((v) => v.projectId === projectId)
-    .sort((a, b) => a.name.localeCompare(b.name) || a.createdAtISO.localeCompare(b.createdAtISO));
+      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '') || (a.createdAtISO ?? '').localeCompare(b.createdAtISO ?? ''));
 }
 
 export function vendorById(state: AppState, id: string): ProjectVendor | undefined {
@@ -1714,7 +1755,7 @@ export function vendorById(state: AppState, id: string): ProjectVendor | undefin
 export function interactionsForVendor(state: AppState, vendorId: string): VendorInteraction[] {
   return state.vendorInteractions
     .filter((i) => i.vendorId === vendorId)
-    .sort((a, b) => b.occurredAtISO.localeCompare(a.occurredAtISO));
+    .sort((a, b) => (b.occurredAtISO ?? '').localeCompare(a.occurredAtISO ?? ''));
 }
 
 /** Resolve the property for an interaction (explicit propertyId, project, or vendor → project). */
@@ -1786,10 +1827,10 @@ function sortInteractionsNewestFirst(
   interactions: VendorInteraction[]
 ): VendorInteraction[] {
   return [...interactions].sort((a, b) => {
-    const byOccurred = b.occurredAtISO.localeCompare(a.occurredAtISO);
+    const byOccurred = (b.occurredAtISO ?? '').localeCompare(a.occurredAtISO ?? '');
     if (byOccurred !== 0) return byOccurred;
-    const aSecondary = a.updatedAtISO ?? a.createdAtISO;
-    const bSecondary = b.updatedAtISO ?? b.createdAtISO;
+    const aSecondary = a.updatedAtISO ?? a.createdAtISO ?? '';
+    const bSecondary = b.updatedAtISO ?? b.createdAtISO ?? '';
     return bSecondary.localeCompare(aSecondary);
   });
 }
@@ -1832,7 +1873,7 @@ export function todosForProperty(state: AppState, propertyId: string): PropertyT
       const aDue = a.dueAtISO ?? '\uffff';
       const bDue = b.dueAtISO ?? '\uffff';
       if (aDue !== bDue) return aDue.localeCompare(bDue);
-      return a.createdAtISO.localeCompare(b.createdAtISO);
+      return (a.createdAtISO ?? '').localeCompare(b.createdAtISO ?? '');
     });
 }
 
@@ -1845,7 +1886,7 @@ export function ideasForProperty(state: AppState, propertyId: string): PropertyT
       const aDue = a.dueAtISO ?? '\uffff';
       const bDue = b.dueAtISO ?? '\uffff';
       if (aDue !== bDue) return aDue.localeCompare(bDue);
-      return a.createdAtISO.localeCompare(b.createdAtISO);
+      return (a.createdAtISO ?? '').localeCompare(b.createdAtISO ?? '');
     });
 }
 
@@ -1889,7 +1930,7 @@ export function punchItemsForProject(state: AppState, projectId: string): Projec
       const aDue = a.dueAtISO ?? '\uffff';
       const bDue = b.dueAtISO ?? '\uffff';
       if (aDue !== bDue) return aDue.localeCompare(bDue);
-      return a.createdAtISO.localeCompare(b.createdAtISO);
+      return (a.createdAtISO ?? '').localeCompare(b.createdAtISO ?? '');
     });
 }
 

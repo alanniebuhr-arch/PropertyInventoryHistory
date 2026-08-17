@@ -5,6 +5,11 @@ export type ActivitySearchPrefs = {
   scrollY: number;
   /** Project filter within a property scope; always null for "all". */
   selectedProjectId: string | null;
+  /**
+   * Property picker on Search all. `null` is All properties; omit until the user
+   * (or a persist effect) sets it so a typed query does not look like All.
+   */
+  selectedPropertyId?: string | null;
   /** Future Activity bucket (default collapsed). */
   activityFuture: boolean;
   activityToday: boolean;

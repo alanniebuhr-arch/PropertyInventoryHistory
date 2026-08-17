@@ -9,7 +9,7 @@ import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
 import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { recordUpdatedAt } from './syncStamp';
 import { countDeletedIds } from './syncMeta';
-import { livingPins, mergePins, pinsForProperty } from './pins';
+import { livingPins, mergePins, normalizePins, pinsForProperty } from './pins';
 import { deletePropertyCascade } from './storage';
 import { itemDisplayLabel } from './itemCatalog';
 import { vendorContactMethodLabel } from './vendorContactMethod';
@@ -49,27 +49,37 @@ function collectDocumentIdsFromValue(value: unknown, into: Set<string>) {
   }
 }
 
-function coerceAppState(state: Partial<AppState> | AppState | undefined): AppState {
+function recordsWithId<T extends { id?: unknown }>(list: unknown): T[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (row): row is T =>
+      !!row &&
+      typeof row === 'object' &&
+      typeof (row as { id?: unknown }).id === 'string' &&
+      (row as { id: string }).id.length > 0
+  );
+}
+
+/** Drop null/non-record rows so import of older or hand-edited packages cannot crash. */
+export function coerceAppState(state: Partial<AppState> | AppState | undefined): AppState {
   return {
     version: 1,
-    properties: Array.isArray(state?.properties) ? state!.properties : [],
-    rooms: Array.isArray(state?.rooms) ? state!.rooms : [],
-    items: Array.isArray(state?.items) ? state!.items : [],
-    photos: Array.isArray(state?.photos) ? state!.photos : [],
-    propertyPhotos: Array.isArray(state?.propertyPhotos) ? state!.propertyPhotos : [],
-    roomPhotos: Array.isArray(state?.roomPhotos) ? state!.roomPhotos : [],
-    documents: Array.isArray(state?.documents) ? state!.documents : [],
-    events: Array.isArray(state?.events) ? state!.events : [],
-    projects: Array.isArray(state?.projects) ? state!.projects : [],
-    projectVendors: Array.isArray(state?.projectVendors) ? state!.projectVendors : [],
-    projectPhotos: Array.isArray(state?.projectPhotos) ? state!.projectPhotos : [],
-    vendorPhotos: Array.isArray(state?.vendorPhotos) ? state!.vendorPhotos : [],
-    vendorInteractions: Array.isArray(state?.vendorInteractions)
-      ? state!.vendorInteractions
-      : [],
-    propertyTodos: Array.isArray(state?.propertyTodos) ? state!.propertyTodos : [],
-    projectPunchItems: Array.isArray(state?.projectPunchItems) ? state!.projectPunchItems : [],
-    pins: Array.isArray(state?.pins) ? state!.pins : [],
+    properties: recordsWithId(state?.properties),
+    rooms: recordsWithId(state?.rooms),
+    items: recordsWithId(state?.items),
+    photos: recordsWithId(state?.photos),
+    propertyPhotos: recordsWithId(state?.propertyPhotos),
+    roomPhotos: recordsWithId(state?.roomPhotos),
+    documents: recordsWithId(state?.documents),
+    events: recordsWithId(state?.events),
+    projects: recordsWithId(state?.projects),
+    projectVendors: recordsWithId(state?.projectVendors),
+    projectPhotos: recordsWithId(state?.projectPhotos),
+    vendorPhotos: recordsWithId(state?.vendorPhotos),
+    vendorInteractions: recordsWithId(state?.vendorInteractions),
+    propertyTodos: recordsWithId(state?.propertyTodos),
+    projectPunchItems: recordsWithId(state?.projectPunchItems),
+    pins: normalizePins(state?.pins),
   };
 }
 
@@ -440,7 +450,7 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
       ...(local.projectPunchItems ?? []),
       ...((incoming.projectPunchItems ?? []).filter((t) => !projectPunchItemIds.has(t.id))),
     ],
-    pins: mergePins(local.pins ?? [], incoming.pins ?? []),
+    pins: mergePins(local.pins ?? [], normalizePins(incoming.pins)),
   };
 }
 
@@ -490,11 +500,14 @@ function classifyUpsert(
   local: TimedRecord[],
   incoming: TimedRecord[]
 ): { added: TimedRecord[]; updated: TimedRecord[]; unchanged: TimedRecord[] } {
-  const localMap = new Map(local.map((r) => [r.id, r]));
+  const localMap = new Map(
+    local.filter((r) => r && typeof r.id === 'string').map((r) => [r.id, r])
+  );
   const added: TimedRecord[] = [];
   const updated: TimedRecord[] = [];
   const unchanged: TimedRecord[] = [];
   for (const remote of incoming) {
+    if (!remote || typeof remote.id !== 'string') continue;
     const existing = localMap.get(remote.id);
     if (!existing) {
       added.push(remote);
@@ -946,9 +959,9 @@ export function previewCollaborativeImport(
   entries.sort((a, b) => {
     const byAction = actionOrder[a.action] - actionOrder[b.action];
     if (byAction !== 0) return byAction;
-    const byKind = a.kind.localeCompare(b.kind);
+    const byKind = (a.kind ?? '').localeCompare(b.kind ?? '');
     if (byKind !== 0) return byKind;
-    return a.label.localeCompare(b.label);
+    return (a.label ?? '').localeCompare(b.label ?? '');
   });
 
   return { summary, entries };
@@ -959,8 +972,9 @@ function upsertById<T extends { id: string; updatedAtISO?: string; createdAtISO?
   incoming: T[],
   summary: CollaborativeMergeSummary
 ): T[] {
-  const map = new Map(local.map((r) => [r.id, r]));
+  const map = new Map(local.filter((r) => r && typeof r.id === 'string').map((r) => [r.id, r]));
   for (const remote of incoming) {
+    if (!remote || typeof remote.id !== 'string') continue;
     const existing = map.get(remote.id);
     if (!existing) {
       map.set(remote.id, remote);
@@ -1072,7 +1086,7 @@ export function mergeCollaborativeState(
       incoming.projectPunchItems ?? [],
       summary
     ),
-    pins: mergePins(local.pins ?? [], incoming.pins ?? []),
+    pins: mergePins(local.pins ?? [], normalizePins(incoming.pins)),
   };
 
   if (countDeletedIds(deletedIds) > 0) {

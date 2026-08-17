@@ -119,7 +119,7 @@ function collectCandidates(state: AppState): Candidate[] {
       title: property?.name?.trim()
         ? `${property.name.trim()} · Service`
         : 'Service reminder',
-      body: event.title.trim() || assetLabel,
+      body: event.title?.trim() || assetLabel,
       data: {
         kind: 'event',
         id: event.id,

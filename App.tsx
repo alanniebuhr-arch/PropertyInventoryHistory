@@ -157,11 +157,8 @@ export default function App() {
         if (!cancelled) {
           setState(s);
           setTextScaleStepState(textStep);
-          void syncReminderNotifications(s);
-          if (s.properties.length === 1) {
-            const propertyId = s.properties[0]!.id;
-            setStack([{ name: 'home' }, { name: 'property', propertyId }]);
-          }
+          void syncReminderNotifications(s).catch(() => {});
+          setStack([{ name: 'home' }]);
         }
       } catch {
         if (!cancelled) setState({ ...EMPTY_APP_STATE });
@@ -204,9 +201,18 @@ export default function App() {
   }, [loading, openFromReminderNotification]);
 
   const persist = useCallback(async (next: AppState) => {
-    const saved = await saveAppState(next);
-    setState(saved);
-    void syncReminderNotifications(saved);
+    try {
+      const saved = await saveAppState(next);
+      setState(saved);
+      try {
+        await syncReminderNotifications(saved);
+      } catch {
+        // Scheduling is best-effort; a notification failure must not undo import.
+      }
+    } catch (error) {
+      console.error('persist failed', error);
+      throw error;
+    }
   }, []);
 
   const setTextScaleStep = useCallback((step: number) => {
@@ -1322,7 +1328,7 @@ export default function App() {
             state={state}
             mode={route.mode}
             onBack={pop}
-            onImport={(next) => void persist(next)}
+            onImport={(next) => persist(next)}
             onSave={(next) => void persist(next)}
           />
         );
@@ -1338,7 +1344,9 @@ export default function App() {
         <StatusBar style="dark" />
         <TextScaleProvider scale={textScale} step={textScaleStep} setStep={setTextScaleStep}>
           <View style={{ flex: 1 }}>
-            <AppErrorBoundary onReset={resetApp}>{screen}</AppErrorBoundary>
+            <AppErrorBoundary key={route.name} onReset={resetApp}>
+              {screen}
+            </AppErrorBoundary>
             <DevBuildBanner />
           </View>
         </TextScaleProvider>

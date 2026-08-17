@@ -25,6 +25,7 @@ import { UpcomingReminderCard, UpcomingServiceCard } from '../components/Upcomin
 import { PropertyPhotosSection } from '../components/PropertyPhotosSection';
 import { ReuseExistingPhotosProvider } from '../components/ReuseExistingPhotosProvider';
 import {
+  PropertyGearNavMenuModal,
   ToolbarNewSearchControls,
   usePropertyGearNav,
 } from '../components/PropertyGearNavItems';
@@ -102,6 +103,8 @@ import {
   type PropertyProjectViewMode,
 } from '../propertyProjectViewPrefs';
 import { Text, useTextScaleControls } from '../textScale';
+import { isPinned, togglePin } from '../pins';
+import { PinGearMenuItem } from '../components/PinGearMenuItem';
 import {
   buildPropertyExportSnapshot,
   PROPERTY_SHARE_PRESET_ALL,
@@ -207,6 +210,7 @@ export function PropertyDetailScreen(props: {
   );
   const didRestoreScrollRef = useRef(savedScrollPrefs.scrollY <= 0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [addActivityOpen, setAddActivityOpen] = useState(false);
   const [showReorderArrows, setShowReorderArrows] = useState(false);
   const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null);
   const [slideshowEditorOpen, setSlideshowEditorOpen] = useState(false);
@@ -286,6 +290,10 @@ export function PropertyDetailScreen(props: {
       onSave,
     },
   });
+
+  const activityNewItems = propertyNewItems.filter(
+    (item) => item.key === 'interaction' || item.key === 'serviceEvent'
+  );
 
   useEffect(() => {
     const prefs = getPropertyScrollPrefs(propertyId);
@@ -418,7 +426,12 @@ export function PropertyDetailScreen(props: {
   }
 
   const prop = property;
-  const favoritePhotos = slideshowPhotosForProperty(state, propertyId);
+  let favoritePhotos: { id: string; uri: string; label: string; notes?: string }[] = [];
+  try {
+    favoritePhotos = slideshowPhotosForProperty(state, propertyId);
+  } catch {
+    favoritePhotos = [];
+  }
   const slideshowPhotosFromState: ViewerPhoto[] = favoritePhotos.map((photo) => ({
     id: photo.id,
     uri: photo.uri,
@@ -554,7 +567,7 @@ export function PropertyDetailScreen(props: {
       dueAt: interaction.occurredAtISO,
       interaction,
     })),
-  ].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+  ].sort((a, b) => (a.dueAt ?? '').localeCompare(b.dueAt ?? ''));
 
   type ActivityEntry =
     | {
@@ -584,7 +597,7 @@ export function PropertyDetailScreen(props: {
       at: serviceListDateISO(event),
       event,
     })),
-  ].sort((a, b) => b.at.localeCompare(a.at));
+  ].sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''));
   const recentActivity = recentActivityAll.slice(0, 10);
 
   type ActivityBucket = 'future' | 'today' | 'history';
@@ -1171,6 +1184,8 @@ export function PropertyDetailScreen(props: {
             </Pressable>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {projectsExpanded ? (
+              <>
             <Pressable
               onPress={() => {
                 setProjectViewMode('gallery');
@@ -1211,6 +1226,8 @@ export function PropertyDetailScreen(props: {
                 color={projectViewMode === 'list' ? colors.primary : colors.textMuted}
               />
             </Pressable>
+              </>
+            ) : null}
             {projects.length > 0 ? (
               <Pressable
                 onPress={() => {
@@ -1338,6 +1355,8 @@ export function PropertyDetailScreen(props: {
             </Pressable>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {roomsExpanded ? (
+              <>
             <Pressable
               onPress={() => {
                 setRoomViewMode('gallery');
@@ -1378,6 +1397,8 @@ export function PropertyDetailScreen(props: {
                 color={roomViewMode === 'list' ? colors.primary : colors.textMuted}
               />
             </Pressable>
+              </>
+            ) : null}
             {rooms.length > 0 ? (
               <Pressable
                 onPress={() => {
@@ -1650,6 +1671,18 @@ export function PropertyDetailScreen(props: {
                 void setPropertySectionExpand(propertyId, { recentActivity: next });
               }}
             />
+            <Pressable
+              onPress={() => setAddActivityOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Add what's happening"
+              hitSlop={6}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <MaterialIcons name="add" size={24} color={colors.primary} />
+            </Pressable>
             {recentActivityAll.length > 0 ? (
               <Pressable
                 onPress={() => {
@@ -1908,6 +1941,12 @@ export function PropertyDetailScreen(props: {
                 {prop.name}
               </Text>
             </View>
+            <PinGearMenuItem
+              pinned={isPinned(state, 'property', prop.id)}
+              onToggle={() => {
+                runMenuAction(() => onSave(togglePin(state, 'property', prop.id)));
+              }}
+            />
             {(
               [
                 {
@@ -2011,6 +2050,13 @@ export function PropertyDetailScreen(props: {
       </Modal>
 
       {propertyGearCreateModals}
+
+      <PropertyGearNavMenuModal
+        visible={addActivityOpen}
+        title="What's happening"
+        items={activityNewItems}
+        onClose={() => setAddActivityOpen(false)}
+      />
 
       <RenameModal
         visible={renameOpen}

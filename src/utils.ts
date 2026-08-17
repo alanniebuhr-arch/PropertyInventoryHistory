@@ -6,15 +6,20 @@ export function nowISO(): string {
   return new Date().toISOString();
 }
 
-/** Section heading: append (N) or (N/done) when collapsed with items. */
+/** Section heading: append (N), (N/done), or (N with M overdue) when collapsed with items. */
 export function collapsedSectionLabel(
   title: string,
   expanded: boolean,
   count: number,
   /** When set, format is (count/doneCount). */
-  doneCount?: number
+  doneCount?: number,
+  /** When > 0, format is (count with overdueCount overdue). */
+  overdueCount?: number
 ): string {
   if (expanded || count <= 0) return title;
+  if (overdueCount != null && overdueCount > 0) {
+    return `${title} (${count} with ${overdueCount} overdue)`;
+  }
   if (doneCount != null) return `${title} (${count}/${doneCount})`;
   return `${title} (${count})`;
 }

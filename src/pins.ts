@@ -2,6 +2,8 @@ import type { AppState, PinnedKind, PinnedRef } from './types';
 import { nowISO } from './utils';
 
 const PIN_KINDS = new Set<PinnedKind>([
+  'property',
+  'project',
   'room',
   'item',
   'event',
@@ -47,6 +49,10 @@ export function isPinned(state: AppState, kind: PinnedKind, id: string): boolean
 
 export function pinTargetExists(state: AppState, pin: PinnedRef): boolean {
   switch (pin.kind) {
+    case 'property':
+      return state.properties.some((p) => p.id === pin.id);
+    case 'project':
+      return state.projects.some((p) => p.id === pin.id);
     case 'room':
       return state.rooms.some((r) => r.id === pin.id);
     case 'item':
@@ -74,6 +80,10 @@ export function withLivingPins(state: AppState): AppState {
 
 export function propertyIdForPin(state: AppState, pin: PinnedRef): string | undefined {
   switch (pin.kind) {
+    case 'property':
+      return pin.id;
+    case 'project':
+      return state.projects.find((p) => p.id === pin.id)?.propertyId;
     case 'room':
       return state.rooms.find((r) => r.id === pin.id)?.propertyId;
     case 'item': {
@@ -148,6 +158,10 @@ export function mergePins(local: PinnedRef[], incoming: PinnedRef[]): PinnedRef[
 
 export function pinKindLabel(kind: PinnedKind, extra?: { todoKind?: 'todo' | 'idea' }): string {
   switch (kind) {
+    case 'property':
+      return 'Property';
+    case 'project':
+      return 'Plan';
     case 'room':
       return 'Room';
     case 'item':

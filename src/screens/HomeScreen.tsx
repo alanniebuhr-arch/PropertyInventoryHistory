@@ -53,8 +53,10 @@ import {
   upcomingNotOverdueCountForRoom,
   upcomingReminderCountForProperty,
   upcomingReminderEntriesForProperty,
+  upcomingReminderEntriesAll,
   upcomingDueAtISO,
   isAfterToday,
+  isOverdue,
   serviceListDateISO,
   UPCOMING_HORIZON_OPTIONS,
   type UpcomingHorizon,
@@ -68,13 +70,23 @@ import {
   getHomePropertiesExpanded,
   getHomeProjectsExpanded,
   getHomePinsExpanded,
+  getHomeRemindersExpanded,
   setHomePropertiesExpanded,
   setHomeProjectsExpanded,
   setHomePinsExpanded,
+  setHomeRemindersExpanded,
 } from '../homeSectionExpandPrefs';
 import { applyPropertyTemplate, type DwellingType } from '../propertyTemplate';
 import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
 import { useKeyboardSheetScroll } from '../components/useKeyboardSheetScroll';
+
+function safeCompute<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
 
 function DwellingPicker(props: {
   value: DwellingType;
@@ -197,6 +209,9 @@ export function HomeScreen(props: {
   const [propertiesExpanded, setPropertiesExpanded] = useState(getHomePropertiesExpanded);
   const [projectsExpanded, setProjectsExpanded] = useState(getHomeProjectsExpanded);
   const [pinsExpanded, setPinsExpanded] = useState(getHomePinsExpanded);
+  const [homeRemindersExpanded, setHomeRemindersExpandedState] = useState(
+    getHomeRemindersExpanded
+  );
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
@@ -307,12 +322,32 @@ export function HomeScreen(props: {
     void setHomePinsExpanded(next);
   }
 
-  const sorted = [...state.properties].sort((a, b) => a.name.localeCompare(b.name));
-  const activeProjects = incompleteProjects(state);
-  const pinnedItems = livingPins(state);
+  function toggleHomeRemindersExpanded() {
+    const next = !homeRemindersExpanded;
+    setHomeRemindersExpandedState(next);
+    void setHomeRemindersExpanded(next);
+  }
+
+  const sorted = safeCompute(
+    () => [...state.properties].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')),
+    []
+  );
+  const activeProjects = safeCompute(() => incompleteProjects(state), []);
+  const pinnedItems = safeCompute(() => livingPins(state), []);
+  const allReminders = safeCompute(
+    () => upcomingReminderEntriesAll(state, upcomingHorizon),
+    []
+  );
+  const overdueReminderCount = allReminders.filter((entry) => isOverdue(entry.dueAt)).length;
 
   function openPinned(pin: PinnedRef) {
     switch (pin.kind) {
+      case 'property':
+        onOpenProperty(pin.id);
+        return;
+      case 'project':
+        onOpenProject(pin.id);
+        return;
       case 'room':
         onOpenRoom(pin.id);
         return;
@@ -399,9 +434,9 @@ export function HomeScreen(props: {
     onOpenProject(project.id);
   }
   const periodLabel = dueSoonPeriodLabel(upcomingHorizon);
-  const hasInteractions = state.vendorInteractions.length > 0;
-  const hasServices = state.events.length > 0;
-  const hasAssets = state.items.length > 0;
+  const hasInteractions = (state.vendorInteractions ?? []).length > 0;
+  const hasServices = (state.events ?? []).length > 0;
+  const hasAssets = (state.items ?? []).length > 0;
 
   const homeNewItems: PropertyGearNavItem[] = [
     {
@@ -409,6 +444,14 @@ export function HomeScreen(props: {
       prefix: 'New',
       keyword: 'Property',
       onPress: () => runMenuAction(openAdd),
+    },
+    {
+      key: 'project',
+      prefix: 'New',
+      keyword: 'Project',
+      icon: 'shovel',
+      helpText: 'Organize a job',
+      onPress: () => runMenuAction(openAddProject),
     },
   ];
   const homeSearchItems: PropertyGearNavItem[] = [
@@ -501,35 +544,160 @@ export function HomeScreen(props: {
           <Text style={[sharedStyles.subtitle, { marginBottom: 0, flex: 1 }]}>
             Manage assets and projects on your properties.
           </Text>
-          <Pressable
-            onPress={openUpcomingHorizonPicker}
-            accessibilityRole="button"
-            accessibilityLabel={`Upcoming range: ${upcomingHorizonLabel(upcomingHorizon)}`}
-            accessibilityHint="Opens a list of time ranges for upcoming reminder counts."
-            style={({ pressed }) => ({
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 2,
-              opacity: pressed ? 0.7 : 1,
-              paddingVertical: 2,
-              flexShrink: 0,
-            })}
-          >
-            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
-              {upcomingHorizonLabel(upcomingHorizon)}
+          <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textMuted }}>
+              Look ahead
             </Text>
-            <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
-          </Pressable>
+            <Pressable
+              onPress={openUpcomingHorizonPicker}
+              accessibilityRole="button"
+              accessibilityLabel={`Look ahead: ${upcomingHorizonLabel(upcomingHorizon)}`}
+              accessibilityHint="Opens a list of time ranges for upcoming reminder counts."
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 2,
+                opacity: pressed ? 0.7 : 1,
+                paddingVertical: 2,
+              })}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+                {upcomingHorizonLabel(upcomingHorizon)}
+              </Text>
+              <MaterialIcons name="arrow-drop-down" size={22} color={colors.primary} />
+            </Pressable>
+          </View>
         </View>
       </View>
       <ScrollView contentContainerStyle={[sharedStyles.content, { paddingTop: 0 }]}>
+        {allReminders.length > 0 ? (
+          <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
-            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <CollapsibleSectionTitle
+            title="Reminders"
+            expanded={homeRemindersExpanded}
+            count={allReminders.length}
+            overdueCount={overdueReminderCount}
+            onExpand={toggleHomeRemindersExpanded}
+          />
+          <Pressable
+            onPress={toggleHomeRemindersExpanded}
+            accessibilityRole="button"
+            accessibilityLabel={
+              homeRemindersExpanded ? 'Hide reminders' : 'Show reminders'
+            }
+            accessibilityState={{ expanded: homeRemindersExpanded }}
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons
+              name={homeRemindersExpanded ? 'expand-less' : 'expand-more'}
+              size={24}
+              color={colors.primary}
+            />
+          </Pressable>
+        </View>
+        {homeRemindersExpanded ? (
+          <View>
+            {allReminders.map((entry) => {
+              const propertyName = propertyById(state, entry.propertyId)?.name;
+              if (entry.kind === 'event') {
+                const e = entry.event;
+                const item = itemById(state, e.itemId);
+                const eventPhotos = photosForEvent(state, e.id);
+                return (
+                  <UpcomingReminderCard
+                    key={`event:${e.id}`}
+                    title={
+                      item
+                        ? `${itemDisplayLabel(item)}${e.title?.trim() ? ` · ${e.title.trim()}` : ''}`
+                        : e.title?.trim() || 'Service'
+                    }
+                    dueAtISO={entry.dueAt}
+                    notes={e.notes}
+                    thumbnailUri={eventPhotos[0]?.localUri}
+                    scopeLabel={propertyName}
+                    onPress={() => onOpenEvent(e.itemId, e.id)}
+                    noun="service"
+                  />
+                );
+              }
+              if (entry.kind === 'interaction') {
+                const interaction = entry.interaction;
+                const vendor = interaction.vendorId
+                  ? vendorById(state, interaction.vendorId)
+                  : undefined;
+                const interactionPhotos = photosForVendorInteraction(
+                  state,
+                  interaction.id
+                );
+                const methodLabel = vendorContactMethodLabel(interaction.contactMethod);
+                const notesParts = [methodLabel, interaction.notes?.trim()].filter(Boolean);
+                return (
+                  <UpcomingReminderCard
+                    key={`interaction:${interaction.id}`}
+                    title={
+                      vendor?.name?.trim() ||
+                      interaction.contactName?.trim() ||
+                      'Interaction'
+                    }
+                    dueAtISO={interaction.occurredAtISO}
+                    notes={notesParts.join(' · ') || undefined}
+                    thumbnailUri={
+                      interactionPhotos[0]?.localUri ??
+                      (vendor ? firstPhotoUriForVendor(state, vendor) : undefined)
+                    }
+                    scopeLabel={propertyName}
+                    onPress={() =>
+                      onOpenInteraction(
+                        interaction.vendorId,
+                        interaction.id,
+                        entry.propertyId
+                      )
+                    }
+                    noun="interaction"
+                    important={interaction.important === true}
+                  />
+                );
+              }
+              const todo = entry.todo;
+              const todoPhotos = photosForPropertyTodo(state, todo.id);
+              return (
+                <UpcomingReminderCard
+                  key={`todo:${todo.id}`}
+                  title={todo.title}
+                  dueAtISO={todo.dueAtISO}
+                  notes={todo.notes}
+                  thumbnailUri={todoPhotos[0]?.localUri}
+                  scopeLabel={propertyName}
+                  onPress={() => onOpenTodo(entry.propertyId, todo.id)}
+                  noun="to-do"
+                />
+              );
+            })}
+          </View>
+        ) : null}
+          </View>
+        ) : null}
+        {pinnedItems.length > 0 ? (
+          <View style={sharedStyles.propertySectionPanel}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
             marginBottom: 8,
           }}
         >
@@ -539,34 +707,76 @@ export function HomeScreen(props: {
             count={pinnedItems.length}
             onExpand={togglePinsExpanded}
           />
-          {pinnedItems.length > 0 ? (
-            <Pressable
-              onPress={togglePinsExpanded}
-              accessibilityRole="button"
-              accessibilityLabel={pinsExpanded ? 'Hide pinned' : 'Show pinned'}
-              accessibilityState={{ expanded: pinsExpanded }}
-              hitSlop={6}
-              style={({ pressed }) => ({
-                padding: 4,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <MaterialIcons
-                name={pinsExpanded ? 'expand-less' : 'expand-more'}
-                size={24}
-                color={colors.primary}
-              />
-            </Pressable>
-          ) : null}
+          <Pressable
+            onPress={togglePinsExpanded}
+            accessibilityRole="button"
+            accessibilityLabel={pinsExpanded ? 'Hide pinned' : 'Show pinned'}
+            accessibilityState={{ expanded: pinsExpanded }}
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons
+              name={pinsExpanded ? 'expand-less' : 'expand-more'}
+              size={24}
+              color={colors.primary}
+            />
+          </Pressable>
         </View>
-        {pinnedItems.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>
-            Pin a room, asset, service, vendor, to-do, punch item, or interaction from its settings
-            menu.
-          </Text>
-        ) : !pinsExpanded ? null : (
+        {pinsExpanded ? (
           <View>
             {pinnedItems.map((pin) => {
+              if (pin.kind === 'property') {
+                const property = propertyById(state, pin.id);
+                if (!property) return null;
+                return (
+                  <PropertyListRow
+                    key={`${pin.kind}:${pin.id}`}
+                    name={property.name}
+                    address={property.address}
+                    thumbnailUri={propertyCoverPhotoUri(state, property)}
+                    projectCount={projectsForProperty(state, property.id).length}
+                    todoCount={todosForProperty(state, property.id).length}
+                    overdueCount={safeCompute(() => overdueCountForProperty(state, property.id), 0)}
+                    reminderCount={safeCompute(
+                      () => upcomingReminderCountForProperty(state, property.id, upcomingHorizon),
+                      0
+                    )}
+                    dueSoonPeriodLabel={periodLabel}
+                    onPress={() => openPinned(pin)}
+                  />
+                );
+              }
+              if (pin.kind === 'project') {
+                const project = projectById(state, pin.id);
+                if (!project) return null;
+                const vendors = vendorsForProject(state, project.id);
+                const waitingForQuoteCount = vendors.filter(
+                  (v) => v.status === 'waiting_for_quote'
+                ).length;
+                const propertyName = propertyById(state, project.propertyId)?.name;
+                return (
+                  <ProjectListRow
+                    key={`${pin.kind}:${pin.id}`}
+                    name={project.name}
+                    scopeLabel={propertyName}
+                    thumbnailUri={firstPhotoUriForProject(state, project)}
+                    vendorCount={vendors.length}
+                    waitingForQuoteCount={waitingForQuoteCount}
+                    statusLabel={projectStatusLabel(project.status ?? 'research')}
+                    statusColor={projectStatusColor(project.status ?? 'research')}
+                    totalCostLabel={
+                      project.totalCost != null
+                        ? formatCurrency(project.totalCost)
+                        : undefined
+                    }
+                    onPress={() => openPinned(pin)}
+                    card
+                  />
+                );
+              }
               if (pin.kind === 'room') {
                 const room = roomById(state, pin.id);
                 if (!room) return null;
@@ -578,11 +788,10 @@ export function HomeScreen(props: {
                     scopeLabel={propertyName}
                     thumbnailUri={firstPhotoUriForRoom(state, room)}
                     itemCount={itemsForRoom(state, room.id).length}
-                    overdueCount={overdueCountForRoom(state, room.id)}
-                    upcomingCount={upcomingNotOverdueCountForRoom(
-                      state,
-                      room.id,
-                      upcomingHorizon
+                    overdueCount={safeCompute(() => overdueCountForRoom(state, room.id), 0)}
+                    upcomingCount={safeCompute(
+                      () => upcomingNotOverdueCountForRoom(state, room.id, upcomingHorizon),
+                      0
                     )}
                     requiresAuth={room.requiresAuth}
                     onPress={() => openPinned(pin)}
@@ -621,7 +830,7 @@ export function HomeScreen(props: {
                       lastEvent?.cost != null ? formatCurrency(lastEvent.cost) : undefined
                     }
                     nextDueLabel={nextDueLabelForItem(state, item.id)}
-                    overdue={isItemOverdue(state, item.id)}
+                    overdue={safeCompute(() => isItemOverdue(state, item.id), false)}
                     onPress={() => openPinned(pin)}
                     cardBackgroundColor={colors.historyCardBg}
                     cornerIcon="inventory"
@@ -828,14 +1037,17 @@ export function HomeScreen(props: {
               );
             })}
           </View>
-        )}
+        ) : null}
+          </View>
+        ) : null}
+        {activeProjects.length > 0 ? (
+          <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
-            marginTop: 8,
             marginBottom: 8,
           }}
         >
@@ -859,31 +1071,26 @@ export function HomeScreen(props: {
               <MaterialIcons name="add" size={24} color={colors.primary} />
             </Pressable>
           </View>
-          {activeProjects.length > 0 ? (
-            <Pressable
-              onPress={toggleProjectsExpanded}
-              accessibilityRole="button"
-              accessibilityLabel={projectsExpanded ? 'Hide projects' : 'Show projects'}
-              accessibilityState={{ expanded: projectsExpanded }}
-              hitSlop={6}
-              style={({ pressed }) => ({
-                padding: 4,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <MaterialIcons
-                name={projectsExpanded ? 'expand-less' : 'expand-more'}
-                size={24}
-                color={colors.primary}
-              />
-            </Pressable>
-          ) : null}
+          <Pressable
+            onPress={toggleProjectsExpanded}
+            accessibilityRole="button"
+            accessibilityLabel={projectsExpanded ? 'Hide projects' : 'Show projects'}
+            accessibilityState={{ expanded: projectsExpanded }}
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons
+              name={projectsExpanded ? 'expand-less' : 'expand-more'}
+              size={24}
+              color={colors.primary}
+            />
+          </Pressable>
         </View>
-        {activeProjects.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>No open projects yet.</Text>
-        ) : !projectsExpanded ? null : (
-          <View>
-            {activeProjects.map((project) => {
+        {projectsExpanded ? (
+          activeProjects.map((project, index) => {
               const vendors = vendorsForProject(state, project.id);
               const waitingForQuoteCount = vendors.filter(
                 (v) => v.status === 'waiting_for_quote'
@@ -905,18 +1112,22 @@ export function HomeScreen(props: {
                       : undefined
                   }
                   onPress={() => onOpenProject(project.id)}
+                  card
+                  striped={index % 2 === 1}
                 />
               );
-            })}
+            })
+        ) : null}
           </View>
-        )}
+        ) : null}
+        {sorted.length > 0 ? (
+          <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
-            marginTop: 8,
             marginBottom: 8,
           }}
         >
@@ -940,31 +1151,25 @@ export function HomeScreen(props: {
               <MaterialIcons name="add" size={24} color={colors.primary} />
             </Pressable>
           </View>
-          {sorted.length > 0 ? (
-            <Pressable
-              onPress={togglePropertiesExpanded}
-              accessibilityRole="button"
-              accessibilityLabel={propertiesExpanded ? 'Hide properties' : 'Show properties'}
-              accessibilityState={{ expanded: propertiesExpanded }}
-              hitSlop={6}
-              style={({ pressed }) => ({
-                padding: 4,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <MaterialIcons
-                name={propertiesExpanded ? 'expand-less' : 'expand-more'}
-                size={24}
-                color={colors.primary}
-              />
-            </Pressable>
-          ) : null}
+          <Pressable
+            onPress={togglePropertiesExpanded}
+            accessibilityRole="button"
+            accessibilityLabel={propertiesExpanded ? 'Hide properties' : 'Show properties'}
+            accessibilityState={{ expanded: propertiesExpanded }}
+            hitSlop={6}
+            style={({ pressed }) => ({
+              padding: 4,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <MaterialIcons
+              name={propertiesExpanded ? 'expand-less' : 'expand-more'}
+              size={24}
+              color={colors.primary}
+            />
+          </Pressable>
         </View>
-        {sorted.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>
-            No properties yet. Add a rental unit or property to get started.
-          </Text>
-        ) : !propertiesExpanded ? null : (
+        {propertiesExpanded ? (
           sorted.map((p, index) => {
             const projects = projectsForProperty(state, p.id);
             const todos = todosForProperty(state, p.id);
@@ -980,11 +1185,10 @@ export function HomeScreen(props: {
                 thumbnailUri={propertyCoverPhotoUri(state, p)}
                 projectCount={projects.length}
                 todoCount={todos.length}
-                overdueCount={overdueCountForProperty(state, p.id)}
-                reminderCount={upcomingReminderCountForProperty(
-                  state,
-                  p.id,
-                  upcomingHorizon
+                overdueCount={safeCompute(() => overdueCountForProperty(state, p.id), 0)}
+                reminderCount={safeCompute(
+                  () => upcomingReminderCountForProperty(state, p.id, upcomingHorizon),
+                  0
                 )}
                 dueSoonPeriodLabel={periodLabel}
                 striped={index % 2 === 1}
@@ -1067,7 +1271,9 @@ export function HomeScreen(props: {
               </PropertyListRow>
             );
           })
-        )}
+        ) : null}
+          </View>
+        ) : null}
       </ScrollView>
 
       <Modal

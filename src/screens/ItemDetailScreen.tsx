@@ -510,7 +510,7 @@ export function ItemDetailScreen(props: {
     if (waterMainDetails && next.waterSource !== waterMainDetails.waterSource) {
       void applyWaterMainDetailsChange(state, itemId, waterMainDetails, next).then((saved) => {
         const item = saved.items.find((i) => i.id === itemId);
-        if (item?.details.kind === 'water_main') {
+        if (item?.details?.kind === 'water_main') {
           setDetails(item.details);
         }
         onSave(saved);
@@ -530,7 +530,7 @@ export function ItemDetailScreen(props: {
     if (needsApply) {
       void applyFurnaceDetailsChange(state, itemId, furnaceDetails, next).then((saved) => {
         const item = saved.items.find((i) => i.id === itemId);
-        if (item?.details.kind === 'furnace') {
+        if (item?.details?.kind === 'furnace') {
           setDetails(item.details);
         }
         onSave(saved);
@@ -545,7 +545,7 @@ export function ItemDetailScreen(props: {
     if (wasteWaterDetails && next.system !== wasteWaterDetails.system) {
       void applyWasteWaterDetailsChange(state, itemId, wasteWaterDetails, next).then((saved) => {
         const item = saved.items.find((i) => i.id === itemId);
-        if (item?.details.kind === 'waste_water') {
+        if (item?.details?.kind === 'waste_water') {
           setDetails(item.details);
         }
         onSave(saved);

@@ -44,8 +44,10 @@ export function computeNextDueFromOccurrence(
   return addMonths(occurredAtISO, intervalMonths(recurrence));
 }
 
-export function advanceRecurrenceAfterEvent(event: ItemEvent): ItemEventRecurrence | undefined {
-  if (!event.recurrence) return undefined;
+export function advanceRecurrenceAfterEvent(
+  event: ItemEvent | undefined | null
+): ItemEventRecurrence | undefined {
+  if (!event?.recurrence) return undefined;
   if (event.recurrence.interval === 'once') {
     return event.recurrence;
   }
@@ -69,7 +71,7 @@ export function upcomingServiceEvents(events: ItemEvent[]): ItemEvent[] {
   return events
     .filter((e) => Boolean(upcomingDueAtISO(e)))
     .slice()
-    .sort((a, b) => upcomingDueAtISO(a)!.localeCompare(upcomingDueAtISO(b)!));
+    .sort((a, b) => (upcomingDueAtISO(a) ?? '').localeCompare(upcomingDueAtISO(b) ?? ''));
 }
 
 /** Upcoming scheduled events across all items in a room, earliest first. */
@@ -199,7 +201,7 @@ export function upcomingInteractionsForProperty(
           Boolean(interaction.vendorId && vendorIds.has(interaction.vendorId)))
     )
     .slice()
-    .sort((a, b) => a.occurredAtISO.localeCompare(b.occurredAtISO));
+    .sort((a, b) => (a.occurredAtISO ?? '').localeCompare(b.occurredAtISO ?? ''));
 }
 
 /**
@@ -219,7 +221,7 @@ export function upcomingInteractionsForProject(
         isAfterToday(interaction.occurredAtISO)
     )
     .slice()
-    .sort((a, b) => a.occurredAtISO.localeCompare(b.occurredAtISO));
+    .sort((a, b) => (a.occurredAtISO ?? '').localeCompare(b.occurredAtISO ?? ''));
 }
 
 export function filterInteractionsByHorizon(
@@ -328,7 +330,28 @@ export function upcomingReminderEntriesForProperty(
       dueAt: interaction.occurredAtISO,
       interaction,
     })),
-  ].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+  ]
+    .filter((entry) => typeof entry.dueAt === 'string' && entry.dueAt.length > 0)
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+}
+
+export type UpcomingReminderEntryWithProperty = UpcomingReminderEntry & {
+  propertyId: string;
+};
+
+/** All properties’ reminders in the horizon, earliest first. */
+export function upcomingReminderEntriesAll(
+  state: AppState,
+  horizon: UpcomingHorizon = '1m'
+): UpcomingReminderEntryWithProperty[] {
+  return state.properties
+    .flatMap((property) =>
+      upcomingReminderEntriesForProperty(state, property.id, horizon).map((entry) => ({
+        ...entry,
+        propertyId: property.id,
+      }))
+    )
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
 }
 
 /** Count of scheduled service events for a room overdue or due within the given horizon. */
@@ -404,6 +427,7 @@ export function isOverdue(nextDueAtISO: string | null | undefined): boolean {
 /** Whole days past due (0 if not overdue or invalid). */
 export function daysOverdue(nextDueAtISO: string | null | undefined, now: Date = new Date()): number {
   const delta = calendarDaysFromToday(nextDueAtISO, now);
+  if (delta == null) return 0;
   return delta < 0 ? -delta : 0;
 }
 
@@ -499,7 +523,8 @@ export function isOnOrAfterToday(
  * future service date (planned visit). A service dated today is treated as
  * completed history and does not keep the event in upcoming by itself.
  */
-export function upcomingDueAtISO(event: ItemEvent): string | undefined {
+export function upcomingDueAtISO(event: ItemEvent | undefined | null): string | undefined {
+  if (!event) return undefined;
   const candidates: string[] = [];
   if (event.recurrence?.nextDueAtISO) {
     candidates.push(event.recurrence.nextDueAtISO);
@@ -516,8 +541,9 @@ export function upcomingDueAtISO(event: ItemEvent): string | undefined {
  * Date shown for an event in services / history lists.
  * Matches AddEditEventScreen's main date (upcoming due when open, else occurred).
  */
-export function serviceListDateISO(event: ItemEvent): string {
-  return upcomingDueAtISO(event) ?? event.occurredAtISO;
+export function serviceListDateISO(event: ItemEvent | undefined | null): string {
+  if (!event) return '';
+  return upcomingDueAtISO(event) ?? event.occurredAtISO ?? '';
 }
 
 export type UpcomingUrgency = 'overdue' | 'week' | 'month' | 'none';

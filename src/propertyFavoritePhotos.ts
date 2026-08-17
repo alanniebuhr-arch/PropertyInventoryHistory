@@ -49,7 +49,7 @@ type SlotDef = { key: string; shortLabel: string };
 function itemLabel(item: InventoryItem): string {
   const name = item.displayName?.trim();
   if (name) return name;
-  return item.itemTypeId.replace(/_/g, ' ');
+  return String(item.itemTypeId ?? 'item').replace(/_/g, ' ');
 }
 
 function itemPhotoSlots(item: InventoryItem): SlotDef[] {
@@ -63,11 +63,11 @@ function itemPhotoSlots(item: InventoryItem): SlotDef[] {
     case 'electric_panel':
       return ELECTRIC_PANEL_PHOTO_SLOTS;
     case 'furnace':
-      return item.details.kind === 'furnace'
+      return item.details?.kind === 'furnace'
         ? furnacePhotoSlotsForDetails(item.details)
         : [];
     case 'water_main':
-      return item.details.kind === 'water_main'
+      return item.details?.kind === 'water_main'
         ? waterMainPhotoSlotsForSource(item.details)
         : [];
     case 'water_heater':
@@ -79,7 +79,7 @@ function itemPhotoSlots(item: InventoryItem): SlotDef[] {
     case 'water_treatment':
       return WATER_TREATMENT_PHOTO_SLOTS;
     case 'waste_water':
-      return item.details.kind === 'waste_water'
+      return item.details?.kind === 'waste_water'
         ? wasteWaterPhotoSlotsForDetails(item.details)
         : [];
     case 'well_pump':
@@ -110,7 +110,8 @@ function itemPhotoSlots(item: InventoryItem): SlotDef[] {
 }
 
 function slotPhotoIdFromDetails(item: InventoryItem, slotKey: string): string | undefined {
-  const details = item.details as Record<string, unknown>;
+  const details = item.details as Record<string, unknown> | undefined;
+  if (!details) return undefined;
   const value = details[slotKey];
   return typeof value === 'string' && value ? value : undefined;
 }
@@ -129,6 +130,17 @@ function photoLabel(
  * in default traversal order.
  */
 export function allHeroPhotosForProperty(
+  state: AppState,
+  propertyId: string
+): PropertyCatalogPhoto[] {
+  try {
+    return collectHeroPhotosForProperty(state, propertyId);
+  } catch {
+    return [];
+  }
+}
+
+function collectHeroPhotosForProperty(
   state: AppState,
   propertyId: string
 ): PropertyCatalogPhoto[] {
@@ -185,29 +197,33 @@ export function allHeroPhotosForProperty(
     }
 
     for (const item of itemsForRoom(state, room.id)) {
-      const itemPhotos = state.photos.filter((photo) => photo.itemId === item.id);
-      const slotIds = new Set<string>();
-      const slots = itemPhotoSlots(item);
-      const assetLabel = itemLabel(item);
-      const owner = { roomId: room.id, itemId: item.id };
-      for (const slot of slots) {
-        const photoId = slotPhotoIdFromDetails(item, slot.key);
-        if (!photoId) continue;
-        slotIds.add(photoId);
-        const photo = itemPhotos.find((entry) => entry.id === photoId);
-        if (photo) push(photo, slot.shortLabel, 'item', assetLabel, owner);
-      }
+      try {
+        const itemPhotos = state.photos.filter((photo) => photo.itemId === item.id);
+        const slotIds = new Set<string>();
+        const slots = itemPhotoSlots(item);
+        const assetLabel = itemLabel(item);
+        const owner = { roomId: room.id, itemId: item.id };
+        for (const slot of slots) {
+          const photoId = slotPhotoIdFromDetails(item, slot.key);
+          if (!photoId) continue;
+          slotIds.add(photoId);
+          const photo = itemPhotos.find((entry) => entry.id === photoId);
+          if (photo) push(photo, slot.shortLabel, 'item', assetLabel, owner);
+        }
 
-      for (const photo of itemPhotos) {
-        if (slotIds.has(photo.id)) continue;
-        const caption = photo.caption?.trim();
-        push(
-          photo,
-          caption === 'receipt' ? 'Receipt' : caption || assetLabel,
-          'item',
-          assetLabel,
-          owner
-        );
+        for (const photo of itemPhotos) {
+          if (slotIds.has(photo.id)) continue;
+          const caption = photo.caption?.trim();
+          push(
+            photo,
+            caption === 'receipt' ? 'Receipt' : caption || assetLabel,
+            'item',
+            assetLabel,
+            owner
+          );
+        }
+      } catch {
+        // Skip a malformed item rather than aborting the whole catalog.
       }
     }
   }

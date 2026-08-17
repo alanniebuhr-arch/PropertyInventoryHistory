@@ -19,8 +19,12 @@ function stableJson(value: unknown): string {
 }
 
 function stampCollection<T extends WithId>(prevList: T[], nextList: T[], now: string): T[] {
-  const prevById = new Map(prevList.map((r) => [r.id, r]));
-  return nextList.map((record) => {
+  const prevById = new Map(
+    prevList.filter((r) => r && typeof r.id === 'string').map((r) => [r.id, r])
+  );
+  return nextList
+    .filter((record) => record && typeof record.id === 'string')
+    .map((record) => {
     const prev = prevById.get(record.id);
     if (!prev) {
       return { ...record, updatedAtISO: record.updatedAtISO ?? now };

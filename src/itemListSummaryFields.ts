@@ -41,6 +41,7 @@ function pushField(
 export function itemListSummaryFields(item: InventoryItem): ItemListSummaryField[] {
   const { itemTypeId, details } = item;
   const fields: ItemListSummaryField[] = [];
+  if (!details) return fields;
 
   switch (itemTypeId) {
     case 'appliance': {

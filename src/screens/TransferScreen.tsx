@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 import { Text } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import type { AppState, SyncDeletedIds } from '../types';
-import { sharedStyles } from '../theme';
+import { sharedStyles, colors } from '../theme';
 import { ScreenBackHeader } from '../components/ScreenBackHeader';
 import { ImportPreviewModal } from '../components/ImportPreviewModal';
 import { FormPicker } from './itemDetails/FormPicker';
@@ -24,6 +24,7 @@ import {
   exportPropertyUpdateToZip,
   importBackupFromUri,
   materializeZipMedia,
+  transferProgressLabel,
 } from '../transferPackage';
 import { writePhotoFromBase64 } from '../photoStorage';
 import { writeDocumentFromBase64 } from '../documentStorage';
@@ -53,13 +54,15 @@ export function TransferScreen(props: {
   state: AppState;
   mode: 'export' | 'import';
   onBack: () => void;
-  onImport: (state: AppState) => void;
+  onImport: (state: AppState) => void | Promise<void>;
   onSave: (state: AppState) => void;
 }) {
   const { state, mode, onBack, onImport, onSave } = props;
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [exportScope, setExportScope] = useState<string>(SCOPE_ALL);
+  const [shrinkPhotos, setShrinkPhotos] = useState(false);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
 
   const properties = state.properties;
@@ -78,6 +81,10 @@ export function TransferScreen(props: {
     ],
     [properties]
   );
+
+  function reportProgress(progress: Parameters<typeof transferProgressLabel>[0]) {
+    setBusyLabel(transferProgressLabel(progress));
+  }
 
   async function materializePhotoData(
     merged: AppState,
@@ -170,7 +177,7 @@ export function TransferScreen(props: {
         : mergeCollaborativeState(state, incoming).state;
       merged = await materializePhotoData(merged, photoData);
       if (replace) await clearAllPendingDeletedIds();
-      onImport(merged);
+      await onImport(merged);
       Alert.alert(
         'Import complete',
         replace ? 'Data replaced.' : 'Records merged (newer changes kept).'
@@ -180,6 +187,7 @@ export function TransferScreen(props: {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setBusy(false);
+      setBusyLabel(null);
     }
   }
 
@@ -191,13 +199,14 @@ export function TransferScreen(props: {
     deletedIds?: SyncDeletedIds
   ) {
     setBusy(true);
+    setBusyLabel('Saving photos…');
     try {
-      const withMedia = await materializeZipMedia(incoming, mediaFiles);
+      const withMedia = await materializeZipMedia(incoming, mediaFiles, reportProgress);
       const merged = replace
         ? replaceImportState(withMedia)
         : mergeCollaborativeState(state, withMedia, deletedIds ?? {}).state;
       if (replace) await clearAllPendingDeletedIds();
-      onImport(merged);
+      await onImport(merged);
       Alert.alert(
         'Import complete',
         replace ? 'Data replaced.' : 'Records merged (newer changes kept).'
@@ -208,6 +217,7 @@ export function TransferScreen(props: {
     } finally {
       await cleanupExtractRoot(extractRoot);
       setBusy(false);
+      setBusyLabel(null);
     }
   }
 
@@ -221,10 +231,11 @@ export function TransferScreen(props: {
     photoData?: Record<string, string>
   ) {
     setBusy(true);
+    setBusyLabel('Saving photos…');
     try {
       let payload = incoming;
       if (mediaFiles) {
-        payload = await materializeZipMedia(incoming, mediaFiles);
+        payload = await materializeZipMedia(incoming, mediaFiles, reportProgress);
       }
       payload = await materializePhotoData(payload, photoData);
 
@@ -235,11 +246,11 @@ export function TransferScreen(props: {
         'property';
 
       if (replace) {
-        onImport(replacePropertyImportState(state, payload, propertyId, deletedIds));
+        await onImport(replacePropertyImportState(state, payload, propertyId, deletedIds));
         Alert.alert('Property replaced', `"${name}" was replaced with the imported copy.`);
       } else {
         const { state: merged, summary } = mergeCollaborativeState(state, payload, deletedIds);
-        onImport(merged);
+        await onImport(merged);
         Alert.alert(
           'Updates imported',
           hasLocal
@@ -253,6 +264,7 @@ export function TransferScreen(props: {
     } finally {
       await cleanupExtractRoot(extractRoot);
       setBusy(false);
+      setBusyLabel(null);
     }
   }
 
@@ -269,9 +281,14 @@ export function TransferScreen(props: {
 
   async function exportBackup() {
     setBusy(true);
+    setBusyLabel(shrinkPhotos ? 'Shrinking photos…' : 'Packing…');
     try {
+      const zipOptions = {
+        shrinkPhotos,
+        onProgress: reportProgress,
+      };
       if (selectedPropertyId == null) {
-        const path = await exportBackupToZip(state);
+        const path = await exportBackupToZip(state, zipOptions);
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
           await Sharing.shareAsync(path, {
@@ -303,7 +320,10 @@ export function TransferScreen(props: {
         Alert.alert('Export failed', 'Property not found.');
         return;
       }
-      const path = await exportPropertyUpdateToZip(bundle, { fileNamePrefix: safeName });
+      const path = await exportPropertyUpdateToZip(bundle, {
+        fileNamePrefix: safeName,
+        ...zipOptions,
+      });
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(path, {
@@ -319,6 +339,7 @@ export function TransferScreen(props: {
       Alert.alert('Export failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setBusy(false);
+      setBusyLabel(null);
     }
   }
 
@@ -525,12 +546,14 @@ export function TransferScreen(props: {
 
   async function pickImport() {
     setBusy(true);
+    setBusyLabel('Reading backup…');
     let extractRoot: string | undefined;
     try {
       // Use */* so iOS Files does not grey out ZIP backups (MIME/UTI filters are unreliable).
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
-        copyToCacheDirectory: true,
+        // Copying a large ZIP into cache then inflating it in JS kills Expo Go.
+        copyToCacheDirectory: false,
       });
       if (result.canceled || !result.assets[0]?.uri) {
         return;
@@ -539,6 +562,7 @@ export function TransferScreen(props: {
       const imported = await importBackupFromUri(asset.uri, {
         fileName: asset.name,
         mimeType: asset.mimeType,
+        onProgress: reportProgress,
       });
       if (!imported.ok) {
         Alert.alert('Invalid file', imported.error);
@@ -596,6 +620,7 @@ export function TransferScreen(props: {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setBusy(false);
+      setBusyLabel(null);
     }
   }
 
@@ -634,8 +659,42 @@ export function TransferScreen(props: {
               </View>
             ) : null}
 
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 16,
+                gap: 12,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[sharedStyles.fieldLabel, { marginTop: 0 }]}>
+                  Smaller file (resize photos)
+                </Text>
+                <Text style={sharedStyles.cardMeta}>
+                  Optional. Shrinks photos in this ZIP only (longest edge 1920px). Photos already
+                  at 1920px or smaller are left as-is. Originals in the app stay full size. Off by
+                  default for a faster export.
+                </Text>
+              </View>
+              <Switch
+                value={shrinkPhotos}
+                onValueChange={setShrinkPhotos}
+                disabled={busy}
+                accessibilityLabel="Smaller file, resize photos"
+              />
+            </View>
+
             {busy ? (
-              <ActivityIndicator style={{ marginVertical: 16 }} />
+              <View style={{ marginVertical: 16, alignItems: 'center' }}>
+                <ActivityIndicator />
+                {busyLabel ? (
+                  <Text style={[sharedStyles.cardMeta, { marginTop: 8, textAlign: 'center' }]}>
+                    {busyLabel}
+                  </Text>
+                ) : null}
+              </View>
             ) : (
               <Pressable
                 onPress={() => void exportBackup()}
@@ -656,7 +715,16 @@ export function TransferScreen(props: {
               replacing.
             </Text>
 
-            {busy ? <ActivityIndicator style={{ marginVertical: 16 }} /> : null}
+            {busy ? (
+              <View style={{ marginVertical: 16, alignItems: 'center' }}>
+                <ActivityIndicator />
+                {busyLabel ? (
+                  <Text style={[sharedStyles.cardMeta, { marginTop: 8, textAlign: 'center' }]}>
+                    {busyLabel}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
 
             <Pressable
               onPress={() => void pickImport()}

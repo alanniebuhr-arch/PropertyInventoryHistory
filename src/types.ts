@@ -955,6 +955,8 @@ export type ProjectPunchItem = {
 };
 
 export type PinnedKind =
+  | 'property'
+  | 'project'
   | 'room'
   | 'item'
   | 'event'
