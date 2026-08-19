@@ -3,6 +3,7 @@ let propertiesExpanded = true;
 let projectsExpanded = false;
 let pinsExpanded = false;
 let remindersExpanded = false;
+let documentsExpanded = false;
 
 /** Sync read of Home Properties section expand (session memory; default expanded). */
 export function getHomePropertiesExpanded(): boolean {
@@ -38,4 +39,13 @@ export function getHomeRemindersExpanded(): boolean {
 
 export async function setHomeRemindersExpanded(expanded: boolean): Promise<void> {
   remindersExpanded = expanded;
+}
+
+/** Sync read of Home Documents section expand (session memory; default collapsed). */
+export function getHomeDocumentsExpanded(): boolean {
+  return documentsExpanded;
+}
+
+export async function setHomeDocumentsExpanded(expanded: boolean): Promise<void> {
+  documentsExpanded = expanded;
 }

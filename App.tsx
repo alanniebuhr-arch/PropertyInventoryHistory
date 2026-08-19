@@ -15,6 +15,8 @@ import {
   vendorById,
   vendorInteractionById,
 } from './src/storage';
+import { isOverdue, upcomingReminderEntriesAll } from './src/eventRecurrence';
+import { livingPins } from './src/pins';
 import { loadPropertyUpcomingHorizon } from './src/upcomingHorizonPrefs';
 import {
   DEFAULT_TEXT_SCALE_STEP,
@@ -106,6 +108,20 @@ type Route =
     }
   | { name: 'transfer'; mode: 'export' | 'import' };
 
+/** Home when 0 or 2+ properties, or any living pins, projects, or overdue reminders. */
+function initialStackForState(s: AppState): Route[] {
+  const home: Route = { name: 'home' };
+  const onlyProperty = s.properties.length === 1 ? s.properties[0] : undefined;
+  if (!onlyProperty) return [home];
+  if (livingPins(s).length > 0) return [home];
+  if (s.projects.length > 0) return [home];
+  const hasOverdueReminder = upcomingReminderEntriesAll(s, 'all').some((entry) =>
+    isOverdue(entry.dueAt)
+  );
+  if (hasOverdueReminder) return [home];
+  return [home, { name: 'property', propertyId: onlyProperty.id }];
+}
+
 function routeFromReminderNotification(data: ReminderNotificationData): Route | null {
   switch (data.kind) {
     case 'event':
@@ -158,7 +174,7 @@ export default function App() {
           setState(s);
           setTextScaleStepState(textStep);
           void syncReminderNotifications(s).catch(() => {});
-          setStack([{ name: 'home' }]);
+          setStack(initialStackForState(s));
         }
       } catch {
         if (!cancelled) setState({ ...EMPTY_APP_STATE });

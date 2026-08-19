@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { AppState, InventoryItem, ItemTypeId, Project, Room } from '../types';
+import type { AppState, InventoryItem, ItemTypeId, Project, ProjectKind, Room } from '../types';
 import { GearKeywordLabel } from './GearKeywordLabel';
 import { ItemTypePickerModal } from './ItemTypePickerModal';
 import { RenameModal } from './RenameModal';
@@ -72,6 +72,10 @@ export type PropertyGearNavActions = {
   onOpenProject: (projectId: string) => void;
   onOpenItem: (itemId: string, startEditingSection?: 'appliance' | 'purchase' | 'repair') => void;
   onSave: (state: AppState) => void;
+  /** When set, shows New To-do on the + menu (Property Detail). */
+  onAddTodo?: () => void;
+  /** When set, shows New Idea on the + menu (Property Detail). */
+  onAddIdea?: () => void;
 };
 
 /**
@@ -91,7 +95,7 @@ export function usePropertyGearNav(options: {
   searchItems: PropertyGearNavItem[];
   createModals: React.ReactNode;
   openAddRoom: () => void;
-  openAddProject: () => void;
+  openAddProject: (kind?: ProjectKind) => void;
   startAddAsset: () => void;
 } {
   const { state, propertyId, roomId, runMenuAction, actions } = options;
@@ -104,6 +108,7 @@ export function usePropertyGearNav(options: {
   const [roomModalOpen, setRoomModalOpen] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [projectKind, setProjectKind] = useState<ProjectKind>('job');
   const [projectName, setProjectName] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
   const [addAssetRoomPickerOpen, setAddAssetRoomPickerOpen] = useState(false);
@@ -142,7 +147,8 @@ export function usePropertyGearNav(options: {
     setRoomModalOpen(true);
   }
 
-  function openAddProject() {
+  function openAddProject(kind: ProjectKind = 'job') {
+    setProjectKind(kind);
     setProjectName('');
     setProjectDescription('');
     setProjectModalOpen(true);
@@ -211,8 +217,14 @@ export function usePropertyGearNav(options: {
 
   function addProject() {
     const trimmed = projectName.trim();
+    const isBlight = projectKind === 'blight_case';
     if (!trimmed) {
-      Alert.alert('Name required', 'Enter a project name (e.g. Pool renovation).');
+      Alert.alert(
+        'Name required',
+        isBlight
+          ? 'Enter a case name (e.g. 12 Oak Street blight).'
+          : 'Enter a project name (e.g. Pool renovation).'
+      );
       return;
     }
     const description = projectDescription.trim();
@@ -222,6 +234,8 @@ export function usePropertyGearNav(options: {
       name: trimmed,
       description: description || undefined,
       status: 'research',
+      kind: projectKind,
+      blightStatus: isBlight ? 'complaint_filed' : undefined,
       photoIds: [],
       documentIds: [],
       sortOrder: nextProjectSortOrder(state, propertyId),
@@ -253,6 +267,9 @@ export function usePropertyGearNav(options: {
     setAddAssetTargetRoomId(null);
     actions.onOpenItem(item.id, pendingItemType === 'appliance' ? 'appliance' : undefined);
   }
+
+  const addTodo = actions.onAddTodo;
+  const addIdea = actions.onAddIdea;
 
   const newItems: PropertyGearNavItem[] = [
     {
@@ -295,67 +312,99 @@ export function usePropertyGearNav(options: {
       helpText: 'Conversation summary',
       onPress: () => runMenuAction(actions.onAddInteraction),
     },
+    ...(addTodo
+      ? [
+          {
+            key: 'todo',
+            prefix: 'New' as const,
+            keyword: 'To-do',
+            icon: 'checklist' as const,
+            helpText: 'A task',
+            onPress: () => runMenuAction(addTodo),
+          },
+        ]
+      : []),
+    ...(addIdea
+      ? [
+          {
+            key: 'idea',
+            prefix: 'New' as const,
+            keyword: 'Idea',
+            icon: 'notes' as const,
+            helpText: 'A thought',
+            onPress: () => runMenuAction(addIdea),
+          },
+        ]
+      : []),
+    {
+      key: 'blightCase',
+      prefix: 'New',
+      keyword: 'Blight case',
+      icon: 'gavel',
+      helpText: 'Municipal case',
+      onPress: () => runMenuAction(() => openAddProject('blight_case')),
+    },
   ];
 
   const searchItems: PropertyGearNavItem[] = [
-    ...(hasAssets
-      ? [
-          {
-            key: 'searchAssets',
-            prefix: 'Search' as const,
-            keyword: 'Assets',
-            icon: 'inventory' as const,
-            helpText: 'Things',
-            onPress: () => runMenuAction(actions.onSearchAssets),
-          },
-        ]
-      : []),
-    ...(hasInteractions
-      ? [
-          {
-            key: 'searchInteractions',
-            prefix: 'Search' as const,
-            keyword: 'Interactions',
-            icon: 'forum' as const,
-            helpText: 'Conversations',
-            onPress: () => runMenuAction(actions.onSearchInteractions),
-          },
-        ]
-      : []),
-    ...(hasServices
-      ? [
-          {
-            key: 'searchServiceHistory',
-            prefix: 'Search' as const,
-            keyword: 'Service Events',
-            icon: 'handyman' as const,
-            helpText: 'on Assets',
-            onPress: () => runMenuAction(actions.onSearchServiceHistory),
-          },
-        ]
-      : []),
-    ...(actions.onSearchPhotos
-      ? [
-          {
-            key: 'searchPhotos',
-            prefix: 'Search' as const,
-            keyword: 'Photos',
-            icon: 'photo-library' as const,
-            onPress: () => runMenuAction(actions.onSearchPhotos!),
-          },
-        ]
-      : []),
-    ...(actions.onSearchActivity && (hasInteractions || hasServices || hasAssets)
-      ? [
-          {
-            key: 'searchActivity',
-            prefix: 'Search' as const,
-            keyword: 'All',
-            icon: 'history' as const,
-            onPress: () => runMenuAction(actions.onSearchActivity!),
-          },
-        ]
-      : []),
+        ...(hasAssets
+          ? [
+              {
+                key: 'searchAssets',
+                prefix: 'Search' as const,
+                keyword: 'Assets',
+                icon: 'inventory' as const,
+                helpText: 'Things',
+                onPress: () => runMenuAction(actions.onSearchAssets),
+              },
+            ]
+          : []),
+        ...(hasInteractions
+          ? [
+              {
+                key: 'searchInteractions',
+                prefix: 'Search' as const,
+                keyword: 'Interactions',
+                icon: 'forum' as const,
+                helpText: 'Conversations',
+                onPress: () => runMenuAction(actions.onSearchInteractions),
+              },
+            ]
+          : []),
+        ...(hasServices
+          ? [
+              {
+                key: 'searchServiceHistory',
+                prefix: 'Search' as const,
+                keyword: 'Service Events',
+                icon: 'handyman' as const,
+                helpText: 'on Assets',
+                onPress: () => runMenuAction(actions.onSearchServiceHistory),
+              },
+            ]
+          : []),
+        ...(actions.onSearchPhotos
+          ? [
+              {
+                key: 'searchPhotos',
+                prefix: 'Search' as const,
+                keyword: 'Photos',
+                icon: 'photo-library' as const,
+                onPress: () => runMenuAction(actions.onSearchPhotos!),
+              },
+            ]
+          : []),
+        ...(actions.onSearchActivity && (hasInteractions || hasServices || hasAssets)
+          ? [
+              {
+                key: 'searchActivity',
+                prefix: 'Search' as const,
+                keyword: 'All',
+                icon: 'history' as const,
+                onPress: () => runMenuAction(actions.onSearchActivity!),
+              },
+            ]
+          : []),
   ];
 
   const items: PropertyGearNavItem[] = [...newItems, ...searchItems];
@@ -473,7 +522,9 @@ export function usePropertyGearNav(options: {
                   bounces={false}
                   contentContainerStyle={{ paddingBottom: projectSheetBottomInset }}
                 >
-                  <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>New project</Text>
+                  <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>
+                    {projectKind === 'blight_case' ? 'New blight case' : 'New project'}
+                  </Text>
                   <TextInput
                     ref={projectNameInputRef}
                     value={projectName}

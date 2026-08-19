@@ -9,7 +9,7 @@ import {
   type ReuseExistingPhotoPick,
 } from './reuseExistingPhotos';
 
-export const ADD_PHOTO_TILE_LABEL = 'Add photo';
+export const ADD_PHOTO_TILE_LABEL = 'Add';
 
 export type PickedDocument = {
   uri: string;

@@ -87,7 +87,7 @@ export function PhotoSection(props: {
   slotLabelWidth?: number;
   /** Adds photos and returns new photo ids for optional labeling. */
   onAddPhotos?: (uris: string[]) => Promise<string[] | void> | string[] | void;
-  /** When set, Add photo → Load file can attach non-image documents. */
+  /** When set, Add → Load file can attach non-image documents. */
   onAddDocuments?: (
     picked: { uri: string; fileName: string; mimeType: string }[]
   ) => void | Promise<void>;
@@ -835,7 +835,7 @@ export function PhotoSection(props: {
             onPress={openAddPhotos}
             disabled={addingPhotos}
             accessibilityRole="button"
-            accessibilityLabel="Add photo"
+            accessibilityLabel="Add"
             hitSlop={6}
             style={({ pressed }) => ({
               padding: 4,

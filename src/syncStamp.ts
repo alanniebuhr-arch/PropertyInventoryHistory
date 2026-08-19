@@ -66,6 +66,22 @@ export function stampChangedRecords(prev: AppState, next: AppState, now: string)
       next.projectPunchItems ?? [],
       now
     ),
+    projectComplainants: stampCollection(
+      prev.projectComplainants ?? [],
+      next.projectComplainants ?? [],
+      now
+    ),
+    blightMinutes: stampCollection(
+      prev.blightMinutes ?? [],
+      next.blightMinutes ?? [],
+      now
+    ),
+    homeDocuments: stampCollection(
+      prev.homeDocuments ?? [],
+      next.homeDocuments ?? [],
+      now
+    ),
+    useCases: next.useCases ?? prev.useCases,
     pins: next.pins ?? [],
   };
 }

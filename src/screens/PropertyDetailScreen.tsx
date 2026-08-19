@@ -11,7 +11,7 @@ import {
 import type { ScrollView as RNScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import type { AppState, PropertyTodo } from '../types';
+import type { AppState, Project, PropertyTodo } from '../types';
 import {
   ProjectGalleryTile,
   ProjectListRow,
@@ -57,6 +57,12 @@ import { overdueCountForRoom } from '../itemMaintenance';
 import { itemDisplayLabel } from '../itemCatalog';
 import { firstPhotoUriForRoom } from '../roomPhotos';
 import { projectStatusColor, projectStatusLabel } from '../projectStatus';
+import {
+  blightStatusColor,
+  blightStatusLabel,
+  normalizeBlightStatus,
+} from '../blightStatus';
+import { isBlightCase } from '../useCases';
 import { firstPhotoUriForProject } from '../projectPhotos';
 import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
@@ -124,6 +130,11 @@ import {
   setSectionHelpVisible,
 } from '../sectionHelpPrefs';
 import {
+  getHideEmptyPropertySections,
+  loadHideEmptyPropertySections,
+  setHideEmptyPropertySections,
+} from '../hideEmptyPropertySectionsPrefs';
+import {
   getPropertySectionExpand,
   setPropertySectionExpand,
 } from '../propertySectionExpandPrefs';
@@ -188,6 +199,16 @@ export function PropertyDetailScreen(props: {
   const property = propertyById(state, propertyId);
   const rooms = roomsForProperty(state, propertyId);
   const projects = projectsForProperty(state, propertyId);
+  function propertyProjectStatus(p: Project) {
+    if (isBlightCase(p)) {
+      const status = normalizeBlightStatus(p.blightStatus);
+      return { label: blightStatusLabel(status), color: blightStatusColor(status) };
+    }
+    return {
+      label: projectStatusLabel(p.status ?? 'research'),
+      color: projectStatusColor(p.status ?? 'research'),
+    };
+  }
   const todos = todosForProperty(state, propertyId);
   const ideas = ideasForProperty(state, propertyId);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -229,6 +250,7 @@ export function PropertyDetailScreen(props: {
     getPropertyProjectViewMode
   );
   const [helpVisible, setHelpVisible] = useState(getSectionHelpVisible);
+  const [hideEmptySections, setHideEmptySections] = useState(getHideEmptyPropertySections);
   const [photosExpanded, setPhotosExpanded] = useState(
     () => getPropertySectionExpand(propertyId).photos
   );
@@ -288,6 +310,8 @@ export function PropertyDetailScreen(props: {
       onOpenProject,
       onOpenItem,
       onSave,
+      onAddTodo: openAddTodo,
+      onAddIdea: openAddIdea,
     },
   });
 
@@ -339,6 +363,9 @@ export function PropertyDetailScreen(props: {
     });
     void loadSectionHelpVisible().then((visible) => {
       if (!cancelled) setHelpVisible(visible);
+    });
+    void loadHideEmptyPropertySections().then((hide) => {
+      if (!cancelled) setHideEmptySections(hide);
     });
     return () => {
       cancelled = true;
@@ -810,6 +837,16 @@ export function PropertyDetailScreen(props: {
     void setSectionHelpVisible(next);
   }
 
+  function toggleHideEmptySections() {
+    const next = !hideEmptySections;
+    setHideEmptySections(next);
+    void setHideEmptyPropertySections(next);
+  }
+
+  function showPropertySection(itemCount: number) {
+    return itemCount > 0 || !hideEmptySections;
+  }
+
   const slideshowOpen = slideshowIndex != null;
 
   return (
@@ -980,6 +1017,7 @@ export function PropertyDetailScreen(props: {
           </View>
         ) : null}
 
+        {showPropertySection(upcomingReminders.length) ? (
         <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
@@ -1148,7 +1186,9 @@ export function PropertyDetailScreen(props: {
           </View>
         ) : null}
         </View>
+        ) : null}
 
+        {showPropertySection(projects.length) ? (
         <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
@@ -1171,7 +1211,7 @@ export function PropertyDetailScreen(props: {
               }}
             />
             <Pressable
-              onPress={openAddProject}
+              onPress={() => openAddProject('job')}
               accessibilityRole="button"
               accessibilityLabel="Add project"
               hitSlop={6}
@@ -1277,8 +1317,8 @@ export function PropertyDetailScreen(props: {
                   thumbnailUri={firstPhotoUriForProject(state, p)}
                   vendorCount={vendors.length}
                   waitingForQuoteCount={waitingForQuoteCount}
-                  statusLabel={projectStatusLabel(p.status ?? 'research')}
-                  statusColor={projectStatusColor(p.status ?? 'research')}
+                  statusLabel={propertyProjectStatus(p).label}
+                  statusColor={propertyProjectStatus(p).color}
                   totalCostLabel={
                     p.totalCost != null ? formatCurrency(p.totalCost) : undefined
                   }
@@ -1306,8 +1346,8 @@ export function PropertyDetailScreen(props: {
                   thumbnailUri={firstPhotoUriForProject(state, p)}
                   vendorCount={vendors.length}
                   waitingForQuoteCount={waitingForQuoteCount}
-                  statusLabel={projectStatusLabel(p.status ?? 'research')}
-                  statusColor={projectStatusColor(p.status ?? 'research')}
+                  statusLabel={propertyProjectStatus(p).label}
+                  statusColor={propertyProjectStatus(p).color}
                   totalCostLabel={
                     p.totalCost != null ? formatCurrency(p.totalCost) : undefined
                   }
@@ -1319,7 +1359,9 @@ export function PropertyDetailScreen(props: {
           </View>
         )}
         </View>
+        ) : null}
 
+        {showPropertySection(rooms.length) ? (
         <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
@@ -1472,7 +1514,9 @@ export function PropertyDetailScreen(props: {
           </View>
         )}
         </View>
+        ) : null}
 
+        {showPropertySection(todos.length) ? (
         <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
@@ -1562,7 +1606,9 @@ export function PropertyDetailScreen(props: {
           </View>
         ) : null}
         </View>
+        ) : null}
 
+        {showPropertySection(ideas.length) ? (
         <View style={sharedStyles.propertySectionPanel}>
         <View
           style={{
@@ -1651,7 +1697,9 @@ export function PropertyDetailScreen(props: {
           </View>
         ) : null}
         </View>
+        ) : null}
 
+        {showPropertySection(recentActivityAll.length) ? (
         <View style={sharedStyles.propertySectionPanel}>
           <View
             style={{
@@ -1858,6 +1906,7 @@ export function PropertyDetailScreen(props: {
             </>
           ) : null}
         </View>
+        ) : null}
 
       </ScrollView>
       )}
@@ -1970,6 +2019,11 @@ export function PropertyDetailScreen(props: {
                   key: 'reorderPhoto',
                   label: showReorderArrows ? 'Reorder Photo: On' : 'Reorder Photo: Off',
                   onPress: () => runMenuAction(() => setShowReorderArrows((prev) => !prev)),
+                },
+                {
+                  key: 'emptySections',
+                  label: hideEmptySections ? 'Show empty sections' : 'Hide empty sections',
+                  onPress: () => runMenuAction(toggleHideEmptySections),
                 },
                 {
                   key: 'textLarger',

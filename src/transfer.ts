@@ -1,5 +1,7 @@
 import type {
   AppState,
+  BlightMinute,
+  HomeDocument,
   InventoryTransferBundle,
   PropertyUpdateBundle,
   SyncDeletedIds,
@@ -10,6 +12,7 @@ import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { recordUpdatedAt } from './syncStamp';
 import { countDeletedIds } from './syncMeta';
 import { livingPins, mergePins, normalizePins, pinsForProperty } from './pins';
+import { mergeUseCases, normalizeUseCases } from './useCases';
 import { deletePropertyCascade } from './storage';
 import { itemDisplayLabel } from './itemCatalog';
 import { vendorContactMethodLabel } from './vendorContactMethod';
@@ -79,6 +82,20 @@ export function coerceAppState(state: Partial<AppState> | AppState | undefined):
     vendorInteractions: recordsWithId(state?.vendorInteractions),
     propertyTodos: recordsWithId(state?.propertyTodos),
     projectPunchItems: recordsWithId(state?.projectPunchItems),
+    projectComplainants: recordsWithId(state?.projectComplainants),
+    blightMinutes: recordsWithId<BlightMinute>(state?.blightMinutes),
+    homeDocuments: (() => {
+      const home = recordsWithId<HomeDocument>(state?.homeDocuments);
+      if (home.length > 0) return home;
+      return recordsWithId<BlightMinute>(state?.blightMinutes).map((minute) => ({
+        id: minute.id,
+        documentId: minute.documentId,
+        title: minute.meetingDateISO,
+        createdAtISO: minute.createdAtISO,
+        updatedAtISO: minute.updatedAtISO,
+      }));
+    })(),
+    useCases: normalizeUseCases(state?.useCases),
     pins: normalizePins(state?.pins),
   };
 }
@@ -117,6 +134,9 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
   const projectPunchItems = (state.projectPunchItems ?? []).filter((item) =>
     projectIds.has(item.projectId)
   );
+  const projectComplainants = (state.projectComplainants ?? []).filter((person) =>
+    projectIds.has(person.projectId)
+  );
 
   const documentIds = new Set<string>();
   for (const slot of PROPERTY_PHOTO_SLOTS) {
@@ -127,6 +147,7 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
   collectDocumentIdsFromValue(items, documentIds);
   collectDocumentIdsFromValue(projects, documentIds);
   collectDocumentIdsFromValue(projectPunchItems, documentIds);
+  collectDocumentIdsFromValue(projectComplainants, documentIds);
   collectDocumentIdsFromValue(propertyTodos, documentIds);
   collectDocumentIdsFromValue(projectVendors, documentIds);
   collectDocumentIdsFromValue(events, documentIds);
@@ -150,6 +171,10 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
     vendorInteractions,
     propertyTodos,
     projectPunchItems,
+    projectComplainants,
+    blightMinutes: [],
+    homeDocuments: [],
+    useCases: normalizeUseCases(state.useCases),
     pins: pinsForProperty(state, propertyId),
   };
 }
@@ -179,6 +204,9 @@ export function slicePropertyChanges(
   const propertyTodos = full.propertyTodos.filter((t) => isNewerThan(t, sinceISO));
   const projectPunchItems = (full.projectPunchItems ?? []).filter((item) =>
     isNewerThan(item, sinceISO)
+  );
+  const projectComplainants = (full.projectComplainants ?? []).filter((person) =>
+    isNewerThan(person, sinceISO)
   );
 
   const changedVendorIds = new Set(
@@ -231,6 +259,7 @@ export function slicePropertyChanges(
   collectDocumentIdsFromValue(items, documentIds);
   collectDocumentIdsFromValue(projects, documentIds);
   collectDocumentIdsFromValue(projectPunchItems, documentIds);
+  collectDocumentIdsFromValue(projectComplainants, documentIds);
   collectDocumentIdsFromValue(propertyTodos, documentIds);
   collectDocumentIdsFromValue(projectVendors, documentIds);
   collectDocumentIdsFromValue(events, documentIds);
@@ -255,6 +284,10 @@ export function slicePropertyChanges(
     vendorInteractions,
     propertyTodos,
     projectPunchItems,
+    projectComplainants,
+    blightMinutes: [],
+    homeDocuments: [],
+    useCases: full.useCases,
     pins: full.pins,
   };
 }
@@ -399,6 +432,9 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
   const vendorInteractionIds = new Set(local.vendorInteractions.map((i) => i.id));
   const propertyTodoIds = new Set((local.propertyTodos ?? []).map((t) => t.id));
   const projectPunchItemIds = new Set((local.projectPunchItems ?? []).map((t) => t.id));
+  const projectComplainantIds = new Set((local.projectComplainants ?? []).map((c) => c.id));
+  const blightMinuteIds = new Set((local.blightMinutes ?? []).map((m) => m.id));
+  const homeDocumentIds = new Set((local.homeDocuments ?? []).map((d) => d.id));
 
   return {
     version: 1,
@@ -450,6 +486,19 @@ export function mergeImportState(local: AppState, incoming: AppState): AppState 
       ...(local.projectPunchItems ?? []),
       ...((incoming.projectPunchItems ?? []).filter((t) => !projectPunchItemIds.has(t.id))),
     ],
+    projectComplainants: [
+      ...(local.projectComplainants ?? []),
+      ...((incoming.projectComplainants ?? []).filter((c) => !projectComplainantIds.has(c.id))),
+    ],
+    blightMinutes: [
+      ...(local.blightMinutes ?? []),
+      ...((incoming.blightMinutes ?? []).filter((m) => !blightMinuteIds.has(m.id))),
+    ],
+    homeDocuments: [
+      ...(local.homeDocuments ?? []),
+      ...((incoming.homeDocuments ?? []).filter((d) => !homeDocumentIds.has(d.id))),
+    ],
+    useCases: mergeUseCases(local.useCases, incoming.useCases),
     pins: mergePins(local.pins ?? [], normalizePins(incoming.pins)),
   };
 }
@@ -1008,6 +1057,9 @@ function applyDeletedIds(state: AppState, deleted: SyncDeletedIds): AppState {
     vendorInteractions: new Set(deleted.vendorInteractions ?? []),
     propertyTodos: new Set(deleted.propertyTodos ?? []),
     projectPunchItems: new Set(deleted.projectPunchItems ?? []),
+    projectComplainants: new Set(deleted.projectComplainants ?? []),
+    blightMinutes: new Set(deleted.blightMinutes ?? []),
+    homeDocuments: new Set(deleted.homeDocuments ?? []),
   };
 
   return {
@@ -1031,6 +1083,12 @@ function applyDeletedIds(state: AppState, deleted: SyncDeletedIds): AppState {
     projectPunchItems: (state.projectPunchItems ?? []).filter(
       (t) => !drop.projectPunchItems.has(t.id)
     ),
+    projectComplainants: (state.projectComplainants ?? []).filter(
+      (c) => !drop.projectComplainants.has(c.id)
+    ),
+    blightMinutes: (state.blightMinutes ?? []).filter((m) => !drop.blightMinutes.has(m.id)),
+    homeDocuments: (state.homeDocuments ?? []).filter((d) => !drop.homeDocuments.has(d.id)),
+    useCases: state.useCases ?? normalizeUseCases(state.useCases),
     pins: livingPins({
       ...state,
       properties: state.properties.filter((p) => !drop.properties.has(p.id)),
@@ -1086,6 +1144,22 @@ export function mergeCollaborativeState(
       incoming.projectPunchItems ?? [],
       summary
     ),
+    projectComplainants: upsertById(
+      local.projectComplainants ?? [],
+      incoming.projectComplainants ?? [],
+      summary
+    ),
+    blightMinutes: upsertById(
+      local.blightMinutes ?? [],
+      incoming.blightMinutes ?? [],
+      summary
+    ),
+    homeDocuments: upsertById(
+      local.homeDocuments ?? [],
+      incoming.homeDocuments ?? [],
+      summary
+    ),
+    useCases: mergeUseCases(local.useCases, incoming.useCases),
     pins: mergePins(local.pins ?? [], normalizePins(incoming.pins)),
   };
 

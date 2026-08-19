@@ -8,6 +8,8 @@ export type ProjectSectionExpandPrefs = {
   vendors: boolean;
   punchList: boolean;
   recentInteractions: boolean;
+  boardAction: boolean;
+  complainants: boolean;
 };
 
 /** Session default: photos expanded; other sections collapsed until the user expands. */
@@ -21,13 +23,15 @@ const DEFAULT_PROJECT_SECTION_EXPAND: ProjectSectionExpandPrefs = {
   vendors: false,
   punchList: false,
   recentInteractions: false,
+  boardAction: true,
+  complainants: false,
 };
 
 let cachedExpand: ProjectSectionExpandPrefs = { ...DEFAULT_PROJECT_SECTION_EXPAND };
 
 /** Sync read of project section expand prefs (session memory; photos default expanded). Shared across projects. */
 export function getProjectSectionExpand(): ProjectSectionExpandPrefs {
-  return { ...cachedExpand };
+  return { ...DEFAULT_PROJECT_SECTION_EXPAND, ...cachedExpand };
 }
 
 export async function loadProjectSectionExpand(): Promise<ProjectSectionExpandPrefs> {

@@ -4,7 +4,7 @@ import type { TextInput as RNTextInput } from 'react-native';
 import { Text, TextInput, useTextScaleControls } from '../textScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import type { AppState, PinnedRef, Project, Property } from '../types';
+import type { AppState, PinnedRef, Project, ProjectKind, Property } from '../types';
 import { PropertyListRow, ProjectListRow, ItemListRow, RoomListRow, VendorListRow, PropertyTodoListRow, PropertyInteractionListRow, PropertyServiceListRow } from '../components/ListRows';
 import { CollapsibleSectionTitle } from '../components/CollapsibleSectionTitle';
 import {
@@ -49,6 +49,15 @@ import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
 import { projectStatusColor, projectStatusLabel } from '../projectStatus';
 import {
+  blightStatusColor,
+  blightStatusLabel,
+  normalizeBlightStatus,
+} from '../blightStatus';
+import { isBlightCase } from '../useCases';
+import { DocumentListSection } from '../components/DocumentListSection';
+import { pickFileAttachment } from '../fileAttachment';
+import { addHomeDocuments, homeDocumentRows, removeHomeDocument } from '../homeDocuments';
+import {
   upcomingHorizonLabel,
   upcomingNotOverdueCountForRoom,
   upcomingReminderCountForProperty,
@@ -71,10 +80,12 @@ import {
   getHomeProjectsExpanded,
   getHomePinsExpanded,
   getHomeRemindersExpanded,
+  getHomeDocumentsExpanded,
   setHomePropertiesExpanded,
   setHomeProjectsExpanded,
   setHomePinsExpanded,
   setHomeRemindersExpanded,
+  setHomeDocumentsExpanded,
 } from '../homeSectionExpandPrefs';
 import { applyPropertyTemplate, type DwellingType } from '../propertyTemplate';
 import { useKeyboardDoneAccessory } from '../components/KeyboardDoneAccessory';
@@ -212,10 +223,12 @@ export function HomeScreen(props: {
   const [homeRemindersExpanded, setHomeRemindersExpandedState] = useState(
     getHomeRemindersExpanded
   );
+  const [documentsExpanded, setDocumentsExpanded] = useState(getHomeDocumentsExpanded);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
   const [newProjectPropertyId, setNewProjectPropertyId] = useState<string | undefined>();
+  const [newProjectKind, setNewProjectKind] = useState<ProjectKind>('job');
   const textScaleControls = useTextScaleControls();
   const nameInputRef = useRef<RNTextInput>(null);
   const addressInputRef = useRef<RNTextInput>(null);
@@ -328,6 +341,25 @@ export function HomeScreen(props: {
     void setHomeRemindersExpanded(next);
   }
 
+  function toggleDocumentsExpanded() {
+    const next = !documentsExpanded;
+    setDocumentsExpanded(next);
+    void setHomeDocumentsExpanded(next);
+  }
+
+  function addHomeDocument() {
+    void pickFileAttachment().then((picked) => {
+      if (!picked) return;
+      if (picked.kind !== 'document') {
+        Alert.alert('Choose a document', 'Home Documents is for files such as PDF, Word, or Excel.');
+        return;
+      }
+      void addHomeDocuments(state, [
+        { uri: picked.uri, fileName: picked.fileName, mimeType: picked.mimeType },
+      ]).then(onSave);
+    });
+  }
+
   const sorted = safeCompute(
     () => [...state.properties].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')),
     []
@@ -382,26 +414,32 @@ export function HomeScreen(props: {
     }
   }
 
-  function openProjectSheet(propertyId: string) {
+  function openProjectSheet(propertyId: string, kind: ProjectKind = 'job') {
+    setNewProjectKind(kind);
     setNewProjectPropertyId(propertyId);
     setProjectName('');
     setProjectDescription('');
     setProjectModalOpen(true);
   }
 
-  function openAddProject() {
+  function openAddProject(kind: ProjectKind = 'job') {
     if (sorted.length === 0) {
-      Alert.alert('Add a property first', 'Create a property before adding a project.');
+      Alert.alert(
+        'Add a property first',
+        kind === 'blight_case'
+          ? 'Create a property before adding a blight case.'
+          : 'Create a property before adding a project.'
+      );
       return;
     }
     if (sorted.length === 1) {
-      openProjectSheet(sorted[0].id);
+      openProjectSheet(sorted[0].id, kind);
       return;
     }
     Alert.alert('Property', undefined, [
       ...sorted.map((property) => ({
         text: property.name,
-        onPress: () => openProjectSheet(property.id),
+        onPress: () => openProjectSheet(property.id, kind),
       })),
       { text: 'Done', style: 'cancel' as const },
     ]);
@@ -410,8 +448,14 @@ export function HomeScreen(props: {
   function saveNewProject() {
     if (!newProjectPropertyId) return;
     const trimmed = projectName.trim();
+    const isBlight = newProjectKind === 'blight_case';
     if (!trimmed) {
-      Alert.alert('Name required', 'Enter a project name (e.g. Pool renovation).');
+      Alert.alert(
+        'Name required',
+        isBlight
+          ? 'Enter a case name (e.g. 12 Oak Street blight).'
+          : 'Enter a project name (e.g. Pool renovation).'
+      );
       return;
     }
     const description = projectDescription.trim();
@@ -421,6 +465,8 @@ export function HomeScreen(props: {
       name: trimmed,
       description: description || undefined,
       status: 'research',
+      kind: newProjectKind,
+      blightStatus: isBlight ? 'complaint_filed' : undefined,
       photoIds: [],
       documentIds: [],
       sortOrder: nextProjectSortOrder(state, newProjectPropertyId),
@@ -443,6 +489,7 @@ export function HomeScreen(props: {
       key: 'property',
       prefix: 'New',
       keyword: 'Property',
+      icon: 'house',
       onPress: () => runMenuAction(openAdd),
     },
     {
@@ -451,7 +498,15 @@ export function HomeScreen(props: {
       keyword: 'Project',
       icon: 'shovel',
       helpText: 'Organize a job',
-      onPress: () => runMenuAction(openAddProject),
+      onPress: () => runMenuAction(() => openAddProject('job')),
+    },
+    {
+      key: 'blightCase',
+      prefix: 'New',
+      keyword: 'Blight case',
+      icon: 'gavel',
+      helpText: 'Municipal case',
+      onPress: () => runMenuAction(() => openAddProject('blight_case')),
     },
   ];
   const homeSearchItems: PropertyGearNavItem[] = [
@@ -503,6 +558,17 @@ export function HomeScreen(props: {
         ]
       : []),
   ];
+
+  function homeProjectStatus(project: Project) {
+    if (isBlightCase(project)) {
+      const status = normalizeBlightStatus(project.blightStatus);
+      return { label: blightStatusLabel(status), color: blightStatusColor(status) };
+    }
+    return {
+      label: projectStatusLabel(project.status ?? 'research'),
+      color: projectStatusColor(project.status ?? 'research'),
+    };
+  }
 
   return (
     <View style={[sharedStyles.screen, { paddingTop: insets.top }]}>
@@ -690,6 +756,67 @@ export function HomeScreen(props: {
         ) : null}
           </View>
         ) : null}
+        <View style={sharedStyles.propertySectionPanel}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                marginBottom: 8,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
+                <CollapsibleSectionTitle
+                  title="Documents"
+                  expanded={documentsExpanded}
+                  count={(state.homeDocuments ?? []).length}
+                  onExpand={toggleDocumentsExpanded}
+                />
+                <Pressable
+                  onPress={addHomeDocument}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add document"
+                  hitSlop={6}
+                  style={({ pressed }) => ({
+                    padding: 4,
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  <MaterialIcons name="add" size={24} color={colors.primary} />
+                </Pressable>
+              </View>
+              <Pressable
+                onPress={toggleDocumentsExpanded}
+                accessibilityRole="button"
+                accessibilityLabel={documentsExpanded ? 'Hide documents' : 'Show documents'}
+                accessibilityState={{ expanded: documentsExpanded }}
+                hitSlop={6}
+                style={({ pressed }) => ({
+                  padding: 4,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <MaterialIcons
+                  name={documentsExpanded ? 'expand-less' : 'expand-more'}
+                  size={24}
+                  color={colors.primary}
+                />
+              </Pressable>
+            </View>
+            {documentsExpanded ? (
+              (state.homeDocuments ?? []).length === 0 ? (
+                <Text style={sharedStyles.cardMeta}>No documents yet.</Text>
+              ) : (
+                <DocumentListSection
+                  hideHeading
+                  rows={homeDocumentRows(state, (homeDocumentId) => {
+                    void removeHomeDocument(state, homeDocumentId).then(onSave);
+                  })}
+                />
+              )
+            ) : null}
+          </View>
         {pinnedItems.length > 0 ? (
           <View style={sharedStyles.propertySectionPanel}>
         <View
@@ -765,8 +892,8 @@ export function HomeScreen(props: {
                     thumbnailUri={firstPhotoUriForProject(state, project)}
                     vendorCount={vendors.length}
                     waitingForQuoteCount={waitingForQuoteCount}
-                    statusLabel={projectStatusLabel(project.status ?? 'research')}
-                    statusColor={projectStatusColor(project.status ?? 'research')}
+                    statusLabel={homeProjectStatus(project).label}
+                    statusColor={homeProjectStatus(project).color}
                     totalCostLabel={
                       project.totalCost != null
                         ? formatCurrency(project.totalCost)
@@ -1059,7 +1186,7 @@ export function HomeScreen(props: {
               onExpand={toggleProjectsExpanded}
             />
             <Pressable
-              onPress={openAddProject}
+              onPress={() => openAddProject('job')}
               accessibilityRole="button"
               accessibilityLabel="New Project"
               hitSlop={6}
@@ -1104,8 +1231,8 @@ export function HomeScreen(props: {
                   thumbnailUri={firstPhotoUriForProject(state, project)}
                   vendorCount={vendors.length}
                   waitingForQuoteCount={waitingForQuoteCount}
-                  statusLabel={projectStatusLabel(project.status ?? 'research')}
-                  statusColor={projectStatusColor(project.status ?? 'research')}
+                  statusLabel={homeProjectStatus(project).label}
+                  statusColor={homeProjectStatus(project).color}
                   totalCostLabel={
                     project.totalCost != null
                       ? formatCurrency(project.totalCost)
@@ -1533,7 +1660,9 @@ export function HomeScreen(props: {
                   bounces={false}
                   contentContainerStyle={{ paddingBottom: projectSheetBottomInset }}
                 >
-                  <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>New project</Text>
+                  <Text style={[sharedStyles.sectionTitle, { marginTop: 0 }]}>
+                    {newProjectKind === 'blight_case' ? 'New blight case' : 'New project'}
+                  </Text>
                   {newProjectPropertyId && sorted.length > 1 ? (
                     <Text style={[sharedStyles.cardMeta, { marginBottom: 8 }]}>
                       {propertyById(state, newProjectPropertyId)?.name}

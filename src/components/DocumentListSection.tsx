@@ -59,7 +59,7 @@ async function shareDocument(localUri: string, fileName: string, mimeType: strin
 }
 
 function confirmDeleteDocument(onDelete: () => void) {
-  Alert.alert('Remove document?', 'This file will be removed from this asset.', [
+  Alert.alert('Remove document?', 'This file will be removed.', [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Remove', style: 'destructive', onPress: onDelete },
   ]);
@@ -86,8 +86,8 @@ function rowToViewerPdf(row: DocumentListRow): ViewerPdf {
   };
 }
 
-export function DocumentListSection(props: { rows: DocumentListRow[] }) {
-  const { rows } = props;
+export function DocumentListSection(props: { rows: DocumentListRow[]; hideHeading?: boolean }) {
+  const { rows, hideHeading } = props;
   const [viewingPdf, setViewingPdf] = useState<ViewerPdf | null>(null);
 
   if (rows.length === 0) return null;
@@ -102,7 +102,7 @@ export function DocumentListSection(props: { rows: DocumentListRow[] }) {
 
   return (
     <View style={{ marginBottom: 12 }}>
-      <Text style={sharedStyles.sectionTitle}>Documents</Text>
+      {hideHeading ? null : <Text style={sharedStyles.sectionTitle}>Documents</Text>}
       {rows.map((row) => (
         <Pressable
           key={row.id}

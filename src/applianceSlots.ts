@@ -39,7 +39,7 @@ export const APPLIANCE_PHOTO_SLOTS: {
 ];
 
 /** Label for optional appliance photos added outside the named slots. */
-export const APPLIANCE_EXTRA_PHOTOS_SHORT_LABEL = 'Add photo';
+export const APPLIANCE_EXTRA_PHOTOS_SHORT_LABEL = 'Add';
 
 export function applianceHasIdentityInfo(details: ApplianceDetails): boolean {
   return Boolean(

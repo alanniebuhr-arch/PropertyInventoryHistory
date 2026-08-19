@@ -812,6 +812,20 @@ export type ProjectStatus =
   | 'in_progress'
   | 'complete';
 
+/** Playbooks enabled for this install. Missing on older backups; normalize to ['landlord']. */
+export type AppUseCase = 'landlord' | 'blight';
+
+/** Landlord renovation/job vs municipal blight case. Missing = 'job'. */
+export type ProjectKind = 'job' | 'blight_case';
+
+export type BlightStatus =
+  | 'complaint_filed'
+  | 'property_inspected'
+  | 'on_blight_board'
+  | 'received_notice_of_violation'
+  | 'received_municipal_citation'
+  | 'closed';
+
 export type Project = {
   id: string;
   propertyId: string;
@@ -822,6 +836,17 @@ export type Project = {
   /** Private notes — app-only; not included in intro share image. */
   vendorQuestionsNote?: string;
   status: ProjectStatus;
+  /** Optional; missing on older backups = landlord job. */
+  kind?: ProjectKind;
+  /** Blight docket status; used when kind is blight_case. */
+  blightStatus?: BlightStatus;
+  blightRule?: string;
+  correctionDueAtISO?: string;
+  fineStartedAtISO?: string;
+  /** Daily fine amount when a blight fine is active. */
+  fineAmount?: number;
+  noticeOfViolationDocumentId?: string;
+  municipalCitationDocumentId?: string;
   /** Optional total / budgeted project cost. */
   totalCost?: number;
   photoIds: string[];
@@ -833,6 +858,38 @@ export type Project = {
    */
   slideshowPhotoIds?: string[];
   sortOrder: number;
+  createdAtISO: string;
+  updatedAtISO?: string;
+};
+
+/** Complainant on a blight_case project. */
+export type ProjectComplainant = {
+  id: string;
+  projectId: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  submittedAtISO?: string;
+  photoIds: string[];
+  documentIds: string[];
+  createdAtISO: string;
+  updatedAtISO?: string;
+};
+
+/** Town blight-board minutes (app-wide, not per property). Legacy; migrated into homeDocuments. */
+export type BlightMinute = {
+  id: string;
+  documentId: string;
+  meetingDateISO: string;
+  createdAtISO: string;
+  updatedAtISO?: string;
+};
+
+/** App-wide files on Home (PDFs and other documents). */
+export type HomeDocument = {
+  id: string;
+  documentId: string;
+  title?: string;
   createdAtISO: string;
   updatedAtISO?: string;
 };
@@ -859,6 +916,8 @@ export type ProjectPhoto = {
   projectId: string;
   /** When set, photo belongs to a punch-list item (not the project gallery). */
   punchItemId?: string;
+  /** When set, photo belongs to a blight complainant (not the project gallery). */
+  complainantId?: string;
   localUri: string;
   caption?: string;
   notes?: string;
@@ -988,6 +1047,18 @@ export type AppState = {
   vendorInteractions: VendorInteraction[];
   propertyTodos: PropertyTodo[];
   projectPunchItems: ProjectPunchItem[];
+  projectComplainants: ProjectComplainant[];
+  blightMinutes: BlightMinute[];
+  /**
+   * Home Documents library. Optional on older backups; normalize to []
+   * (or migrate from blightMinutes).
+   */
+  homeDocuments: HomeDocument[];
+  /**
+   * Enabled playbooks. Optional on older backups; normalize to ['landlord'].
+   * UI no longer gates landlord/blight chrome on this field.
+   */
+  useCases: AppUseCase[];
   /**
    * Home Pinned shortcuts. Optional on older backups; normalize to [].
    * Does not include properties or projects (those have their own Home sections).
@@ -1012,6 +1083,10 @@ export const EMPTY_APP_STATE: AppState = {
   vendorInteractions: [],
   propertyTodos: [],
   projectPunchItems: [],
+  projectComplainants: [],
+  blightMinutes: [],
+  homeDocuments: [],
+  useCases: ['landlord'],
   pins: [],
 };
 
@@ -1042,6 +1117,9 @@ export type SyncDeletedIds = {
   vendorInteractions?: string[];
   propertyTodos?: string[];
   projectPunchItems?: string[];
+  projectComplainants?: string[];
+  blightMinutes?: string[];
+  homeDocuments?: string[];
 };
 
 export type PropertyUpdateBundle = {

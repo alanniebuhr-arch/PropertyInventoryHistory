@@ -67,11 +67,14 @@ import {
   getProjectScrollPrefs,
   setProjectScrollPrefs,
 } from '../projectScrollPrefs';
+import { projectStatusColor, projectStatusLabel, PROJECT_STATUS_OPTIONS } from '../projectStatus';
 import {
-  PROJECT_STATUS_OPTIONS,
-  projectStatusColor,
-  projectStatusLabel,
-} from '../projectStatus';
+  BLIGHT_STATUS_OPTIONS,
+  blightStatusColor,
+  blightStatusLabel,
+  normalizeBlightStatus,
+} from '../blightStatus';
+import { showBlightProjectUi } from '../useCases';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { isAfterToday, isToday, upcomingInteractionsForProject } from '../eventRecurrence';
 import {
@@ -98,6 +101,7 @@ import {
   type PropertyGearNavItem,
 } from '../components/PropertyGearNavItems';
 import { SectionHelpTip } from '../components/SectionHelpTip';
+import { BlightProjectSections } from '../components/BlightProjectSections';
 import {
   getSectionHelpVisible,
   loadSectionHelpVisible,
@@ -346,24 +350,31 @@ export function ProjectDetailScreen(props: {
   const activityNewItems = propertyNewItems.filter(
     (item) => item.key === 'interaction' || item.key === 'serviceEvent'
   );
-  const projectLocalNewItems: PropertyGearNavItem[] = [
-    {
-      key: 'vendor',
-      prefix: 'New',
-      keyword: 'Vendor',
-      onPress: () => runMenuAction(openAddVendor),
-    },
-    {
-      key: 'punchItem',
-      prefix: 'New',
-      keyword: 'Punch List Item',
-      onPress: () => runMenuAction(openAddPunchItem),
-    },
-  ];
-  const projectNewItems: PropertyGearNavItem[] = propertyId
-    ? [...projectLocalNewItems, ...propertyNewItems]
-    : projectLocalNewItems;
-  const projectSearchItems = propertyId ? propertySearchItems : [];
+  const projectLocalNewItems: PropertyGearNavItem[] =
+    !(project && showBlightProjectUi(state, project))
+      ? [
+          {
+            key: 'vendor',
+            prefix: 'New',
+            keyword: 'Vendor',
+            onPress: () => runMenuAction(openAddVendor),
+          },
+          {
+            key: 'punchItem',
+            prefix: 'New',
+            keyword: 'Punch List Item',
+            onPress: () => runMenuAction(openAddPunchItem),
+          },
+        ]
+      : [];
+  const projectNewItems: PropertyGearNavItem[] =
+    propertyId && !(project && showBlightProjectUi(state, project))
+      ? [...projectLocalNewItems, ...propertyNewItems]
+      : projectLocalNewItems;
+  const projectSearchItems =
+    propertyId && !(project && showBlightProjectUi(state, project))
+      ? propertySearchItems
+      : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -639,6 +650,13 @@ export function ProjectDetailScreen(props: {
   }
 
   const proj = project;
+  const blightProjectUi = showBlightProjectUi(state, proj);
+  const statusLabel = blightProjectUi
+    ? blightStatusLabel(normalizeBlightStatus(proj.blightStatus))
+    : projectStatusLabel(proj.status ?? 'research');
+  const statusColor = blightProjectUi
+    ? blightStatusColor(normalizeBlightStatus(proj.blightStatus))
+    : projectStatusColor(proj.status ?? 'research');
   const property = propertyById(state, proj.propertyId);
   const subtitleParts = [property?.name].filter(Boolean);
 
@@ -751,8 +769,15 @@ export function ProjectDetailScreen(props: {
         | 'vendorIntroNote'
         | 'vendorQuestionsNote'
         | 'status'
+        | 'blightStatus'
         | 'name'
         | 'totalCost'
+        | 'blightRule'
+        | 'correctionDueAtISO'
+        | 'fineStartedAtISO'
+        | 'fineAmount'
+        | 'noticeOfViolationDocumentId'
+        | 'municipalCitationDocumentId'
       >
     >
   ) {
@@ -765,13 +790,17 @@ export function ProjectDetailScreen(props: {
   }
 
   function openStatusPicker() {
+    const options = blightProjectUi ? BLIGHT_STATUS_OPTIONS : PROJECT_STATUS_OPTIONS;
     Alert.alert(
-      'Project status',
+      blightProjectUi ? 'Blight status' : 'Project status',
       undefined,
       [
-        ...PROJECT_STATUS_OPTIONS.map((opt) => ({
+        ...options.map((opt) => ({
           text: opt.label,
-          onPress: () => saveProjectField({ status: opt.id }),
+          onPress: () =>
+            blightProjectUi
+              ? saveProjectField({ blightStatus: opt.id as (typeof BLIGHT_STATUS_OPTIONS)[number]['id'] })
+              : saveProjectField({ status: opt.id as (typeof PROJECT_STATUS_OPTIONS)[number]['id'] }),
         })),
         { text: 'Cancel', style: 'cancel' as const },
       ],
@@ -1378,12 +1407,12 @@ export function ProjectDetailScreen(props: {
                   marginLeft: 8,
                   fontSize: 15,
                   fontWeight: '600',
-                  color: projectStatusColor(proj.status ?? 'research'),
+                  color: statusColor,
                 }}
                 numberOfLines={1}
-                accessibilityLabel={`Status: ${projectStatusLabel(proj.status ?? 'research')}`}
+                accessibilityLabel={`Status: ${statusLabel}`}
               >
-                {projectStatusLabel(proj.status ?? 'research')}
+                {statusLabel}
               </Text>
             ) : (
               <View style={{ flex: 1 }} />
@@ -1424,21 +1453,23 @@ export function ProjectDetailScreen(props: {
                   },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Status: ${projectStatusLabel(proj.status ?? 'research')}`}
-                accessibilityHint="Opens a list of project status options"
+                accessibilityLabel={`Status: ${statusLabel}`}
+                accessibilityHint="Opens a list of status options"
               >
                 <Text
                   style={{
                     fontSize: 16,
-                    color: projectStatusColor(proj.status ?? 'research'),
+                    color: statusColor,
                     fontWeight: '600',
                   }}
                 >
-                  {projectStatusLabel(proj.status ?? 'research')}
+                  {statusLabel}
                 </Text>
                 <Text style={{ fontSize: 18, color: colors.textMuted }}>›</Text>
               </Pressable>
 
+              {!blightProjectUi ? (
+                <>
               <Text style={sharedStyles.fieldLabel}>Total cost</Text>
               <TextInput
                 ref={totalCostInputRef}
@@ -1453,6 +1484,8 @@ export function ProjectDetailScreen(props: {
                   onFocus: () => measureAndScroll(totalCostInputRef.current),
                 })}
               />
+                </>
+              ) : null}
             </>
           ) : null}
         </View>
@@ -1588,6 +1621,18 @@ export function ProjectDetailScreen(props: {
           </EditableDetailSection>
         </View>
 
+        {blightProjectUi ? (
+          <BlightProjectSections
+            state={state}
+            project={proj}
+            onSave={onSave}
+            helpVisible={helpVisible}
+            measureAndScroll={measureAndScroll}
+          />
+        ) : null}
+
+        {!blightProjectUi ? (
+        <>
         <View style={sharedStyles.propertySectionPanel}>
           <EditableDetailSection
             title="Intro to vendors"
@@ -1767,6 +1812,8 @@ export function ProjectDetailScreen(props: {
             </View>
           ) : null}
         </View>
+        </>
+        ) : null}
 
         <View style={sharedStyles.propertySectionPanel}>
           <View

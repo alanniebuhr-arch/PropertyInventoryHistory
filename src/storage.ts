@@ -13,6 +13,7 @@ import type {
   PropertyTodo,
   PropertyTodoKind,
   Project,
+  ProjectComplainant,
   ProjectPhoto,
   ProjectPunchItem,
   ProjectVendor,
@@ -24,6 +25,8 @@ import type {
 } from './types';
 import { EMPTY_APP_STATE } from './types';
 import { livingPins, normalizePins, withLivingPins } from './pins';
+import { isBlightCase, isProjectKind, normalizeUseCases } from './useCases';
+import { normalizeBlightStatus } from './blightStatus';
 import { defaultDetailsForType, catalogLabel, itemCustomName } from './itemCatalog';
 import { normalizeWaterSource } from './waterMainSlots';
 import { normalizeWasteWaterSystem } from './wasteWaterSlots';
@@ -1088,6 +1091,15 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
   const projectPunchItems = Array.isArray(raw.projectPunchItems)
     ? raw.projectPunchItems.filter((t) => t && typeof t.id === 'string')
     : [];
+  const projectComplainants = Array.isArray(raw.projectComplainants)
+    ? raw.projectComplainants.filter((c) => c && typeof c.id === 'string')
+    : [];
+  const blightMinutesRaw = Array.isArray(raw.blightMinutes)
+    ? raw.blightMinutes.filter((m) => m && typeof m.id === 'string')
+    : [];
+  const homeDocumentsRaw = Array.isArray((raw as AppState).homeDocuments)
+    ? (raw as AppState).homeDocuments.filter((d) => d && typeof d.id === 'string')
+    : [];
 
   const validDocumentIds = new Set(
     documents
@@ -1197,22 +1209,54 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
 
   const cleanProjects = projects
     .filter((p) => propertyIds.has(p.propertyId))
-    .map((p) => ({
-      ...p,
-      status: p.status ?? 'research',
-      photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter((id) =>
-        projectPhotos.some((photo) => photo.id === id && !photo.punchItemId)
-      ),
-      documentIds: Array.isArray(p.documentIds) ? p.documentIds : [],
-    }));
+    .map((p) => {
+      const kind = isProjectKind(p.kind ?? '') ? p.kind : 'job';
+      const galleryOk = (id: string) =>
+        projectPhotos.some(
+          (photo) => photo.id === id && !photo.punchItemId && !photo.complainantId
+        );
+      const validDocument = (id?: string) =>
+        id && validDocumentIds.has(id) ? id : undefined;
+      return {
+        ...p,
+        kind,
+        status: p.status ?? 'research',
+        blightStatus: kind === 'blight_case' ? normalizeBlightStatus(p.blightStatus) : undefined,
+        blightRule: kind === 'blight_case' && typeof p.blightRule === 'string' ? p.blightRule : undefined,
+        correctionDueAtISO:
+          kind === 'blight_case' && typeof p.correctionDueAtISO === 'string'
+            ? p.correctionDueAtISO
+            : undefined,
+        fineStartedAtISO:
+          kind === 'blight_case' && typeof p.fineStartedAtISO === 'string'
+            ? p.fineStartedAtISO
+            : undefined,
+        fineAmount:
+          kind === 'blight_case' && typeof p.fineAmount === 'number' && Number.isFinite(p.fineAmount)
+            ? p.fineAmount
+            : undefined,
+        noticeOfViolationDocumentId:
+          kind === 'blight_case' ? validDocument(p.noticeOfViolationDocumentId) : undefined,
+        municipalCitationDocumentId:
+          kind === 'blight_case' ? validDocument(p.municipalCitationDocumentId) : undefined,
+        photoIds: (Array.isArray(p.photoIds) ? p.photoIds : []).filter(galleryOk),
+        documentIds: Array.isArray(p.documentIds) ? p.documentIds : [],
+      };
+    });
   const projectIds = new Set(cleanProjects.map((p) => p.id));
   const cleanProjectPunchItemsDraft = projectPunchItems.filter((item) =>
     projectIds.has(item.projectId)
   );
   const punchItemIds = new Set(cleanProjectPunchItemsDraft.map((item) => item.id));
+  const cleanProjectComplainantsDraft = projectComplainants.filter((c) =>
+    projectIds.has(c.projectId)
+  );
+  const complainantIds = new Set(cleanProjectComplainantsDraft.map((c) => c.id));
   const cleanProjectPhotos = projectPhotos.filter(
     (p) =>
-      projectIds.has(p.projectId) && (!p.punchItemId || punchItemIds.has(p.punchItemId))
+      projectIds.has(p.projectId) &&
+      (!p.punchItemId || punchItemIds.has(p.punchItemId)) &&
+      (!p.complainantId || complainantIds.has(p.complainantId))
   );
   const validProjectPhotoIds = new Set(cleanProjectPhotos.map((p) => p.id));
   const cleanProjectsWithPhotos = cleanProjects.map((p) => ({
@@ -1220,7 +1264,9 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     photoIds: p.photoIds.filter(
       (id) =>
         validProjectPhotoIds.has(id) &&
-        cleanProjectPhotos.some((photo) => photo.id === id && !photo.punchItemId)
+        cleanProjectPhotos.some(
+          (photo) => photo.id === id && !photo.punchItemId && !photo.complainantId
+        )
     ),
     documentIds: (Array.isArray(p.documentIds) ? p.documentIds : []).filter((id) =>
       validDocumentIds.has(id)
@@ -1246,6 +1292,46 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
       ),
     };
   });
+
+  const cleanProjectComplainants = cleanProjectComplainantsDraft.map((person) => {
+    const ownedIds = cleanProjectPhotos
+      .filter((p) => p.complainantId === person.id)
+      .map((p) => p.id);
+    const ownedSet = new Set(ownedIds);
+    const ordered = (Array.isArray(person.photoIds) ? person.photoIds : []).filter((id) =>
+      ownedSet.has(id)
+    );
+    const orderedSet = new Set(ordered);
+    return {
+      ...person,
+      name: typeof person.name === 'string' ? person.name : '',
+      photoIds: [...ordered, ...ownedIds.filter((id) => !orderedSet.has(id))],
+      documentIds: (Array.isArray(person.documentIds) ? person.documentIds : []).filter((id) =>
+        validDocumentIds.has(id)
+      ),
+    };
+  });
+
+  const cleanBlightMinutes = blightMinutesRaw.filter(
+    (minute) =>
+      typeof minute.documentId === 'string' &&
+      validDocumentIds.has(minute.documentId) &&
+      typeof minute.meetingDateISO === 'string'
+  );
+  const cleanHomeDocumentsRaw = homeDocumentsRaw.filter(
+    (entry) =>
+      typeof entry.documentId === 'string' && validDocumentIds.has(entry.documentId)
+  );
+  const cleanHomeDocuments =
+    cleanHomeDocumentsRaw.length > 0
+      ? cleanHomeDocumentsRaw
+      : cleanBlightMinutes.map((minute) => ({
+          id: minute.id,
+          documentId: minute.documentId,
+          title: minute.meetingDateISO,
+          createdAtISO: minute.createdAtISO,
+          updatedAtISO: minute.updatedAtISO,
+        }));
 
   const cleanProjectVendors = projectVendors
     .filter((v) => projectIds.has(v.projectId))
@@ -1368,6 +1454,10 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
     vendorInteractions: cleanVendorInteractions.map(ensureUpdatedAt),
     propertyTodos: cleanPropertyTodos.map(ensureUpdatedAt),
     projectPunchItems: cleanProjectPunchItems.map(ensureUpdatedAt),
+    projectComplainants: cleanProjectComplainants.map(ensureUpdatedAt),
+    blightMinutes: [],
+    homeDocuments: cleanHomeDocuments.map(ensureUpdatedAt),
+    useCases: normalizeUseCases((raw as AppState).useCases),
     pins: livingPins({
       ...EMPTY_APP_STATE,
       properties: cleanProperties,
@@ -1725,12 +1815,17 @@ export function projectsForProperty(state: AppState, propertyId: string): Projec
     .sort((a, b) => a.sortOrder - b.sortOrder || (a.name ?? '').localeCompare(b.name ?? ''));
 }
 
-/** Incomplete projects across all properties (excludes status complete). */
+/** Incomplete projects across all properties (excludes complete jobs and closed blight cases). */
 export function incompleteProjects(state: AppState): Project[] {
   const propertyName = (propertyId: string) =>
     propertyById(state, propertyId)?.name ?? '';
   return state.projects
-    .filter((p) => (p.status ?? 'research') !== 'complete')
+    .filter((p) => {
+      if (isBlightCase(p)) {
+        return (p.blightStatus ?? 'complaint_filed') !== 'closed';
+      }
+      return (p.status ?? 'research') !== 'complete';
+    })
     .sort((a, b) => {
       const byProperty = propertyName(a.propertyId).localeCompare(propertyName(b.propertyId));
       if (byProperty !== 0) return byProperty;
@@ -2014,6 +2109,12 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
   for (const project of state.projects) {
     if (!projectIds.has(project.id)) continue;
     for (const docId of project.documentIds ?? []) dropDocumentIds.add(docId);
+    if (project.noticeOfViolationDocumentId) dropDocumentIds.add(project.noticeOfViolationDocumentId);
+    if (project.municipalCitationDocumentId) dropDocumentIds.add(project.municipalCitationDocumentId);
+  }
+  for (const person of state.projectComplainants ?? []) {
+    if (!projectIds.has(person.projectId)) continue;
+    for (const docId of person.documentIds ?? []) dropDocumentIds.add(docId);
   }
   for (const punchItem of state.projectPunchItems) {
     if (!projectIds.has(punchItem.projectId)) continue;
@@ -2043,6 +2144,9 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
     vendorInteractions: state.vendorInteractions.filter((i) => !dropInteractionIds.has(i.id)),
     propertyTodos: state.propertyTodos.filter((t) => t.propertyId !== propertyId),
     projectPunchItems: state.projectPunchItems.filter((item) => !projectIds.has(item.projectId)),
+    projectComplainants: (state.projectComplainants ?? []).filter(
+      (person) => !projectIds.has(person.projectId)
+    ),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
   });
 }
@@ -2132,9 +2236,15 @@ export function deleteProjectCascade(state: AppState, projectId: string): AppSta
   }
   const project = state.projects.find((p) => p.id === projectId);
   for (const docId of project?.documentIds ?? []) dropDocumentIds.add(docId);
+  if (project?.noticeOfViolationDocumentId) dropDocumentIds.add(project.noticeOfViolationDocumentId);
+  if (project?.municipalCitationDocumentId) dropDocumentIds.add(project.municipalCitationDocumentId);
   for (const punchItem of state.projectPunchItems) {
     if (punchItem.projectId !== projectId) continue;
     for (const docId of punchItem.documentIds ?? []) dropDocumentIds.add(docId);
+  }
+  for (const person of state.projectComplainants ?? []) {
+    if (person.projectId !== projectId) continue;
+    for (const docId of person.documentIds ?? []) dropDocumentIds.add(docId);
   }
   return withLivingPins({
     ...state,
@@ -2149,6 +2259,9 @@ export function deleteProjectCascade(state: AppState, projectId: string): AppSta
         i.projectId !== projectId && !(i.vendorId != null && vendorIds.has(i.vendorId))
     ),
     projectPunchItems: state.projectPunchItems.filter((item) => item.projectId !== projectId),
+    projectComplainants: (state.projectComplainants ?? []).filter(
+      (person) => person.projectId !== projectId
+    ),
     documents: state.documents.filter((d) => !dropDocumentIds.has(d.id)),
   });
 }
