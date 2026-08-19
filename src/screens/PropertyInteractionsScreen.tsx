@@ -534,6 +534,8 @@ export function PropertyInteractionsScreen(props: {
       const dateLabel = formatDisplayDate(interaction.occurredAtISO);
       const haystack = [
         interaction.contactName,
+        interaction.contactPhone,
+        interaction.contactEmail,
         vendor?.name,
         interaction.notes,
         methodLabel,
@@ -1586,6 +1588,8 @@ export function PropertyInteractionsScreen(props: {
                                 query: searchQuery,
                                 notes: interaction.notes,
                                 contactName: interaction.contactName,
+                                contactPhone: interaction.contactPhone,
+                                contactEmail: interaction.contactEmail,
                                 vendorName: vendor?.name,
                                 methodLabel,
                                 dateLabel,
@@ -1598,7 +1602,12 @@ export function PropertyInteractionsScreen(props: {
                             key={interaction.id}
                             projectName={scopeLabel}
                             contactName={interaction.contactName}
-                            companyName={vendor?.name ?? 'No vendor'}
+                            companyName={vendor?.name ?? ''}
+                            ownerExtra={
+                              interaction.filedComplaintForm === true
+                                ? 'Complaint filed'
+                                : undefined
+                            }
                             companyPhotoUri={
                               vendor ? firstPhotoUriForVendor(state, vendor) : undefined
                             }
@@ -1626,7 +1635,7 @@ export function PropertyInteractionsScreen(props: {
                             ownerBackgroundColor={colors.interactionOwnerBg}
                             dividerColor={frameColor}
                             dividerWidth={betweenRows ? 2 : 0}
-                            ownerCornerIcon="storefront"
+                            ownerCornerIcon={vendor ? 'storefront' : 'person'}
                             cornerIcon="forum"
                             onPress={() =>
                               onOpenInteraction(
@@ -1641,7 +1650,19 @@ export function PropertyInteractionsScreen(props: {
                               )
                             }
                             onPressVendor={
-                              vendor ? () => onOpenVendor(vendor.id) : undefined
+                              vendor
+                                ? () => onOpenVendor(vendor.id)
+                                : () =>
+                                    onOpenInteraction(
+                                      interaction.vendorId,
+                                      interaction.id,
+                                      searchMatch
+                                        ? {
+                                            searchQuery: searchQuery.trim(),
+                                            searchMatchField: searchMatch.field,
+                                          }
+                                        : undefined
+                                    )
                             }
                           />
                         );

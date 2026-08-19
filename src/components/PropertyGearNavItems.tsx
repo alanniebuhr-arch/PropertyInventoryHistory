@@ -44,11 +44,13 @@ export type PropertyGearNavItem = {
   key: string;
   prefix: 'New' | 'Search';
   keyword: string;
-  onPress: () => void;
+  onPress: () => void | Promise<void>;
   /** Leading icon matching toolbar shortcuts (Assets / Interactions / Services / Room). */
   icon?: PropertyGearNavIcon;
   /** Short right-justified blurb on New menu rows. */
   helpText?: string;
+  /** Keep the menu up until onPress finishes (file pickers need the original tap). */
+  deferMenuClose?: boolean;
 };
 
 function PropertyGearNavIconView(props: { name: PropertyGearNavIcon; size?: number }) {
@@ -76,6 +78,8 @@ export type PropertyGearNavActions = {
   onAddTodo?: () => void;
   /** When set, shows New Idea on the + menu (Property Detail). */
   onAddIdea?: () => void;
+  /** When set, shows New File on the + menu (Property Detail). */
+  onAddFile?: () => void | Promise<void>;
 };
 
 /**
@@ -270,6 +274,7 @@ export function usePropertyGearNav(options: {
 
   const addTodo = actions.onAddTodo;
   const addIdea = actions.onAddIdea;
+  const addFile = actions.onAddFile;
 
   const newItems: PropertyGearNavItem[] = [
     {
@@ -288,14 +293,18 @@ export function usePropertyGearNav(options: {
       helpText: 'A thing',
       onPress: () => runMenuAction(startAddAsset),
     },
-    {
-      key: 'serviceEvent',
-      prefix: 'New',
-      keyword: 'Service Event',
-      icon: 'handyman',
-      helpText: 'Track Asset',
-      onPress: () => runMenuAction(actions.onAddServiceEvent),
-    },
+    ...(hasAssets
+      ? [
+          {
+            key: 'serviceEvent' as const,
+            prefix: 'New' as const,
+            keyword: 'Service Event',
+            icon: 'handyman' as const,
+            helpText: 'Track Asset',
+            onPress: () => runMenuAction(actions.onAddServiceEvent),
+          },
+        ]
+      : []),
     {
       key: 'project',
       prefix: 'New',
@@ -333,6 +342,19 @@ export function usePropertyGearNav(options: {
             icon: 'notes' as const,
             helpText: 'A thought',
             onPress: () => runMenuAction(addIdea),
+          },
+        ]
+      : []),
+    ...(addFile
+      ? [
+          {
+            key: 'file',
+            prefix: 'New' as const,
+            keyword: 'File',
+            icon: 'insert-drive-file' as const,
+            helpText: 'Attach a document',
+            deferMenuClose: true,
+            onPress: () => addFile(),
           },
         ]
       : []),
@@ -529,7 +551,11 @@ export function usePropertyGearNav(options: {
                     ref={projectNameInputRef}
                     value={projectName}
                     onChangeText={setProjectName}
-                    placeholder="Pool renovation, kitchen remodel…"
+                    placeholder={
+                      projectKind === 'blight_case'
+                        ? 'Case identifier'
+                        : 'Pool renovation, kitchen remodel…'
+                    }
                     style={sharedStyles.input}
                     autoFocus
                     {...projectKeyboardDone.getTextInputProps({
@@ -788,8 +814,12 @@ export function PropertyGearNavMenuModal(props: {
           <PropertyGearNavRows
             items={items}
             onItemPress={(item) => {
+              if (item.deferMenuClose) {
+                void Promise.resolve(item.onPress()).finally(onClose);
+                return;
+              }
               onClose();
-              item.onPress();
+              void item.onPress();
             }}
           />
           <Pressable

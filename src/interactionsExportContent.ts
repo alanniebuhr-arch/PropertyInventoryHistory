@@ -8,6 +8,7 @@ import {
 } from './storage';
 import { vendorContactMethodLabel } from './vendorContactMethod';
 import { formatDate, formatDisplayDate, nowISO } from './utils';
+import { interactionPhotoDisplayLabel } from './interactionPhotos';
 
 export type InteractionsExportPhoto = { uri: string; label: string; notes?: string };
 export type InteractionsExportEntry = {
@@ -52,6 +53,8 @@ export function buildInteractionsExportSnapshot(args: {
     const lines = [
       vendor?.name || undefined,
       interaction.contactName?.trim() || undefined,
+      interaction.contactPhone?.trim() || undefined,
+      interaction.contactEmail?.trim() || undefined,
       vendorProject?.name && property?.name !== scopeTitle ? vendorProject.name : undefined,
       !vendor && property?.name && property.name !== scopeTitle ? property.name : undefined,
       interaction.notes?.trim() || undefined,
@@ -63,7 +66,7 @@ export function buildInteractionsExportSnapshot(args: {
         lines,
         photos: photosForVendorInteraction(state, interaction.id).map((photo) => ({
           uri: photo.localUri,
-          label: photo.caption?.trim() || 'Photo',
+          label: interactionPhotoDisplayLabel(photo),
           notes: photo.notes?.trim() || undefined,
         })),
       },

@@ -188,6 +188,7 @@ export function inferDeletedIdsByProperty(
       for (const property of prev.properties) {
         const sliceIds = new Set(
           [
+            ...(property.documentIds ?? []),
             property.frontDocumentId,
             property.leftSideDocumentId,
             property.rightSideDocumentId,

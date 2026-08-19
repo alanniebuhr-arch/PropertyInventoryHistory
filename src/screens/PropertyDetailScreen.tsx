@@ -64,6 +64,9 @@ import {
 } from '../blightStatus';
 import { isBlightCase } from '../useCases';
 import { firstPhotoUriForProject } from '../projectPhotos';
+import { addPropertyExtraPhotos } from '../propertyPhotos';
+import { addPropertyExtraDocuments } from '../propertyExtraDocuments';
+import { pickFileAttachment } from '../fileAttachment';
 import { firstPhotoUriForVendor } from '../vendorPhotos';
 import { vendorContactMethodLabel } from '../vendorContactMethod';
 import { vendorStatusColor, vendorStatusLabel } from '../vendorStatus';
@@ -312,6 +315,7 @@ export function PropertyDetailScreen(props: {
       onSave,
       onAddTodo: openAddTodo,
       onAddIdea: openAddIdea,
+      onAddFile: startLoadFile,
     },
   });
 
@@ -793,6 +797,20 @@ export function PropertyDetailScreen(props: {
     setAddIdeaOpen(false);
     setNewIdeaTitle('');
     onOpenTodo(idea.id, { startEditing: true, kind: 'idea' });
+  }
+
+  function startLoadFile() {
+    setPhotosExpanded(true);
+    void setPropertySectionExpand(propertyId, { photos: true });
+    return pickFileAttachment()
+      .then((picked) => {
+        if (!picked) return;
+        if (picked.kind === 'image') {
+          return addPropertyExtraPhotos(state, propertyId, [picked.uri]).then(onSave);
+        }
+        return addPropertyExtraDocuments(state, propertyId, [picked]).then(onSave);
+      })
+      .catch(() => {});
   }
 
   function confirmDeleteProperty() {
@@ -1811,7 +1829,12 @@ export function PropertyDetailScreen(props: {
                                 <PropertyInteractionListRow
                                   key={`interaction:${interaction.id}`}
                                   contactName={interaction.contactName}
-                                  companyName={vendor?.name ?? 'No vendor'}
+                                  companyName={vendor?.name ?? ''}
+                                  ownerExtra={
+                                    interaction.filedComplaintForm === true
+                                      ? 'Complaint filed'
+                                      : undefined
+                                  }
                                   companyPhotoUri={
                                     vendor ? firstPhotoUriForVendor(state, vendor) : undefined
                                   }
@@ -1830,14 +1853,16 @@ export function PropertyDetailScreen(props: {
                                   onPress={() =>
                                     onOpenInteraction(interaction.vendorId, interaction.id)
                                   }
-                                  onPressVendor={
-                                    vendor ? () => onOpenVendor(vendor.id) : undefined
+                                  onPressVendor={() =>
+                                    vendor
+                                      ? onOpenVendor(vendor.id)
+                                      : onOpenInteraction(interaction.vendorId, interaction.id)
                                   }
                                   cardBackgroundColor={colors.bg}
                                   ownerBackgroundColor={colors.interactionOwnerBg}
                                   dividerColor={frameColor}
                                   dividerWidth={betweenRows ? 2 : 0}
-                                  ownerCornerIcon="storefront"
+                                  ownerCornerIcon={vendor ? 'storefront' : 'person'}
                                   cornerIcon="forum"
                                   stackRelative={isAfterToday(interaction.occurredAtISO)}
                                 />

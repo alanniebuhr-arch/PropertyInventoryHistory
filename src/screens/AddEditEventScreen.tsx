@@ -224,11 +224,7 @@ export function AddEditEventScreen(props: {
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [serviceCompany, setServiceCompany] = useState(existing?.serviceCompany ?? '');
   const [costStr, setCostStr] = useState(existing?.cost != null ? String(existing.cost) : '');
-  const [recurring, setRecurring] = useState(() => {
-    // Create always starts with Schedule next service off.
-    if (!existing) return false;
-    return Boolean(existing.recurrence?.nextDueAtISO || existing.recurrence);
-  });
+  const [recurring, setRecurring] = useState(false);
   const [nextDueStr, setNextDueStr] = useState(() => {
     if (existing?.recurrence?.nextDueAtISO) {
       return dateInputValue(existing.recurrence.nextDueAtISO);
@@ -1098,7 +1094,7 @@ export function AddEditEventScreen(props: {
     setNotes(existing.notes ?? '');
     setServiceCompany(existing.serviceCompany ?? '');
     setCostStr(existing.cost != null ? String(existing.cost) : '');
-    setRecurring(Boolean(existing.recurrence?.nextDueAtISO || existing.recurrence));
+    setRecurring(false);
     setNextDueStr(
       existing.recurrence?.nextDueAtISO
         ? dateInputValue(existing.recurrence.nextDueAtISO)
@@ -1293,7 +1289,10 @@ export function AddEditEventScreen(props: {
             </Pressable>
           ) : (
             <Pressable
-              onPress={() => setIsEditing(true)}
+              onPress={() => {
+                setRecurring(false);
+                setIsEditing(true);
+              }}
               accessibilityRole="button"
               accessibilityLabel="Edit service event"
               accessibilityHint="Switches to edit mode."

@@ -1161,6 +1161,9 @@ function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
           !slotPhotoIds.has(id) &&
           cleanPropertyPhotos.some((photo) => photo.id === id && !photo.todoId)
       ),
+      documentIds: (Array.isArray(p.documentIds) ? p.documentIds : []).filter((id) =>
+        validDocumentIds.has(id)
+      ),
       hiddenPhotoSlotKeys: normalizeHiddenPhotoSlotKeys(p.hiddenPhotoSlotKeys),
     };
     for (const slot of PROPERTY_PHOTO_SLOTS) {
@@ -2086,6 +2089,13 @@ export function deletePropertyCascade(state: AppState, propertyId: string): AppS
       .map((i) => i.id)
   );
   const dropDocumentIds = new Set<string>();
+  const property = state.properties.find((p) => p.id === propertyId);
+  for (const docId of property?.documentIds ?? []) dropDocumentIds.add(docId);
+  for (const slot of PROPERTY_PHOTO_SLOTS) {
+    const docKey = documentIdKeyForPhotoSlot(slot.key) as keyof Property;
+    const slotDocId = property?.[docKey];
+    if (typeof slotDocId === 'string') dropDocumentIds.add(slotDocId);
+  }
   for (const vendor of state.projectVendors) {
     if (vendorIds.has(vendor.id)) {
       for (const docId of vendor.documentIds ?? []) dropDocumentIds.add(docId);

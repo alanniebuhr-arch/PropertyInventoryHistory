@@ -10,6 +10,7 @@ import {
 import { vendorStatusLabel } from './vendorStatus';
 import { vendorContactMethodLabel } from './vendorContactMethod';
 import { formatDate, formatDisplayDate, formatPhoneNumber, nowISO } from './utils';
+import { interactionPhotoDisplayLabel } from './interactionPhotos';
 
 export type VendorExportRow = { label: string; value: string };
 export type VendorExportSection = { title: string; rows: VendorExportRow[] };
@@ -87,6 +88,8 @@ export function buildVendorExportSnapshot(
   const interactions = interactionsForVendor(state, vendor.id).map((interaction) => {
     const lines = [
       interaction.contactName?.trim() || undefined,
+      interaction.contactPhone?.trim() || undefined,
+      interaction.contactEmail?.trim() || undefined,
       interaction.notes?.trim() || undefined,
     ].filter((line): line is string => Boolean(line));
 
@@ -95,7 +98,7 @@ export function buildVendorExportSnapshot(
       lines,
       photos: photosForVendorInteraction(state, interaction.id).map((photo) => ({
         uri: photo.localUri,
-        label: photo.caption?.trim() || 'Photo',
+        label: interactionPhotoDisplayLabel(photo),
         notes: photo.notes?.trim() || undefined,
       })),
     };

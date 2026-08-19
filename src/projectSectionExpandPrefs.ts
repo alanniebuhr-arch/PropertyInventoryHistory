@@ -7,6 +7,8 @@ export type ProjectSectionExpandPrefs = {
   questions: boolean;
   vendors: boolean;
   punchList: boolean;
+  rooms: boolean;
+  assets: boolean;
   recentInteractions: boolean;
   boardAction: boolean;
   complainants: boolean;
@@ -22,6 +24,8 @@ const DEFAULT_PROJECT_SECTION_EXPAND: ProjectSectionExpandPrefs = {
   questions: false,
   vendors: false,
   punchList: false,
+  rooms: false,
+  assets: false,
   recentInteractions: false,
   boardAction: true,
   complainants: false,

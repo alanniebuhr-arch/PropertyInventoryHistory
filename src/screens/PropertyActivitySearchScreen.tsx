@@ -355,6 +355,8 @@ export function PropertyActivitySearchScreen(props: {
                 query,
                 notes: interaction.notes,
                 contactName: interaction.contactName,
+                contactPhone: interaction.contactPhone,
+                contactEmail: interaction.contactEmail,
                 vendorName: vendor?.name,
                 methodLabel: vendorContactMethodLabel(interaction.contactMethod),
                 dateLabel: formatDisplayDate(interaction.occurredAtISO),
@@ -1164,6 +1166,8 @@ export function PropertyActivitySearchScreen(props: {
                                   query: searchQuery,
                                   notes: interaction.notes,
                                   contactName: interaction.contactName,
+                                  contactPhone: interaction.contactPhone,
+                                  contactEmail: interaction.contactEmail,
                                   vendorName: vendor?.name,
                                   methodLabel,
                                   dateLabel,
@@ -1177,7 +1181,12 @@ export function PropertyActivitySearchScreen(props: {
                               key={`interaction:${interaction.id}`}
                               projectName={scopeLabel}
                               contactName={interaction.contactName}
-                              companyName={vendor?.name ?? 'No vendor'}
+                              companyName={vendor?.name ?? ''}
+                              ownerExtra={
+                                interaction.filedComplaintForm === true
+                                  ? 'Complaint filed'
+                                  : undefined
+                              }
                               companyPhotoUri={
                                 vendor ? firstPhotoUriForVendor(state, vendor) : undefined
                               }
@@ -1212,13 +1221,24 @@ export function PropertyActivitySearchScreen(props: {
                                 })
                               }
                               onPressVendor={
-                                vendor ? () => onOpenVendor(vendor.id) : undefined
+                                vendor
+                                  ? () => onOpenVendor(vendor.id)
+                                  : () =>
+                                      onOpenInteraction(interaction.vendorId, interaction.id, {
+                                        ...(searchMatch
+                                          ? {
+                                              searchQuery: searchQuery.trim(),
+                                              searchMatchField: searchMatch.field,
+                                            }
+                                          : {}),
+                                        propertyId: interactionPropertyId,
+                                      })
                               }
                               cardBackgroundColor={colors.bg}
                               ownerBackgroundColor={colors.interactionOwnerBg}
                               dividerColor={frameColor}
                               dividerWidth={dividerWidth}
-                              ownerCornerIcon="storefront"
+                              ownerCornerIcon={vendor ? 'storefront' : 'person'}
                               cornerIcon="forum"
                               stackRelative
                             />

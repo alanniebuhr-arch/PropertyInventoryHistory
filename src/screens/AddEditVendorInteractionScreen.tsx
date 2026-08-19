@@ -6,6 +6,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -32,6 +33,7 @@ import {
   dateInputPlaceholder,
   dateInputValue,
   formatDisplayDate,
+  formatPhoneNumber,
   nowISO,
   parseDateInputToISO,
   uid,
@@ -76,6 +78,11 @@ import {
   usePropertyGearNav,
 } from '../components/PropertyGearNavItems';
 import type { InteractionSearchMatchField } from '../searchSnippet';
+import { isBlightCase } from '../useCases';
+import {
+  COMPLAINT_FORM_CAPTION,
+  isComplaintFormPhoto,
+} from '../interactionPhotos';
 
 const headerIconBtn = {
   width: 42,
@@ -147,6 +154,8 @@ export function AddEditVendorInteractionScreen(props: {
   const pendingFocusRef = useRef<{ y: number; height: number } | null>(null);
   const focusedInputRef = useRef<RNTextInput | null>(null);
   const contactInputRef = useRef<RNTextInput>(null);
+  const contactPhoneInputRef = useRef<RNTextInput>(null);
+  const contactEmailInputRef = useRef<RNTextInput>(null);
   const notesInputRef = useRef<RNTextInput>(null);
   const exportRef = useRef<View>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -278,8 +287,18 @@ export function AddEditVendorInteractionScreen(props: {
   const [contactName, setContactName] = useState(
     existing?.contactName ?? initialVendor?.contactName ?? ''
   );
+  const [contactPhone, setContactPhone] = useState(
+    existing?.contactPhone ?? formatPhoneNumber(initialVendor?.phone ?? '')
+  );
+  const [contactEmail, setContactEmail] = useState(existing?.contactEmail ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [important, setImportant] = useState(existing?.important === true);
+  const [filedComplaintForm, setFiledComplaintForm] = useState(
+    existing?.filedComplaintForm === true ||
+      (existing
+        ? photosForVendorInteraction(state, existing.id).some(isComplaintFormPhoto)
+        : false)
+  );
   /** Draft photos while editing — persisted on Save (same pattern as eventPhotos). */
   const [interactionPhotos, setInteractionPhotos] = useState<VendorPhoto[]>(() =>
     existing ? photosForVendorInteraction(state, existing.id) : []
@@ -360,8 +379,11 @@ export function AddEditVendorInteractionScreen(props: {
         occurredAtISO,
         contactMethod,
         contactName: contactName.trim() || undefined,
+        contactPhone: formatPhoneNumber(contactPhone) || undefined,
+        contactEmail: contactEmail.trim() || undefined,
         notes: notes.trim() || undefined,
         important,
+        filedComplaintForm,
         photos: interactionPhotos,
       });
       if (!snapshot) {
@@ -407,9 +429,12 @@ export function AddEditVendorInteractionScreen(props: {
     [
       contactMethod,
       contactName,
+      contactPhone,
+      contactEmail,
       dateStr,
       draftProjectId,
       draftVendorId,
+      filedComplaintForm,
       important,
       interactionPhotos,
       notes,
@@ -521,6 +546,9 @@ export function AddEditVendorInteractionScreen(props: {
             setDraftVendorId(vendor.id);
             setDraftProjectId(vendor.projectId);
             setContactName((prev) => prev.trim() || vendor.contactName?.trim() || '');
+            setContactPhone(
+              (prev) => prev.trim() || formatPhoneNumber(vendor.phone ?? '')
+            );
           },
         })),
         { text: 'Done', style: 'cancel' as const },
@@ -540,8 +568,16 @@ export function AddEditVendorInteractionScreen(props: {
       existing.projectId ?? existingVendor?.projectId ?? null
     );
     setContactName(existing.contactName ?? existingVendor?.contactName ?? '');
+    setContactPhone(
+      existing.contactPhone ?? formatPhoneNumber(existingVendor?.phone ?? '')
+    );
+    setContactEmail(existing.contactEmail ?? '');
     setNotes(existing.notes ?? '');
     setImportant(existing.important === true);
+    setFiledComplaintForm(
+      existing.filedComplaintForm === true ||
+        photosForVendorInteraction(state, existing.id).some(isComplaintFormPhoto)
+    );
     setInteractionPhotos(photosForVendorInteraction(state, existing.id));
   }
 
@@ -552,6 +588,50 @@ export function AddEditVendorInteractionScreen(props: {
       return;
     }
     onBack();
+  }
+
+  function persistInteractionPhotos(nextPhotos: VendorPhoto[]) {
+    if (!existing || isEditing) return;
+    const photoIds = nextPhotos.map((p) => p.id);
+    const photoVendorPatch = (photo: VendorPhoto): VendorPhoto =>
+      draftVendorId
+        ? { ...photo, vendorId: draftVendorId }
+        : { ...photo, vendorId: undefined };
+    const removedPhotoIds = new Set(
+      photosForVendorInteraction(state, existing.id)
+        .map((p) => p.id)
+        .filter((id) => !photoIds.includes(id))
+    );
+    const updatedPhotos = nextPhotos.map((p) =>
+      photoVendorPatch({
+        ...p,
+        interactionId: existing.id,
+      })
+    );
+    const keptPhotos = state.vendorPhotos.filter(
+      (p) => p.interactionId !== existing.id || !removedPhotoIds.has(p.id)
+    );
+    const brandNew = updatedPhotos.filter((p) => !state.vendorPhotos.some((x) => x.id === p.id));
+    const mergedPhotos = keptPhotos.map((p) => {
+      if (p.interactionId !== existing.id) return p;
+      return updatedPhotos.find((d) => d.id === p.id) ?? p;
+    });
+    void Promise.resolve(
+      onSave({
+        ...state,
+        vendorInteractions: state.vendorInteractions.map((i) =>
+          i.id === existing.id
+            ? {
+                ...i,
+                photoIds,
+                filedComplaintForm: filedComplaintForm || undefined,
+                updatedAtISO: nowISO(),
+              }
+            : i
+        ),
+        vendorPhotos: [...mergedPhotos, ...brandNew],
+      })
+    );
   }
 
   async function addInteractionPhotos(sourceUris: string[]) {
@@ -571,56 +651,43 @@ export function AddEditVendorInteractionScreen(props: {
     );
     const nextPhotos = [...interactionPhotos, ...newPhotos];
     setInteractionPhotos(nextPhotos);
-    // View mode on an existing interaction: persist immediately (like photo labels).
-    if (!isEditing && existing) {
-      const photoIds = nextPhotos.map((p) => p.id);
-      const photoVendorPatch = (photo: VendorPhoto): VendorPhoto =>
-        draftVendorId
-          ? { ...photo, vendorId: draftVendorId }
-          : { ...photo, vendorId: undefined };
-      const removedPhotoIds = new Set(
-        photosForVendorInteraction(state, existing.id)
-          .map((p) => p.id)
-          .filter((id) => !photoIds.includes(id))
-      );
-      const updatedPhotos = nextPhotos.map((p) =>
-        photoVendorPatch({
-          ...p,
-          interactionId: existing.id,
-        })
-      );
-      const keptPhotos = state.vendorPhotos.filter(
-        (p) => p.interactionId !== existing.id || !removedPhotoIds.has(p.id)
-      );
-      const brandNew = updatedPhotos.filter((p) => !state.vendorPhotos.some((x) => x.id === p.id));
-      const mergedPhotos = keptPhotos.map((p) => {
-        if (p.interactionId !== existing.id) return p;
-        return updatedPhotos.find((d) => d.id === p.id) ?? p;
-      });
-      void Promise.resolve(
-        onSave({
-          ...state,
-          vendorInteractions: state.vendorInteractions.map((i) =>
-            i.id === existing.id
-              ? { ...i, photoIds, updatedAtISO: nowISO() }
-              : i
-          ),
-          vendorPhotos: [...mergedPhotos, ...brandNew],
-        })
-      );
-    }
+    persistInteractionPhotos(nextPhotos);
     return newPhotos.map((photo) => photo.id);
   }
 
+  async function addComplaintFormPhoto(sourceUri: string) {
+    const existingForm = interactionPhotos.find(isComplaintFormPhoto);
+    if (existingForm) await deletePhotoFile(existingForm.localUri);
+    const photoId = uid('photo');
+    const localUri = await persistPhotoFromUri(sourceUri, photoId);
+    const newPhoto: VendorPhoto = withReusePhotoMeta(sourceUri, {
+      id: photoId,
+      ...(draftVendorId ? { vendorId: draftVendorId } : {}),
+      interactionId: existing?.id,
+      localUri,
+      caption: COMPLAINT_FORM_CAPTION,
+      createdAtISO: nowISO(),
+    });
+    const nextPhotos = [
+      newPhoto,
+      ...interactionPhotos.filter((photo) => !isComplaintFormPhoto(photo)),
+    ];
+    setInteractionPhotos(nextPhotos);
+    persistInteractionPhotos(nextPhotos);
+  }
+
   function handleInteractionPhotoLabel(photoId: string, label: string, notesValue: string) {
-    const trimmed = label.trim();
+    const current = interactionPhotos.find((photo) => photo.id === photoId);
     const trimmedNotes = notesValue.trim();
+    const nextCaption = current && isComplaintFormPhoto(current)
+      ? COMPLAINT_FORM_CAPTION
+      : label.trim() || undefined;
     setInteractionPhotos((prev) =>
       prev.map((photo) =>
         photo.id === photoId
           ? {
               ...photo,
-              caption: trimmed || undefined,
+              caption: nextCaption,
               notes: trimmedNotes || undefined,
             }
           : photo
@@ -629,7 +696,7 @@ export function AddEditVendorInteractionScreen(props: {
     // View mode: persist immediately (same as vendor gallery). Edit mode: draft until Save.
     if (!isEditing && state.vendorPhotos.some((photo) => photo.id === photoId)) {
       void Promise.resolve(
-        onSave(setVendorPhotoCaptionAndNotes(state, photoId, trimmed, trimmedNotes))
+        onSave(setVendorPhotoCaptionAndNotes(state, photoId, nextCaption ?? '', trimmedNotes))
       );
     }
   }
@@ -660,7 +727,9 @@ export function AddEditVendorInteractionScreen(props: {
   }
 
   function reorderInteractionPhoto(photoId: string, direction: PhotoReorderDirection) {
-    setInteractionPhotos((prev) => reorderItemsById(prev, photoId, direction));
+    setInteractionPhotos((prev) =>
+      reorderItemsById(prev, photoId, direction, (photo) => !isComplaintFormPhoto(photo))
+    );
   }
 
   async function saveInteraction() {
@@ -691,6 +760,8 @@ export function AddEditVendorInteractionScreen(props: {
       return;
     }
     const trimmedNotes = notes.trim();
+    const trimmedPhone = formatPhoneNumber(contactPhone) || undefined;
+    const trimmedEmail = contactEmail.trim() || undefined;
     const photoIds = interactionPhotos.map((p) => p.id);
     const photoVendorPatch = (photo: VendorPhoto): VendorPhoto =>
       draftVendorId
@@ -727,9 +798,12 @@ export function AddEditVendorInteractionScreen(props: {
         propertyId: resolvedPropertyId,
         contactMethod,
         contactName: trimmedContact || undefined,
+        contactPhone: trimmedPhone,
+        contactEmail: trimmedEmail,
         occurredAtISO,
         notes: trimmedNotes || undefined,
         important: important || undefined,
+        filedComplaintForm: filedComplaintForm || undefined,
         photoIds,
         updatedAtISO: nowISO(),
       };
@@ -759,9 +833,12 @@ export function AddEditVendorInteractionScreen(props: {
         propertyId: resolvedPropertyId,
         contactMethod,
         contactName: trimmedContact || undefined,
+        contactPhone: trimmedPhone,
+        contactEmail: trimmedEmail,
         occurredAtISO,
         notes: trimmedNotes || undefined,
         important: important || undefined,
+        filedComplaintForm: filedComplaintForm || undefined,
         photoIds,
         createdAtISO: nowISO(),
         updatedAtISO: nowISO(),
@@ -843,6 +920,28 @@ export function AddEditVendorInteractionScreen(props: {
     });
   }
   const showContextPhotos = !isEditing && contextPhotos.length > 0;
+  const showVendorPicker = showLinkPickers && vendorsForPicker.length > 0;
+
+  function callContactPhone() {
+    const raw = contactPhone.trim();
+    if (!raw) return;
+    const digits = raw.replace(/[^\d+]/g, '');
+    if (!digits) {
+      Alert.alert('Could not start call', 'Check that the phone number is valid.');
+      return;
+    }
+    void Linking.openURL(`tel:${digits}`).catch(() => {
+      Alert.alert('Could not start call', 'Check that the phone number is valid.');
+    });
+  }
+
+  function emailContact() {
+    const raw = contactEmail.trim();
+    if (!raw) return;
+    void Linking.openURL(`mailto:${raw}`).catch(() => {
+      Alert.alert('Could not start email', 'Check that the email address is valid.');
+    });
+  }
 
   return (
     <ReuseExistingPhotosProvider state={state} propertyId={resolvedPropertyId ?? ''}>
@@ -1037,24 +1136,28 @@ export function AddEditVendorInteractionScreen(props: {
                   <Text style={{ fontSize: 18, color: colors.textMuted }}>›</Text>
                 </Pressable>
 
-                <Text style={sharedStyles.fieldLabel}>Vendor</Text>
-                <Pressable
-                  onPress={openVendorPicker}
-                  style={({ pressed }) => [
-                    sharedStyles.input,
-                    {
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      opacity: pressed ? 0.7 : 1,
-                    },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityHint="Opens a list of vendors for the selected project"
-                >
-                  <Text style={{ fontSize: 16, color: colors.text }}>{vendorLabel}</Text>
-                  <Text style={{ fontSize: 18, color: colors.textMuted }}>›</Text>
-                </Pressable>
+                {showVendorPicker ? (
+                  <>
+                    <Text style={sharedStyles.fieldLabel}>Vendor</Text>
+                    <Pressable
+                      onPress={openVendorPicker}
+                      style={({ pressed }) => [
+                        sharedStyles.input,
+                        {
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          opacity: pressed ? 0.7 : 1,
+                        },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityHint="Opens a list of vendors for the selected project"
+                    >
+                      <Text style={{ fontSize: 16, color: colors.text }}>{vendorLabel}</Text>
+                      <Text style={{ fontSize: 18, color: colors.textMuted }}>›</Text>
+                    </Pressable>
+                  </>
+                ) : null}
               </>
             ) : null}
 
@@ -1073,6 +1176,36 @@ export function AddEditVendorInteractionScreen(props: {
               autoFocus={!existing && !draftVendorId}
               {...keyboardDone.getTextInputProps({
                 onFocus: () => measureAndScroll(contactInputRef.current),
+              })}
+            />
+
+            <Text style={sharedStyles.fieldLabel}>Contact phone</Text>
+            <TextInput
+              ref={contactPhoneInputRef}
+              style={sharedStyles.input}
+              value={contactPhone}
+              onChangeText={(text) => setContactPhone(formatPhoneNumber(text))}
+              placeholder="Optional"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="phone-pad"
+              {...keyboardDone.getTextInputProps({
+                onFocus: () => measureAndScroll(contactPhoneInputRef.current),
+              })}
+            />
+
+            <Text style={sharedStyles.fieldLabel}>Contact email</Text>
+            <TextInput
+              ref={contactEmailInputRef}
+              style={sharedStyles.input}
+              value={contactEmail}
+              onChangeText={setContactEmail}
+              placeholder="Optional"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              {...keyboardDone.getTextInputProps({
+                onFocus: () => measureAndScroll(contactEmailInputRef.current),
               })}
             />
 
@@ -1190,6 +1323,22 @@ export function AddEditVendorInteractionScreen(props: {
               value={contactName}
               highlightQuery={highlightFor('contactName')}
             />
+            {contactPhone.trim() ? (
+              <DetailDisplayRow
+                label="Contact phone"
+                value={formatPhoneNumber(contactPhone)}
+                onPress={callContactPhone}
+                highlightQuery={highlightFor('contactName')}
+              />
+            ) : null}
+            {contactEmail.trim() ? (
+              <DetailDisplayRow
+                label="Contact email"
+                value={contactEmail}
+                onPress={emailContact}
+                highlightQuery={highlightFor('contactName')}
+              />
+            ) : null}
             <DetailDisplayRow
               label="Notes"
               value={notes}
@@ -1199,8 +1348,56 @@ export function AddEditVendorInteractionScreen(props: {
           </View>
         )}
 
+        {project && isBlightCase(project) ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: 12,
+              marginBottom: 4,
+            }}
+          >
+            <Text style={[sharedStyles.fieldLabel, { marginBottom: 0 }]}>
+              Filed complaint form
+            </Text>
+            <Switch
+              value={filedComplaintForm}
+              onValueChange={(next) => {
+                setFiledComplaintForm(next);
+                if (!isEditing && existing) {
+                  void Promise.resolve(
+                    onSave({
+                      ...state,
+                      vendorInteractions: state.vendorInteractions.map((i) =>
+                        i.id === existing.id
+                          ? {
+                              ...i,
+                              filedComplaintForm: next || undefined,
+                              updatedAtISO: nowISO(),
+                            }
+                          : i
+                      ),
+                    })
+                  );
+                }
+              }}
+            />
+          </View>
+        ) : null}
+
         <InteractionPhotoSection
           photos={interactionPhotos}
+          showComplaintFormSlot={Boolean(
+            project && isBlightCase(project) && filedComplaintForm
+          )}
+          onAddComplaintForm={
+            project && isBlightCase(project) && filedComplaintForm
+              ? (uri) => {
+                  void addComplaintFormPhoto(uri);
+                }
+              : undefined
+          }
           onAddPhotos={addInteractionPhotos}
           onDeletePhoto={(photoId) => {
             void removeInteractionPhoto(photoId);

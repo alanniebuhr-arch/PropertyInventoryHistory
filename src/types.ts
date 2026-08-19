@@ -695,6 +695,8 @@ export type Property = {
   plotPlanDocumentId?: string;
   /** Extra property photos beyond the named slots above. */
   photoIds?: string[];
+  /** Extra documents beyond named photo-slot documents. */
+  documentIds?: string[];
   /** Named photo slots the user removed (placeholders stay hidden until restored). */
   hiddenPhotoSlotKeys?: string[];
   /**
@@ -964,10 +966,19 @@ export type VendorInteraction = {
   contactMethod: VendorContactMethod;
   /** Contact person (vendor contact, neighbor name, etc.). */
   contactName?: string;
+  /** Optional; missing on older backups. */
+  contactPhone?: string;
+  /** Optional; missing on older backups. */
+  contactEmail?: string;
   occurredAtISO: string;
   notes?: string;
   /** When true, emphasized in interaction lists and reminders. */
   important?: boolean;
+  /**
+   * Blight interactions: user filed a complaint form. Optional on older backups.
+   * When true, the reserved complaint-form photo slot is shown.
+   */
+  filedComplaintForm?: boolean;
   photoIds: string[];
   createdAtISO: string;
   updatedAtISO?: string;

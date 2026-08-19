@@ -15,6 +15,11 @@ import {
   setPropertySlotPhoto,
 } from '../propertyPhotos';
 import {
+  addPropertyExtraDocuments,
+  propertyExtraDocumentRows,
+  removePropertyExtraDocument,
+} from '../propertyExtraDocuments';
+import {
   setPropertyPhotoCaptionAndNotes,
   setPropertyPhotoFavorite,
   setPropertyPhotoNotes,
@@ -144,10 +149,22 @@ export function PropertyPhotosSection(props: {
     return added.map((photo) => photo.id);
   }
 
+  const extraDocumentRows = propertyExtraDocumentRows(state, property, (documentId) => {
+    void removePropertyExtraDocument(state, property.id, documentId).then(onSave);
+  });
+
+  async function handleAddDocuments(
+    picked: { uri: string; fileName: string; mimeType: string }[]
+  ) {
+    onSave(await addPropertyExtraDocuments(state, property.id, picked));
+  }
+
   return (
     <PhotoSection
       tiles={photoTiles}
       onAddPhotos={handleAddExtraPhotos}
+      onAddDocuments={handleAddDocuments}
+      extraDocumentRows={extraDocumentRows}
       hasHiddenSlots={hasHiddenSlots}
       onRestoreHiddenSlots={() => onSave(restorePropertyHiddenPhotoSlots(state, property.id))}
       expanded={expanded}

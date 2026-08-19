@@ -947,16 +947,18 @@ export function ProjectGalleryTile(props: {
           {totalCostLabel}
         </Text>
       ) : null}
-      <Text style={sharedStyles.galleryMeta} numberOfLines={2}>
-        {vendorCount} vendor{vendorCount === 1 ? '' : 's'}
-        {waitingForQuoteCount > 0 ? (
-          <Text
-            style={{ color: colors.dueSoon, fontWeight: '600', fontSize: 12 }}
-          >
-            {` · ${waitingForQuoteCount} waiting for quote`}
-          </Text>
-        ) : null}
-      </Text>
+      {vendorCount > 0 ? (
+        <Text style={sharedStyles.galleryMeta} numberOfLines={2}>
+          {vendorCount} vendor{vendorCount === 1 ? '' : 's'}
+          {waitingForQuoteCount > 0 ? (
+            <Text
+              style={{ color: colors.dueSoon, fontWeight: '600', fontSize: 12 }}
+            >
+              {` · ${waitingForQuoteCount} waiting for quote`}
+            </Text>
+          ) : null}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -993,16 +995,17 @@ export function ProjectListRow(props: {
     striped,
   } = props;
   const scopeText = scopeLabel?.trim();
-  const vendorLine = (
-    <Text style={sharedStyles.cardMeta}>
-      {vendorCount} vendor{vendorCount === 1 ? '' : 's'}
-      {waitingForQuoteCount > 0 ? (
-        <Text style={{ color: colors.dueSoon, fontWeight: '600', fontSize: 13 }}>
-          {` · ${waitingForQuoteCount} waiting for quote`}
-        </Text>
-      ) : null}
-    </Text>
-  );
+  const vendorLine =
+    vendorCount > 0 ? (
+      <Text style={sharedStyles.cardMeta}>
+        {vendorCount} vendor{vendorCount === 1 ? '' : 's'}
+        {waitingForQuoteCount > 0 ? (
+          <Text style={{ color: colors.dueSoon, fontWeight: '600', fontSize: 13 }}>
+            {` · ${waitingForQuoteCount} waiting for quote`}
+          </Text>
+        ) : null}
+      </Text>
+    ) : null;
   const details = (
     <>
       {scopeText ? (
@@ -1456,6 +1459,8 @@ export function PropertyInteractionListRow(props: {
   dividerWidth?: number;
   /** Type glyph on the owner header (vendor), top-right. */
   ownerCornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
+  /** Optional line under company (e.g. Complaint filed). */
+  ownerExtra?: string;
   /** Type glyph on the interaction detail strip, leftmost. */
   cornerIcon?: React.ComponentProps<typeof MaterialIcons>['name'];
   /** Put relative `(# days…)` on its own bold line (Future Activity). */
@@ -1486,11 +1491,14 @@ export function PropertyInteractionListRow(props: {
     dividerColor,
     dividerWidth,
     ownerCornerIcon,
+    ownerExtra,
     cornerIcon,
     stackRelative,
   } = props;
   const projectText = projectName?.trim();
   const contactText = contactName?.trim();
+  const companyText = companyName.trim();
+  const extraText = ownerExtra?.trim();
   const notesText = (searchSnippet ?? notes)?.trim();
   const methodText = methodLabel.trim();
   const matchHintText = matchHint?.trim();
@@ -1531,9 +1539,16 @@ export function PropertyInteractionListRow(props: {
           Not set
         </Text>
       )}
-      <Text style={[sharedStyles.cardMeta, { marginTop: 2 }]} numberOfLines={2}>
-        {companyName}
-      </Text>
+      {companyText ? (
+        <Text style={[sharedStyles.cardMeta, { marginTop: 2 }]} numberOfLines={2}>
+          {companyText}
+        </Text>
+      ) : null}
+      {extraText ? (
+        <Text style={[sharedStyles.cardMeta, { marginTop: 2 }]} numberOfLines={1}>
+          {extraText}
+        </Text>
+      ) : null}
       {statusText ? (
         <Text
           style={[
@@ -1624,7 +1639,9 @@ export function PropertyInteractionListRow(props: {
             onPress={onPressVendor}
             style={({ pressed }) => [ownerBandStyle, pressed && sharedStyles.cardPressed]}
             accessibilityRole="button"
-            accessibilityLabel={`Open vendor ${companyName}`}
+            accessibilityLabel={
+              companyText ? `Open vendor ${companyText}` : 'Open interaction'
+            }
           >
             {ownerContent}
           </Pressable>

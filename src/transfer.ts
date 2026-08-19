@@ -7,8 +7,6 @@ import type {
   SyncDeletedIds,
 } from './types';
 import { EMPTY_APP_STATE } from './types';
-import { PROPERTY_PHOTO_SLOTS } from './propertyPhotoSlots';
-import { documentIdKeyForPhotoSlot } from './slotDocumentKeys';
 import { recordUpdatedAt } from './syncStamp';
 import { countDeletedIds } from './syncMeta';
 import { livingPins, mergePins, normalizePins, pinsForProperty } from './pins';
@@ -139,10 +137,7 @@ export function sliceAppStateForProperty(state: AppState, propertyId: string): A
   );
 
   const documentIds = new Set<string>();
-  for (const slot of PROPERTY_PHOTO_SLOTS) {
-    const docKey = documentIdKeyForPhotoSlot(slot.key) as keyof typeof property;
-    addDocumentId(documentIds, property[docKey]);
-  }
+  collectDocumentIdsFromValue(property, documentIds);
   collectDocumentIdsFromValue(rooms, documentIds);
   collectDocumentIdsFromValue(items, documentIds);
   collectDocumentIdsFromValue(projects, documentIds);
@@ -249,12 +244,7 @@ export function slicePropertyChanges(
   );
 
   const documentIds = new Set<string>();
-  for (const property of properties.length > 0 ? properties : []) {
-    for (const slot of PROPERTY_PHOTO_SLOTS) {
-      const docKey = documentIdKeyForPhotoSlot(slot.key) as keyof typeof property;
-      addDocumentId(documentIds, property[docKey]);
-    }
-  }
+  collectDocumentIdsFromValue(properties, documentIds);
   collectDocumentIdsFromValue(rooms, documentIds);
   collectDocumentIdsFromValue(items, documentIds);
   collectDocumentIdsFromValue(projects, documentIds);

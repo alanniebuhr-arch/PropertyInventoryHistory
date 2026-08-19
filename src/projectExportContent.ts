@@ -19,6 +19,8 @@ import { vendorContactMethodLabel } from './vendorContactMethod';
 import { formatCurrency, formatDate, formatDisplayDate, formatPhoneNumber, nowISO } from './utils';
 import { isOverdue } from './eventRecurrence';
 import { type SharePhotoMode } from './sharePhotoMode';
+import { interactionPhotoDisplayLabel } from './interactionPhotos';
+import { isBlightCase } from './useCases';
 
 export type ProjectExportRow = { label: string; value: string };
 export type ProjectExportSection = { title: string; rows: ProjectExportRow[] };
@@ -128,8 +130,11 @@ function pushSection(sections: ProjectExportSection[], next: ProjectExportSectio
 function interactionDetail(interaction: VendorInteraction): string {
   const parts = [
     interaction.important === true ? 'Important' : undefined,
+    interaction.filedComplaintForm === true ? 'Filed complaint form' : undefined,
     vendorContactMethodLabel(interaction.contactMethod),
     interaction.contactName?.trim() || undefined,
+    interaction.contactPhone?.trim() || undefined,
+    interaction.contactEmail?.trim() || undefined,
     interaction.notes?.trim() || undefined,
   ].filter((part): part is string => Boolean(part));
   return parts.join(' · ');
@@ -156,7 +161,7 @@ function buildVendorExport(state: AppState, vendor: ProjectVendor): ProjectExpor
     detail: interactionDetail(interaction),
     photos: photosForVendorInteraction(state, interaction.id).map((photo) => ({
       uri: photo.localUri,
-      label: photo.caption?.trim() || 'Photo',
+      label: interactionPhotoDisplayLabel(photo),
       notes: photo.notes?.trim() || undefined,
     })),
   }));
@@ -186,7 +191,9 @@ export function buildProjectExportSnapshot(
     property?.name,
     property?.address,
     projectStatusLabel(project.status ?? 'research'),
-    project.totalCost != null ? `Total cost ${formatCurrency(project.totalCost)}` : undefined,
+    project.totalCost != null
+      ? `${isBlightCase(project) ? 'Total fine' : 'Total cost'} ${formatCurrency(project.totalCost)}`
+      : undefined,
   ]
     .filter((line): line is string => Boolean(line?.trim()))
     .map((line) => line.trim());

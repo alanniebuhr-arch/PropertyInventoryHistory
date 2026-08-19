@@ -2,6 +2,7 @@ import type { AppState, VendorContactMethod, VendorPhoto } from './types';
 import { projectById, propertyById, vendorById } from './storage';
 import { vendorContactMethodLabel } from './vendorContactMethod';
 import { formatDate, formatDisplayDate, nowISO } from './utils';
+import { interactionPhotoDisplayLabel } from './interactionPhotos';
 
 export type InteractionExportRow = { label: string; value: string };
 export type InteractionExportPhoto = {
@@ -35,8 +36,11 @@ export function buildInteractionExportSnapshot(params: {
   occurredAtISO: string;
   contactMethod: VendorContactMethod;
   contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
   notes?: string;
   important?: boolean;
+  filedComplaintForm?: boolean;
   photos: VendorPhoto[];
 }): InteractionExportSnapshot | null {
   const vendor = params.vendorId ? vendorById(params.state, params.vendorId) : undefined;
@@ -56,14 +60,17 @@ export function buildInteractionExportSnapshot(params: {
   const rows = [
     row('Date', formatDisplayDate(params.occurredAtISO)),
     params.important === true ? row('Important', 'Yes') : null,
+    params.filedComplaintForm === true ? row('Filed complaint form', 'Yes') : null,
     row('How contacted', vendorContactMethodLabel(params.contactMethod)),
     row('Contact', params.contactName),
+    row('Contact phone', params.contactPhone),
+    row('Contact email', params.contactEmail),
     row('Notes', params.notes),
   ].filter((entry): entry is InteractionExportRow => entry != null);
 
   const photos = params.photos.map((photo) => ({
     uri: photo.localUri,
-    label: photo.caption?.trim() || 'Photo',
+    label: interactionPhotoDisplayLabel(photo),
     notes: photo.notes?.trim() || undefined,
   }));
 

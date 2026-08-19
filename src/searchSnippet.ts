@@ -54,6 +54,8 @@ export function findInteractionSearchMatch(args: {
   query: string;
   notes?: string;
   contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
   vendorName?: string;
   methodLabel?: string;
   dateLabel?: string;
@@ -70,6 +72,9 @@ export function findInteractionSearchMatch(args: {
     };
   }
   if (fieldIncludes(args.contactName, q)) {
+    return { field: 'contactName', matchHint: MATCH_HINTS.contactName };
+  }
+  if (fieldIncludes(args.contactPhone, q) || fieldIncludes(args.contactEmail, q)) {
     return { field: 'contactName', matchHint: MATCH_HINTS.contactName };
   }
   if (fieldIncludes(args.vendorName, q)) {

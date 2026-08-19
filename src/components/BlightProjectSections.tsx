@@ -1,15 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  Alert,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  View,
-  type TextInput as RNTextInput,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, Pressable, View, type TextInput as RNTextInput } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { Text, TextInput } from '../textScale';
@@ -19,12 +9,7 @@ import { DateInputField } from './DateInputField';
 import { PdfViewerModal, type ViewerPdf } from './PdfViewerModal';
 import { SectionHelpTip } from './SectionHelpTip';
 import { sharedStyles, colors } from '../theme';
-import {
-  dateInputValue,
-  formatDisplayDate,
-  nowISO,
-  parseDateInputToISO,
-} from '../utils';
+import { dateInputValue, nowISO, parseDateInputToISO } from '../utils';
 import { documentById } from '../documents';
 import { resolveAppFileUri } from '../appFileUri';
 import { pickFileAttachment } from '../fileAttachment';
@@ -34,14 +19,6 @@ import {
   setBlightBoardDocument,
   type BlightBoardDocSlot,
 } from '../blightProjectDocs';
-import {
-  addComplainant,
-  clearComplainantFormAttachment,
-  complainantsForProject,
-  removeComplainantCascade,
-  setComplainantFormAttachment,
-  updateComplainant,
-} from '../projectComplainants';
 import {
   getProjectSectionExpand,
   setProjectSectionExpand,
@@ -79,14 +56,10 @@ export function BlightProjectSections(props: {
   measureAndScroll: (input: RNTextInput | null) => void;
 }) {
   const { state, project, onSave, helpVisible, measureAndScroll } = props;
-  const insets = useSafeAreaInsets();
   const ruleInputRef = useRef<RNTextInput>(null);
   const fineAmountInputRef = useRef<RNTextInput>(null);
   const [boardExpanded, setBoardExpanded] = useState(
     () => getProjectSectionExpand().boardAction
-  );
-  const [complainantsExpanded, setComplainantsExpanded] = useState(
-    () => getProjectSectionExpand().complainants
   );
   const [ruleDraft, setRuleDraft] = useState(project.blightRule ?? '');
   const [correctionDraft, setCorrectionDraft] = useState(
@@ -99,12 +72,6 @@ export function BlightProjectSections(props: {
     project.fineAmount != null ? String(project.fineAmount) : ''
   );
   const [viewingPdf, setViewingPdf] = useState<ViewerPdf | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [nameDraft, setNameDraft] = useState('');
-  const [phoneDraft, setPhoneDraft] = useState('');
-  const [emailDraft, setEmailDraft] = useState('');
-  const [submittedDraft, setSubmittedDraft] = useState('');
 
   useEffect(() => {
     setRuleDraft(project.blightRule ?? '');
@@ -118,8 +85,6 @@ export function BlightProjectSections(props: {
     project.fineStartedAtISO,
     project.fineAmount,
   ]);
-
-  const complainants = complainantsForProject(state, project.id);
 
   function patchProject(
     patch: Partial<
@@ -216,81 +181,6 @@ export function BlightProjectSections(props: {
       },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  }
-
-  function openNewComplainant() {
-    setEditingId(null);
-    setNameDraft('');
-    setPhoneDraft('');
-    setEmailDraft('');
-    setSubmittedDraft('');
-    setEditorOpen(true);
-    setComplainantsExpanded(true);
-    void setProjectSectionExpand({ complainants: true });
-  }
-
-  function openEditComplainant(id: string) {
-    const person = complainants.find((row) => row.id === id);
-    if (!person) return;
-    setEditingId(id);
-    setNameDraft(person.name);
-    setPhoneDraft(person.phone ?? '');
-    setEmailDraft(person.email ?? '');
-    setSubmittedDraft(dateInputValue(person.submittedAtISO) || '');
-    setEditorOpen(true);
-  }
-
-  function saveComplainantEditor() {
-    const name = nameDraft.trim();
-    if (!name) {
-      Alert.alert('Name required', 'Enter the complainant name.');
-      return;
-    }
-    const submittedTrimmed = submittedDraft.trim();
-    const submittedAtISO = submittedTrimmed
-      ? parseDateInputToISO(submittedTrimmed)
-      : undefined;
-    const values = {
-      name,
-      phone: phoneDraft,
-      email: emailDraft,
-      submittedAtISO,
-    };
-    if (editingId) {
-      onSave(updateComplainant(state, editingId, values));
-    } else {
-      onSave(addComplainant(state, project.id, values));
-    }
-    setEditorOpen(false);
-  }
-
-  async function pickComplainantForm(complainantId: string) {
-    const picked = await pickFileAttachment();
-    if (!picked) return;
-    const next = await setComplainantFormAttachment(state, complainantId, picked);
-    onSave(next);
-  }
-
-  function confirmDeleteComplainant(id: string, name: string) {
-    Alert.alert(`Remove ${name}?`, 'Their blight form files will also be removed.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => void removeComplainantCascade(state, id).then(onSave),
-      },
-    ]);
-  }
-
-  function formLabel(personId: string): string | undefined {
-    const person = complainants.find((row) => row.id === personId);
-    if (!person) return undefined;
-    const docId = person.documentIds[0];
-    const doc = documentById(state, docId);
-    if (doc) return doc.fileName;
-    const photo = state.projectPhotos.find((p) => p.complainantId === personId);
-    if (photo) return 'Photo form';
-    return undefined;
   }
 
   return (
@@ -440,239 +330,7 @@ export function BlightProjectSections(props: {
         ) : null}
       </View>
 
-      <View style={sharedStyles.propertySectionPanel}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-            marginBottom: 8,
-          }}
-        >
-          <CollapsibleSectionTitle
-            title="Complainants"
-            expanded={complainantsExpanded}
-            count={complainants.length}
-            onExpand={() => {
-              const next = !complainantsExpanded;
-              setComplainantsExpanded(next);
-              void setProjectSectionExpand({ complainants: next });
-            }}
-          />
-          <Pressable
-            onPress={openNewComplainant}
-            accessibilityRole="button"
-            accessibilityLabel="Add complainant"
-            hitSlop={6}
-            style={({ pressed }) => ({ padding: 4, opacity: pressed ? 0.7 : 1 })}
-          >
-            <MaterialIcons name="add" size={24} color={colors.primary} />
-          </Pressable>
-          {complainants.length > 0 ? (
-            <Pressable
-              onPress={() => {
-                const next = !complainantsExpanded;
-                setComplainantsExpanded(next);
-                void setProjectSectionExpand({ complainants: next });
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={
-                complainantsExpanded ? 'Hide complainants' : 'Show complainants'
-              }
-              accessibilityState={{ expanded: complainantsExpanded }}
-              hitSlop={6}
-              style={({ pressed }) => ({
-                marginLeft: 'auto',
-                padding: 4,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <MaterialIcons
-                name={complainantsExpanded ? 'expand-less' : 'expand-more'}
-                size={24}
-                color={colors.primary}
-              />
-            </Pressable>
-          ) : null}
-        </View>
-        {helpVisible ? (
-          <SectionHelpTip>
-            People who filed this blight complaint, with optional blight form.
-          </SectionHelpTip>
-        ) : null}
-        {complainants.length === 0 ? (
-          <Text style={sharedStyles.emptyText}>Add complainants for this blight case.</Text>
-        ) : complainantsExpanded ? (
-          complainants.map((person) => {
-            const photo = state.projectPhotos.find((p) => p.complainantId === person.id);
-            const form = formLabel(person.id);
-            return (
-              <Pressable
-                key={person.id}
-                onPress={() => openEditComplainant(person.id)}
-                onLongPress={() => confirmDeleteComplainant(person.id, person.name)}
-                accessibilityRole="button"
-                accessibilityLabel={person.name}
-                style={({ pressed }) => [
-                  sharedStyles.card,
-                  { marginBottom: 8, opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                  {photo ? (
-                    <Image
-                      source={{ uri: resolveAppFileUri(photo.localUri) }}
-                      style={{ width: 48, height: 48, borderRadius: 2 }}
-                    />
-                  ) : null}
-                  <View style={{ flex: 1 }}>
-                    <Text style={sharedStyles.cardTitle}>{person.name}</Text>
-                    {person.phone || person.email ? (
-                      <Text style={sharedStyles.cardMeta} numberOfLines={1}>
-                        {[person.phone, person.email].filter(Boolean).join(' · ')}
-                      </Text>
-                    ) : null}
-                    {person.submittedAtISO ? (
-                      <Text style={sharedStyles.cardMeta}>
-                        Submitted {formatDisplayDate(person.submittedAtISO)}
-                      </Text>
-                    ) : null}
-                    {form ? (
-                      <Text style={sharedStyles.cardMeta} numberOfLines={1}>
-                        Form: {form}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-                <Pressable
-                  onPress={() => void pickComplainantForm(person.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Attach blight form for ${person.name}`}
-                  style={({ pressed }) => ({ marginTop: 8, opacity: pressed ? 0.7 : 1 })}
-                >
-                  <Text style={{ color: colors.primary, fontWeight: '600' }}>
-                    {form ? 'Replace blight form' : 'Add blight form'}
-                  </Text>
-                </Pressable>
-              </Pressable>
-            );
-          })
-        ) : null}
-      </View>
-
       <PdfViewerModal pdf={viewingPdf} onClose={() => setViewingPdf(null)} />
-
-      <Modal
-        visible={editorOpen}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setEditorOpen(false)}
-      >
-        <Pressable style={styles.sheetBackdrop} onPress={() => setEditorOpen(false)}>
-          <Pressable
-            onPress={() => {}}
-            style={[
-              styles.sheet,
-              { paddingBottom: Math.max(insets.bottom, 16) + (Platform.OS === 'ios' ? 8 : 0) },
-            ]}
-          >
-            <Text style={sharedStyles.sectionTitle}>
-              {editingId ? 'Edit complainant' : 'Add complainant'}
-            </Text>
-            <Text style={sharedStyles.fieldLabel}>Name</Text>
-            <TextInput
-              style={sharedStyles.input}
-              value={nameDraft}
-              onChangeText={setNameDraft}
-              placeholder="Name"
-              placeholderTextColor={colors.textMuted}
-              autoFocus
-            />
-            <Text style={sharedStyles.fieldLabel}>Phone</Text>
-            <TextInput
-              style={sharedStyles.input}
-              value={phoneDraft}
-              onChangeText={setPhoneDraft}
-              placeholder="Phone"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="phone-pad"
-            />
-            <Text style={sharedStyles.fieldLabel}>Email</Text>
-            <TextInput
-              style={sharedStyles.input}
-              value={emailDraft}
-              onChangeText={setEmailDraft}
-              placeholder="Email"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <DateInputField
-              label="Submitted"
-              value={submittedDraft}
-              onChangeText={setSubmittedDraft}
-              optional
-            />
-            {editingId ? (
-              <Pressable
-                onPress={() => void pickComplainantForm(editingId)}
-                style={({ pressed }) => ({ marginTop: 12, opacity: pressed ? 0.7 : 1 })}
-              >
-                <Text style={{ color: colors.primary, fontWeight: '600' }}>
-                  {formLabel(editingId) ? 'Replace blight form' : 'Add blight form'}
-                </Text>
-              </Pressable>
-            ) : null}
-            {editingId ? (
-              <Pressable
-                onPress={() => {
-                  const person = complainants.find((row) => row.id === editingId);
-                  if (!person) return;
-                  Alert.alert('Remove blight form?', undefined, [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Remove',
-                      style: 'destructive',
-                      onPress: () =>
-                        void clearComplainantFormAttachment(state, editingId).then(onSave),
-                    },
-                  ]);
-                }}
-                style={({ pressed }) => ({ marginTop: 8, opacity: pressed ? 0.7 : 1 })}
-              >
-                <Text style={{ color: colors.danger }}>Remove blight form</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              onPress={saveComplainantEditor}
-              style={({ pressed }) => [
-                sharedStyles.primaryBtn,
-                pressed && sharedStyles.primaryBtnPressed,
-              ]}
-            >
-              <Text style={sharedStyles.primaryBtnText}>Save</Text>
-            </Pressable>
-            <Pressable onPress={() => setEditorOpen(false)} style={sharedStyles.secondaryBtn}>
-              <Text style={sharedStyles.secondaryBtnText}>Cancel</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  sheetBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  sheet: {
-    backgroundColor: colors.bg,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-  },
-});

@@ -42,6 +42,7 @@ import {
   projectsForProperty,
   propertyById,
   punchItemsForProject,
+  itemsForProperty,
   vendorById,
   vendorsForProject,
 } from '../storage';
@@ -107,6 +108,11 @@ import {
   loadSectionHelpVisible,
   setSectionHelpVisible,
 } from '../sectionHelpPrefs';
+import {
+  getHideEmptyPropertySections,
+  loadHideEmptyPropertySections,
+  setHideEmptyPropertySections,
+} from '../hideEmptyPropertySectionsPrefs';
 import {
   getHideRejectedVendors,
   loadHideRejectedVendors,
@@ -226,6 +232,7 @@ export function ProjectDetailScreen(props: {
   const [sharePhotoMode, setSharePhotoMode] = useState<SharePhotoMode>('all');
   const [shareFormat, setShareFormat] = useState<ShareFormat>(DEFAULT_SHARE_FORMAT);
   const [helpVisible, setHelpVisible] = useState(getSectionHelpVisible);
+  const [hideEmptySections, setHideEmptySections] = useState(getHideEmptyPropertySections);
   const [hideRejected, setHideRejected] = useState(getHideRejectedVendors);
   const [showReorderArrows, setShowReorderArrows] = useState(false);
   const [slideshowIndex, setSlideshowIndex] = useState<number | null>(null);
@@ -350,31 +357,38 @@ export function ProjectDetailScreen(props: {
   const activityNewItems = propertyNewItems.filter(
     (item) => item.key === 'interaction' || item.key === 'serviceEvent'
   );
-  const projectLocalNewItems: PropertyGearNavItem[] =
-    !(project && showBlightProjectUi(state, project))
-      ? [
-          {
-            key: 'vendor',
-            prefix: 'New',
-            keyword: 'Vendor',
-            onPress: () => runMenuAction(openAddVendor),
-          },
+  const propertyHasAssets = propertyId ? itemsForProperty(state, propertyId).length > 0 : false;
+  const projectLocalNewItems: PropertyGearNavItem[] = [
+          ...(propertyHasAssets
+            ? [
+                {
+                  key: 'vendor' as const,
+                  prefix: 'New' as const,
+                  keyword: 'Vendor',
+                  icon: 'storefront' as const,
+                  onPress: () => runMenuAction(openAddVendor),
+                },
+              ]
+            : []),
           {
             key: 'punchItem',
             prefix: 'New',
             keyword: 'Punch List Item',
+            icon: 'assignment',
             onPress: () => runMenuAction(openAddPunchItem),
           },
-        ]
-      : [];
-  const projectNewItems: PropertyGearNavItem[] =
-    propertyId && !(project && showBlightProjectUi(state, project))
-      ? [...projectLocalNewItems, ...propertyNewItems]
-      : projectLocalNewItems;
-  const projectSearchItems =
-    propertyId && !(project && showBlightProjectUi(state, project))
-      ? propertySearchItems
-      : [];
+        ];
+  const propertyCreates = propertyNewItems.filter(
+    (item) =>
+      item.key !== 'project' &&
+      item.key !== 'blightCase' &&
+      item.key !== 'room' &&
+      item.key !== 'asset'
+  );
+  const projectNewItems: PropertyGearNavItem[] = propertyId
+    ? [...projectLocalNewItems, ...propertyCreates]
+    : projectLocalNewItems;
+  const projectSearchItems = propertyId ? propertySearchItems : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -383,6 +397,9 @@ export function ProjectDetailScreen(props: {
     });
     void loadSectionHelpVisible().then((visible) => {
       if (!cancelled) setHelpVisible(visible);
+    });
+    void loadHideEmptyPropertySections().then((hide) => {
+      if (!cancelled) setHideEmptySections(hide);
     });
     void loadHideRejectedVendors().then((hide) => {
       if (!cancelled) setHideRejected(hide);
@@ -994,6 +1011,16 @@ export function ProjectDetailScreen(props: {
     void setSectionHelpVisible(next);
   }
 
+  function toggleHideEmptySections() {
+    const next = !hideEmptySections;
+    setHideEmptySections(next);
+    void setHideEmptyPropertySections(next);
+  }
+
+  function showSection(itemCount: number) {
+    return itemCount > 0 || !hideEmptySections;
+  }
+
   const vendorsSection = (
     <View style={sharedStyles.propertySectionPanel}>
       <View
@@ -1468,9 +1495,9 @@ export function ProjectDetailScreen(props: {
                 <Text style={{ fontSize: 18, color: colors.textMuted }}>›</Text>
               </Pressable>
 
-              {!blightProjectUi ? (
-                <>
-              <Text style={sharedStyles.fieldLabel}>Total cost</Text>
+              <Text style={sharedStyles.fieldLabel}>
+                {blightProjectUi ? 'Total fine' : 'Total cost'}
+              </Text>
               <TextInput
                 ref={totalCostInputRef}
                 style={sharedStyles.input}
@@ -1484,8 +1511,6 @@ export function ProjectDetailScreen(props: {
                   onFocus: () => measureAndScroll(totalCostInputRef.current),
                 })}
               />
-                </>
-              ) : null}
             </>
           ) : null}
         </View>
@@ -1631,8 +1656,7 @@ export function ProjectDetailScreen(props: {
           />
         ) : null}
 
-        {!blightProjectUi ? (
-        <>
+        {vendors.length > 1 ? (
         <View style={sharedStyles.propertySectionPanel}>
           <EditableDetailSection
             title="Intro to vendors"
@@ -1674,7 +1698,9 @@ export function ProjectDetailScreen(props: {
             ) : null}
           </EditableDetailSection>
         </View>
+        ) : null}
 
+        {!blightProjectUi ? (
         <View style={sharedStyles.propertySectionPanel}>
           <EditableDetailSection
             title="Private notes"
@@ -1714,15 +1740,19 @@ export function ProjectDetailScreen(props: {
             ) : null}
           </EditableDetailSection>
         </View>
+        ) : null}
 
-        {projectSwipeEnabled ? (
+        {showSection(vendors.length) ? (
+          projectSwipeEnabled ? (
           <GestureDetector gesture={projectSwipeGestureForVendors}>
             <View>{vendorsSection}</View>
           </GestureDetector>
         ) : (
           vendorsSection
-        )}
+        )
+        ) : null}
 
+        {showSection(punchItems.length) ? (
         <View style={sharedStyles.propertySectionPanel}>
           <View
             style={{
@@ -1812,7 +1842,6 @@ export function ProjectDetailScreen(props: {
             </View>
           ) : null}
         </View>
-        </>
         ) : null}
 
         <View style={sharedStyles.propertySectionPanel}>
@@ -1839,10 +1868,7 @@ export function ProjectDetailScreen(props: {
               accessibilityRole="button"
               accessibilityLabel="Add what's happening"
               hitSlop={6}
-              style={({ pressed }) => ({
-                padding: 4,
-                opacity: pressed ? 0.7 : 1,
-              })}
+              style={({ pressed }) => ({ padding: 4, opacity: pressed ? 0.7 : 1 })}
             >
               <MaterialIcons name="add" size={24} color={colors.primary} />
             </Pressable>
@@ -1921,7 +1947,12 @@ export function ProjectDetailScreen(props: {
                               <PropertyInteractionListRow
                                 key={interaction.id}
                                 contactName={interaction.contactName}
-                                companyName={vendor?.name ?? 'No vendor'}
+                                companyName={vendor?.name ?? ''}
+                                ownerExtra={
+                                  interaction.filedComplaintForm === true
+                                    ? 'Complaint filed'
+                                    : undefined
+                                }
                                 companyPhotoUri={
                                   vendor ? firstPhotoUriForVendor(state, vendor) : undefined
                                 }
@@ -1940,14 +1971,16 @@ export function ProjectDetailScreen(props: {
                                 onPress={() =>
                                   onOpenInteraction(interaction.vendorId, interaction.id)
                                 }
-                                onPressVendor={
-                                  vendor ? () => onOpenVendor(vendor.id) : undefined
+                                onPressVendor={() =>
+                                  vendor
+                                    ? onOpenVendor(vendor.id)
+                                    : onOpenInteraction(interaction.vendorId, interaction.id)
                                 }
                                 cardBackgroundColor={colors.bg}
                                 ownerBackgroundColor={colors.interactionOwnerBg}
                                 dividerColor={frameColor}
                                 dividerWidth={betweenRows ? 2 : 0}
-                                ownerCornerIcon="storefront"
+                                ownerCornerIcon={vendor ? 'storefront' : 'person'}
                                 cornerIcon="forum"
                                 stackRelative={isAfterToday(interaction.occurredAtISO)}
                               />
@@ -2131,6 +2164,23 @@ export function ProjectDetailScreen(props: {
             >
               <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
                 {showReorderArrows ? 'Reorder Photo: On' : 'Reorder Photo: Off'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => runMenuAction(toggleHideEmptySections)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                hideEmptySections ? 'Show empty sections' : 'Hide empty sections'
+              }
+              style={({ pressed }) => ({
+                paddingVertical: 14,
+                borderTopWidth: 1,
+                borderTopColor: colors.hairline,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '500', color: colors.text }}>
+                {hideEmptySections ? 'Show empty sections' : 'Hide empty sections'}
               </Text>
             </Pressable>
             <Pressable

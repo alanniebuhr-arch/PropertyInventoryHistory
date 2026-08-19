@@ -575,11 +575,11 @@ export function HomeScreen(props: {
       <View style={sharedStyles.screenHeader}>
         <View style={[sharedStyles.headerRow, { marginBottom: 0, alignItems: 'flex-start' }]}>
           <Text style={[sharedStyles.title, { flex: 1, fontSize: 22 }]}>
-            Property Asset Manager
+            Property Manager
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <ToolbarNewSearchControls
-              title="Property Asset Manager"
+              title="Property Manager"
               newItems={homeNewItems}
               searchItems={homeSearchItems}
             />
@@ -1141,7 +1141,10 @@ export function HomeScreen(props: {
                   key={`${pin.kind}:${pin.id}`}
                   projectName={scopeLabel}
                   contactName={interaction.contactName}
-                  companyName={vendor?.name ?? 'No vendor'}
+                  companyName={vendor?.name ?? ''}
+                  ownerExtra={
+                    interaction.filedComplaintForm === true ? 'Complaint filed' : undefined
+                  }
                   companyPhotoUri={
                     vendor ? firstPhotoUriForVendor(state, vendor) : undefined
                   }
@@ -1154,10 +1157,12 @@ export function HomeScreen(props: {
                   photoUri={photo?.localUri}
                   important={interaction.important === true}
                   onPress={() => openPinned(pin)}
-                  onPressVendor={vendor ? () => onOpenVendor(vendor.id) : undefined}
+                  onPressVendor={
+                    vendor ? () => onOpenVendor(vendor.id) : () => openPinned(pin)
+                  }
                   cardBackgroundColor={colors.bg}
                   ownerBackgroundColor={colors.interactionOwnerBg}
-                  ownerCornerIcon="storefront"
+                  ownerCornerIcon={vendor ? 'storefront' : 'person'}
                   cornerIcon="forum"
                   stackRelative
                 />
@@ -1431,7 +1436,7 @@ export function HomeScreen(props: {
                   textAlign: 'center',
                 }}
               >
-                Property Asset Manager
+                Property Manager
               </Text>
             </View>
             <Pressable
@@ -1672,7 +1677,11 @@ export function HomeScreen(props: {
                     ref={projectNameInputRef}
                     value={projectName}
                     onChangeText={setProjectName}
-                    placeholder="Pool renovation, kitchen remodel…"
+                    placeholder={
+                      newProjectKind === 'blight_case'
+                        ? 'Case identifier'
+                        : 'Pool renovation, kitchen remodel…'
+                    }
                     style={sharedStyles.input}
                     autoFocus
                     {...projectKeyboardDone.getTextInputProps({
